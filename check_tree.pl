@@ -631,7 +631,7 @@ sub check_debug {
 		}
 
 		# Count regular #if
-		$$line =~ m/^-#if/ and $in_insert_block and ++$regular_ifs;
+		$$line =~ m/^-#if/ and ++$regular_ifs;
 
 		# Switching to the release variant.
 		# ---------------------------------------
@@ -653,7 +653,7 @@ sub check_debug {
 		}
 
 		# End regular #if
-		$$line =~ m/^-#endif/ and $in_insert_block and --$regular_ifs;
+		$$line =~ m/^-#endif/ and --$regular_ifs;
 
 		# Check for log_debug_elogind()
 		# ---------------------------------------
@@ -997,7 +997,7 @@ sub check_masks {
 		}
 
 		# Count regular #if
-		$$line =~ m/^-#if/ and $in_mask_block and ++$regular_ifs;
+		$$line =~ m/^-#if/ and ++$regular_ifs;
 
 		# Switching from Mask to else.
 		# Note: Inserts have no #else, they make no sense.
@@ -1033,7 +1033,7 @@ sub check_masks {
 		}
 
 		# End regular #if
-		$$line =~ m/^-#endif/ and $in_mask_block and --$regular_ifs;
+		$$line =~ m/^-#endif/ and --$regular_ifs;
 
 		# Remove '-' prefixes in all lines within insert and mask-else blocks
 		# -------------------------------------------------------------------
@@ -1132,7 +1132,7 @@ sub check_musl {
 		}
 
 		# Count regular #if
-		$$line =~ m/^-#if/ and $in_mask_block and ++$regular_ifs;
+		$$line =~ m/^-#if/ and ++$regular_ifs;
 
 		# Switching from __GLIBC__ to else - not needed.
 		# (done by is_else_block() above)
@@ -1150,7 +1150,7 @@ sub check_musl {
 		}
 
 		# End regular #if
-		$$line =~ m/^-#endif/ and $in_mask_block and --$regular_ifs;
+		$$line =~ m/^-#endif/ and --$regular_ifs;
 
 		# Remove '-' prefixes in all lines within the musl (#else) blocks
 		# -------------------------------------------------------------------
