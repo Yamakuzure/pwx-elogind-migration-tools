@@ -37,6 +37,7 @@
 # 0.9.5    2018-05-30  sed, PrydeWorX  Do not allow diff to move name reverts into a mask block.
 #                                      + Do not replace double dashes in XML comments, that are either the
 #                                        comment start or end.
+# 0.9.6    2018-06-06  sed, PrydeWorX  Prune changes that change nothing. This eliminates some useless hunks.
 #
 # ========================
 # === Little TODO list ===
@@ -54,7 +55,7 @@ use Try::Tiny;
 # ================================================================
 # ===        ==> ------ Help Text and Version ----- <==        ===
 # ================================================================
-Readonly my $VERSION     => "0.9.5"; ## Please keep this current!
+Readonly my $VERSION     => "0.9.6"; ## Please keep this current!
 Readonly my $VERSMIN     => "-" x length($VERSION);
 Readonly my $PROGDIR     => dirname($0);
 Readonly my $PROGNAME    => basename($0);
@@ -183,6 +184,7 @@ sub check_masks;        ## Check for elogind preprocessor masks
 sub check_musl;         ## Check for musl_libc compatibility blocks
 sub check_name_reverts; ## Check for attempts to revert 'elogind' to 'systemd'
 sub check_sym_lines;    ## Check for attempts to uncomment unsupported API functions in .sym files.
+sub check_useless;      ## Check for useless updates that do nothing.
 sub checkout_upstream;  ## Checkout the given refid on $upstream_path
 sub clean_hFile;        ## Completely clean up the current %hFile data structure.
 sub diff_hFile;         ## Generates the diff and builds $hFile{hunks} if needed.
@@ -266,9 +268,12 @@ for my $file_part (@source_files) {
 		# === 8) Check for elogind_*() function removals ==================
 		check_func_removes and hunk_is_useful and prune_hunk or next;
 
+		# === 9) Check for any useless changes that do nothing ============
+		check_useless and hunk_is_useful and prune_hunk or next;
+
 		#  ===> IMPORTANT: From here on no more pruning, lines must *NOT* change any more! <===
 
-		# === 9) Analyze includes and note their appearance in $hIncs =====
+		# === 10) Analyze includes and note their appearance in $hIncs =====
 		read_includes; ## Never fails, doesn't change anything.
 
 	} ## End of first hunk loop
@@ -935,7 +940,7 @@ sub check_masks {
 
 	# Early exits:
 	defined($hHunk) or die("check_masks: hHunk is undef");
-	$hHunk->{useful} or die("chec_masks: Nothing done but hHunk is useless?");
+	$hHunk->{useful} or die("check_masks: Nothing done but hHunk is useless?");
 
 	# Count non-elogind block #ifs. This is needed, so normal
 	# #if/#else/#/endif constructs can be put inside elogind mask blocks.
@@ -956,6 +961,7 @@ sub check_masks {
 
 	for (my $i = 0; $i < $hHunk->{count}; ++$i) {
 		my $line = \$hHunk->{lines}[$i]; ## Shortcut
+
 		# Entering an elogind mask
 		# ---------------------------------------
 		if (is_mask_start($$line)) {
@@ -1056,6 +1062,7 @@ sub check_masks {
 				my $moved_line = $$line;
 				splice(@{$hHunk->{lines}}, $i, 1); ## Order matters here.
 				splice(@{$hHunk->{lines}}, $else_block_start++, 0, $moved_line);
+				# Note: No change to $hHunk->{count} here, as the lines are moved.
 				next;
 			}
 
@@ -1065,6 +1072,7 @@ sub check_masks {
 				my $moved_line = $$line;
 				splice(@{$hHunk->{lines}}, $i, 1); ## Order matters here, too.
 				splice(@{$hHunk->{lines}}, $mask_block_start++, 0, $moved_line);
+				# Note: No change to $hHunk->{count} here, as the lines are moved.
 			}
 		}
 	} ## End of looping lines
@@ -1357,6 +1365,60 @@ sub check_sym_lines {
 		splice(@{$hHunk->{lines}}, $i, 1);
 		$hAdditions{$item}{handled} = 1;
 		--$hHunk->{count};
+	}
+
+	return 1;
+}
+
+
+# -----------------------------------------------------------------------
+# --- Check for useless updates that do nothing.                      ---
+# --- The other checks and updates can lead to hunks that effectively ---
+# --- effectively do nothing as they end up like:                     ---
+# --- -foo                                                            ---
+# --- +foo                                                            ---
+# -----------------------------------------------------------------------
+sub check_useless {
+
+	# Early exits:
+	defined($hHunk) or die("check_masks: hHunk is undef");
+	$hHunk->{useful} or die("check_masks: Nothing done but hHunk is useless?");
+
+	# Remember changes, as we need two runs
+	my %hChanges = ();
+
+	# Map all additions and removals
+	for (my $i = 0; $i < $hHunk->{count}; ++$i) {
+		my $line = \$hHunk->{lines}[$i]; ## Shortcut
+
+		# Note down additions:
+		$$line =~ m/^\+(.+)$/
+			and $hChanges{add}{$1} = $i
+			and next;
+
+		# Note down removals:
+		$$line =~ m/^-(.+)$/
+			and $hChanges{rem}{$1} = $i
+			and next;
+	}
+
+	# Go through the removals and map what is to be spliced
+	my %hSplices = ();
+	for my $rem (keys %{$hChanges{rem}}) {
+		my $line_add = defined($hChanges{add}{$rem}) ? $hChanges{add}{$rem} : 0;
+		my $line_rem = $hChanges{rem}{$rem};
+
+		if ( 1 == ($line_add - $line_rem) ) {
+			# Note: We always undo the removal and remove the addition.
+			$hSplices{$line_add} = 1;
+			substr($hHunk->{lines}[$line_rem], 0, 1) = " ";
+		}
+	}
+
+	# No go through the splice map and splice from back to front
+	for my $line_no (sort { $b <=> $a} keys %hSplices) {
+		splice(@{$hHunk->{lines}}, $line_no, 1);
+		$hHunk->{count}--;
 	}
 
 	return 1;
@@ -2034,7 +2096,7 @@ sub prune_hunk {
 	if ($postfix > 3) {
 		$postfix -= 3;
 		splice(@{$hHunk->{lines}}, $hHunk->{count} - $postfix, $postfix);
-		$hHunk->{count}     -= $postfix;
+		$hHunk->{count} -= $postfix;
 	}
 
 	return 1;
