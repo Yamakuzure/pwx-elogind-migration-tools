@@ -89,7 +89,9 @@ if [[ $minVers -gt 234 ]]; then
 
 	if [[ "x$answer" = "xy" ]]; then
 		set -x
-		ninja -C build && ninja -C build install
+		ninja -C build man/update-man-rules && \
+		ninja -C build                      && \
+		ninja -C build install
 		set +x
 	fi
 else
