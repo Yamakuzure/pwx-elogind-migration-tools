@@ -38,11 +38,13 @@
 #                                      + Do not replace double dashes in XML comments, that are either the
 #                                        comment start or end.
 # 0.9.6    2018-06-06  sed, PrydeWorX  Prune changes that change nothing. This eliminates some useless hunks.
+# 0.9.7    2018-06-21  sed, PrydeWorX  Includes masked by C90 conformant /**/ are now handled as well.
 #
 # ========================
 # === Little TODO list ===
 # ========================
-#
+# currently nothing...
+# ------------------------
 use strict;
 use warnings;
 use Cwd qw(getcwd abs_path);
@@ -55,7 +57,7 @@ use Try::Tiny;
 # ================================================================
 # ===        ==> ------ Help Text and Version ----- <==        ===
 # ================================================================
-Readonly my $VERSION     => "0.9.6"; ## Please keep this current!
+Readonly my $VERSION     => "0.9.7"; ## Please keep this current!
 Readonly my $VERSMIN     => "-" x length($VERSION);
 Readonly my $PROGDIR     => dirname($0);
 Readonly my $PROGNAME    => basename($0);
@@ -769,7 +771,7 @@ sub check_includes {
 
 		# === Ruleset 1 : Handling of removals of includes we commented out ===
 		# =====================================================================
-		if ( $$line =~ m,^-\s*//+\s*#include\s+[<"']([^>"']+)[>"'], ) {
+		if ( $$line =~ m,^-\s*/[/*]+\s*#include\s+[<"']([^>"']+)[>"']\s*(?:\*/)?, ) {
 			$hIncs{$1}{applied} and next; ## No double handling
 
 			my $inc = $1;
@@ -795,7 +797,7 @@ sub check_includes {
 				for (my $j = $direction; $all_same && (abs($j) < abs($ins_diff)); $j += $direction) {
 					$all_same = 0;
 
-					if ( ( $hHunk->{lines}[$i+$j] =~ m,^-\s*//+\s*#include\s+[<"']([^>"']+)[>"'], )
+					if ( ( $hHunk->{lines}[$i+$j] =~ m,^-\s*/[/*]+\s*#include\s+[<"']([^>"']+)[>"']\s*(?:\*/)?, )
 					  || ( $hHunk->{lines}[$i+$j] =~ m,^\+\s*#include\s+[<"']([^>"']+)[>"'], ) ) {
 
 						$hIncs{$1}{insert}{hunkid} == $hIncs{$1}{remove}{hunkid}
@@ -2321,7 +2323,7 @@ sub read_includes {
 		my $line = \$hHunk->{lines}[$i]; ## Shortcut
 
 		# Note down removals of includes we commented out
-		if ( $$line =~ m,^-\s*//+\s*#include\s+([<"'])([^>"']+)[>"'], ) {
+		if ( $$line =~ m,^-\s*/[/*]+\s*#include\s+([<"'])([^>"']+)[>"']\s*(?:\*/)?, ) {
 			$hIncs{$2}{remove} = {
 				hunkid => $hHunk->{idx},
 				lineid => $i,
