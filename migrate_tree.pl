@@ -13,6 +13,8 @@
 # 0.2.1                                Fixed usage of Try::Tiny.
 # 0.2.2    2018-05-16  sed, PrydeWorX  Made sure that the commit file is always written on exit,
 #                                        but only if a potential commits file was finished reading.
+# 0.3.0    2018-06-22  sed, PrydeWorX  Be sure to only send --create to check_tree.pl if the file
+#                                        is not already existing.
 #
 # ========================
 # === Little TODO list ===
@@ -30,7 +32,7 @@ use Try::Tiny;
 # ================================================================
 # ===        ==> ------ Help Text and Version ----- <==        ===
 # ================================================================
-Readonly my $VERSION     => "0.2.2"; # Please keep this current!
+Readonly my $VERSION     => "0.3.0"; # Please keep this current!
 Readonly my $VERSMIN     => "-" x length($VERSION);
 Readonly my $PROGDIR     => dirname($0);
 Readonly my $PROGNAME    => basename($0);
@@ -218,10 +220,9 @@ for ( my $i = 0 ; $i < $commit_count ; ++$i ) {
 	}
 
 	show_prg( sprintf("Reworking %s", basename( $lFiles[0] ) ) );
-	rework_patch( $lFiles[0] ) or exit 1;
-
-	# If the patch was eventually empty, rework_patch() has deleted it.
-	-f $lFiles[0] or next;
+	my $r = rework_patch( $lFiles[0] );
+	$r or exit 1;    ## Error detected
+	$r < 0 and next; ## Empty patch
 
 	# -------------------------------------------------------------
 	# --- 5) Reworked patches must be applied directly.         ---
@@ -272,7 +273,7 @@ sub apply_patch {
 		chomp(@lLines);
 		$patch_lines = join( "\n", @lLines ) . "\n";
 	} else {
-		print "\nERROR: $pFile could not be opened for reading!\n$!\n";
+		print "\nERROR [apply]: $pFile could not be opened for reading!\n$!\n";
 		return 0;
 	}
 
@@ -797,7 +798,7 @@ sub rework_patch {
 		close($fIn);
 		chomp(@lLines);
 	} else {
-		print "\nERROR: $pFile could not be opened for reading!\n$!\n";
+		print "\nERROR [rework]: $pFile could not be opened for reading!\n$!\n";
 		return 0;
 	}
 
@@ -842,7 +843,7 @@ sub rework_patch {
 		return 0;
 	} ## end if ( !defined( $lLines...))
 
-	my @lFixedPatches = ();
+	my %hFixedPatches = ();
 	while ( $lCnt-- > 0 ) {
 		my $isNew = 0;             ## 1 if we hit a creation summary line
 		my $line  = shift @lLines;
@@ -860,9 +861,10 @@ sub rework_patch {
 
 		# ...or that:
 		#   create mode 100644 src/network/netdev/wireguard.c
-		$line =~ m/^\s+create\s+mode\s+\d+\s+(\S+)\s*$/
-		  and $src   = $1
-		  and $isNew = 1;
+		if ($line =~ m/^\s+create\s+mode\s+\d+\s+(\S+)\s*$/) {
+		  $src   = $1;
+		  $isNew = 1;
+		}
 
 		# Otherwise it is the modification summary line
 		length($src) or push( @lOut, $line ) and next;
@@ -870,17 +872,20 @@ sub rework_patch {
 		$tgt = $src;
 		$tgt =~ s/systemd/elogind/g;
 
-		# The determination what is valid is different for whether this is
-		# the modification of an existing or the creation of a new file
-		if ($isNew) {
+		# Let's see whether the source/target exists. Can't be a new
+		# file then. This might happen if we added a missing file
+		# manually beforehand.
+
+		if ( defined( $hFiles{$tgt}) ) {
+			$real  = $tgt;
+			$isNew = 0;
+		} elsif ( defined( $hFiles{$src}) ) {
+			$real  = $src;
+			$isNew = 0;
+		} elsif ($isNew) {
 			defined( $hDirectories{ dirname($tgt) } ) and $real = $tgt or
 			defined( $hDirectories{ dirname($src) } ) and $real = $src;
-		} else {
-			# Try the renamed first, then the non-renamed
-			defined( $hFiles{$tgt} ) and $real = $tgt
-			  or defined( $hFiles{$src} )
-			  and $real = $src;
-		} ## end else [ if ($isNew) ]
+		}
 
 		# We neither need diffs on invalid files, nor new files in invalid directories.
 		length($real) or next;
@@ -892,21 +897,26 @@ sub rework_patch {
 		$pNew eq "none" and next;
 
 		# However, an empty $pNew indicates an error. (check_tree() has it reported already.)
-		length($pNew) and push @lFixedPatches, $pNew or return 0;
+		length($pNew) or return 0;
+		
+		# This is in order
+		$hFixedPatches{$pNew} = 1;
 
 		# If we are here, transfer the file line. It is useful.
 		$line =~ s/$src/$real/;
 		push @lOut, $line;
 	}  ## End of scanning lines
 
-	if ( 0 == scalar @lFixedPatches) {
+	if ( 0 == scalar keys %hFixedPatches) {
 		unlink $pFile; ## Empty patch...
-		return 1;
+		return -1;
 	}
 
 	# Load all generated patches and add them to lOut
 	# ----------------------------------------------------------
-	for my $pNew (@lFixedPatches) {
+	for my $pNew (keys %hFixedPatches) {
+		$hFixedPatches{$pNew} or next; ## Already handled
+
 		if ( open my $fIn, "<", $pNew ) {
 			my @lNew = <$fIn>;
 			close($fIn);
@@ -914,9 +924,11 @@ sub rework_patch {
 			push @lOut, @lNew;
 			unlink $pNew;
 		} else {
-			print "\nERROR: Can't open $pNew for reading!\n$!\n";
+			print "\nERROR [rework]: Can't open $pNew for reading!\n$!\n";
 			return 0;
 		}
+
+		$hFixedPatches{$pNew} = 0;
 	} ## end for my $pNew (@lFixedPatches)
 
 	# Store the patch commit for later reference
@@ -929,7 +941,7 @@ sub rework_patch {
 		print $fOut join( "\n", @lOut ) . "\n";
 		close($fOut);
 	} else {
-		print "\nERROR: Can not opne $pFile for writing!\n$!\n";
+		print "\nERROR: Can not open $pFile for writing!\n$!\n";
 		return 0;
 	}
 
