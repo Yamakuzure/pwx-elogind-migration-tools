@@ -541,7 +541,7 @@ sub checkout_tree {
 		try {
 			$git->checkout($new_commit);
 		} catch {
-			print "\nERROR: Couldn't checkout \"new_commit\" in $path\n";
+			print "\nERROR: Couldn't checkout \"$new_commit\" in $path\n";
 			print "Exit Code : " . $_->status . "\n";
 			print "Message   : " . $_->error . "\n";
 			$result = 0;
