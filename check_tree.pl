@@ -1192,11 +1192,8 @@ sub check_name_reverts {
 	$hHunk->{useful} or return 0;
 
 	# Note down what is changed, so we can have inline updates
-	my %hRemovals = ();
-
-	# Remember entering and ending newly inserted comments.
-	# We do not rename in them.
-	my $is_in_comment = 0;
+	my %hRemovals = (); ## {string}{line}     = line_no
+	                    ##         {spliceme} = 1 for splicing, 0 otherwise
 
 	# Remember the final mask state for later reversal
 	# ------------------------------------------------
@@ -1229,20 +1226,14 @@ sub check_name_reverts {
 		# Note down removals
 		# ---------------------------------
 		if ($$line =~ m/^-[# ]*\s*(.*elogind.*)\s*$/) {
-			$hRemovals{$1}{line} = $i;
+			$hRemovals{$1} = { line => $i, spliceme => 0 };
 			next;
 		}
 
-		# Check for comments that get added
-		# ---------------------------------
-		if ($hFile{pwxfile}) {
-			$$line =~ m,^\+#\s+,
-				and $is_in_comment = 1
-				 or $is_in_comment = 0;
-		} else {
-			($$line =~ m,^\+\s*/[*]+,)    and $is_in_comment = 1;
-			($$line =~ m,^\+.*\*/[^/]*$,) and $is_in_comment = 0;
-		}
+		# Check for comments that get added we do not do anything to them
+		# ---------------------------------------------------------------
+		$hFile{pwxfile} and $$line =~ m,^\+#\s+, and next;
+		($$line =~ m,^\+\s*/[*]+,) and next;
 
 		# Check Additions
 		# ---------------------------------
@@ -1278,20 +1269,30 @@ sub check_name_reverts {
 			# ----------------------------------------------------
 			if ( length($o_txt) ) {
 				substr($hHunk->{lines}[$hRemovals{$o_txt}{line}], 0, 1) = " ";
-				splice(@{$hHunk->{lines}}, $i--, 1);
-				$hHunk->{count}--;
+				$hRemovals{$o_txt}{spliceme} = $i; ## Splice the addition
 				next;
 			}
 
-			# --- Case B) Otherwise replace the addition with our text. ---
-			# ---         Unless we are in a mask block or comment.     ---
+			# --- Case B) Otherwise replace the addition with our text, ---
+			# ---         unless we are in a mask block           .     ---
 			# -------------------------------------------------------------
 			$in_mask_block > 0 and (0 == $in_else_block) and next;
-			$is_in_comment and next;
 			$our_text_long eq $replace_text
 				and $$line =~ s/^\+([# ]*\s*).*systemd.*(\s*)$/+${1}${our_text_short}${2}/
 				 or $$line =~ s/^\+([# ]*\s*).*systemd.*(\s*)$/+${1}${our_text_long }${2}/;
 		}
+	}
+
+	# Splice the lines that were noted for splicing
+	# ------------------------------------------------
+	my %hSplices = ();
+	for my $k (keys %hRemovals) {
+		$hRemovals{$k}{spliceme} or next;
+		$hSplices{$hRemovals{$k}{spliceme}} = 1;
+	}
+	for my $l (sort { $b<=>$a } keys %hSplices) {
+		splice(@{$hHunk->{lines}}, $l, 1);
+		--$hHunk->{count};
 	}
 
 	# Revert the final mask state remembered above
