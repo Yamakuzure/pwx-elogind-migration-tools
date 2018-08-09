@@ -386,6 +386,15 @@ END {
 			print "=== $lFails[$i]{part} ===\n";
 			print " => $lFails[$i]{msg} <=\n";
 			print "---------------------------\n";
+			print " {count}        : \"" . $lFails[$i]{info}{count}        . "\"\n";
+			print " {idx}          : \"" . $lFails[$i]{info}{idx}          . "\"\n";
+			print " {masked_end}   : \"" . $lFails[$i]{info}{masked_end}   . "\"\n";
+			print " {masked_start} : \"" . $lFails[$i]{info}{masked_start} . "\"\n";
+			print " {offset}       : \"" . $lFails[$i]{info}{offset}       . "\"\n";
+			print " {src_start}    : \"" . $lFails[$i]{info}{src_start}    . "\"\n";
+			print " {tgt_start}    : \"" . $lFails[$i]{info}{tgt_start}    . "\"\n";
+			print " {useful}       : \"" . $lFails[$i]{info}{useful}       . "\"\n";
+			print "---------------------------\n";
 			print "$_\n" foreach(@{$lFails[$i]{hunk}});
 		}
 	}
@@ -498,6 +507,12 @@ sub build_output {
 
 			# --- Note down the relevant starting mask status ---
 			# ---------------------------------------------------
+			defined($hHunk->{masked_start}) and (1 == length("$hHunk->{masked_start}"))
+				or return hunk_failed("build_output: Hunk " .
+					(defined($hHunk->{masked_start})
+					? "with \"" . $hHunk->{masked_start}. "\""
+					: "without")
+					. " masked_start key found!");
 			$hFile{pwxfile} and push(@{$hFile{output}}, "# masked_start " . $hHunk->{masked_start});
 
 			# --- Add the header line ---------------------------
@@ -513,6 +528,12 @@ sub build_output {
 
 		# --- Note down the relevant ending mask status -----
 		# ---------------------------------------------------
+		defined($hHunk->{masked_end}) and (1 == length("$hHunk->{masked_end}"))
+			or return hunk_failed("build_output: Hunk " .
+				(defined($hHunk->{masked_end})
+				? "with \"" . $hHunk->{masked_end}. "\""
+				: "without")
+				. " masked_end key found!");
 		$hFile{pwxfile} and push(@{$hFile{output}}, "# masked_end " . $hHunk->{masked_end});
 
 	} ## End of walking the hunks
@@ -1661,6 +1682,16 @@ sub hunk_failed {
 	# Generate entry:
 	push @lFails, {
 		hunk => [ get_hunk_head ],
+		info => {
+			count        => $hHunk->{count},
+			idx          => $hHunk->{idx},
+			masked_end   => $hHunk->{masked_end},
+			masked_start => $hHunk->{masked_start},
+			offset       => $hHunk->{offset},
+			src_start    => $hHunk->{src_start},
+			tgt_start    => $hHunk->{tgt_start},
+			useful       => $hHunk->{useful}
+		},
 		msg  => $msg,
 		part => $hFile{part}
 	};
