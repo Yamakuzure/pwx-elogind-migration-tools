@@ -720,6 +720,9 @@ sub check_func_removes  {
 	defined($hHunk) or return 1;
 	$hHunk->{useful} or return 1;
 
+	# Not used in pwx files (meson, xml, sym)
+	$hFile{pwxfile} and return 1;
+
 	# Needed for multi-line calls
 	my $is_func_call = 0;
 
@@ -980,7 +983,7 @@ sub check_masks {
 	my $mask_block_start = -1;
 
 	# Note down how this hunk starts before first pruning
-	$hHunk->{masked_start} = $in_mask_block && !$in_else_block;
+	$hHunk->{masked_start} = $in_mask_block && !$in_else_block ? 1 : 0;
 
 	for (my $i = 0; $i < $hHunk->{count}; ++$i) {
 		my $line = \$hHunk->{lines}[$i]; ## Shortcut
@@ -1101,7 +1104,7 @@ sub check_masks {
 	} ## End of looping lines
 
 	# Note down how this hunk ends before first pruning
-	$hHunk->{masked_end} = $in_mask_block && !$in_else_block;
+	$hHunk->{masked_end} = $in_mask_block && !$in_else_block ? 1 : 0;
 
 	return 1;
 }
@@ -1299,8 +1302,8 @@ sub check_name_reverts {
 			# -------------------------------------------------------------
 			$in_mask_block > 0 and (0 == $in_else_block) and next;
 			$our_text_long eq $replace_text
-				and $$line =~ s/^\+([# ]*\s*).*systemd.*(\s*)$/+${1}${our_text_short}${2}/
-				 or $$line =~ s/^\+([# ]*\s*).*systemd.*(\s*)$/+${1}${our_text_long }${2}/;
+				and $$line =~ s/systemd/elogind/g
+				 or $$line =~ s/systemd-logind/elogind/g;
 		}
 	}
 
