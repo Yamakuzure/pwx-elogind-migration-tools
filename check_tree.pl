@@ -39,6 +39,7 @@
 #                                        comment start or end.
 # 0.9.6    2018-06-06  sed, PrydeWorX  Prune changes that change nothing. This eliminates some useless hunks.
 # 0.9.7    2018-06-21  sed, PrydeWorX  Includes masked by C90 conformant /**/ are now handled as well.
+# 0.9.8    2018-08-14  sed, PrydeWorX  Let .m4 files be prepared/unprepared, too.
 #
 # ========================
 # === Little TODO list ===
@@ -57,7 +58,7 @@ use Try::Tiny;
 # ================================================================
 # ===        ==> ------ Help Text and Version ----- <==        ===
 # ================================================================
-Readonly my $VERSION     => "0.9.7"; ## Please keep this current!
+Readonly my $VERSION     => "0.9.8"; ## Please keep this current!
 Readonly my $VERSMIN     => "-" x length($VERSION);
 Readonly my $PROGDIR     => dirname($0);
 Readonly my $PROGNAME    => basename($0);
@@ -1541,6 +1542,7 @@ sub diff_hFile {
 		( $hFile{source} =~ m/meson/ or
 		  $hFile{source} =~ m/\.gperf$/ or
 		 ($hFile{source} =~ m/\.in$/ and (!($hFile{source} =~ m/\.policy\.in$/)) ) or
+		  $hFile{source} =~ m/\.m4$/ or
 		  $hFile{source} =~ m/\.pl$/ or
 		  $hFile{source} =~ m/\.po$/ or
 		  $hFile{source} =~ m/\.sh$/ or
