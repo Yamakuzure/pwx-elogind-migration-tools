@@ -38,7 +38,7 @@ fi
 if [[ $minVers -gt 234 ]]; then
 	# After 234 the new meson+ninja build system is used:
 
-	debug_opt="-Ddebug=\"\" --buildtype release"
+	debug_opt="--buildtype release"
 	if [[ "x$xType" = "xdebug" ]]; then
 		debug_opt="-Ddebug=elogind -Dtests=unsafe --buildtype debug"
 	fi
