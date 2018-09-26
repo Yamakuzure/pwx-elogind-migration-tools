@@ -40,7 +40,7 @@ if [[ $minVers -gt 234 ]]; then
 
 	debug_opt="--buildtype release"
 	if [[ "x$xType" = "xdebug" ]]; then
-		debug_opt="-Ddebug=elogind -Dtests=unsafe --buildtype debug"
+		debug_opt="-Ddebug-extra=elogind -Dtests=unsafe --buildtype debug"
 	fi
 
 	set -x
