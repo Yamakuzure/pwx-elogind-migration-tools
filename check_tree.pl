@@ -1255,11 +1255,6 @@ sub check_name_reverts {
 			next;
 		}
 
-		# Check for comments that get added we do not do anything to them
-		# ---------------------------------------------------------------
-		$hFile{pwxfile} and $$line =~ m,^\+#\s+, and next;
-		($$line =~ m,^\+\s*/[*]+,) and next;
-
 		# Check Additions
 		# ---------------------------------
 		if ($$line =~ m/^\+[# ]*\s*(.*systemd.*)\s*$/) {
@@ -1301,7 +1296,7 @@ sub check_name_reverts {
 			# --- Case B) Otherwise replace the addition with our text, ---
 			# ---         unless we are in a mask block           .     ---
 			# -------------------------------------------------------------
-			$in_mask_block > 0 and (0 == $in_else_block) and next;
+			$in_mask_block > 0 and (1 > $in_else_block) and next;
 			$our_text_long eq $replace_text
 				and $$line =~ s/systemd/elogind/g
 				 or $$line =~ s/systemd-logind/elogind/g;
