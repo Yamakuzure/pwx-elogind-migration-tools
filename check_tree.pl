@@ -40,6 +40,8 @@
 # 0.9.6    2018-06-06  sed, PrydeWorX  Prune changes that change nothing. This eliminates some useless hunks.
 # 0.9.7    2018-06-21  sed, PrydeWorX  Includes masked by C90 conformant /**/ are now handled as well.
 # 0.9.8    2018-08-14  sed, PrydeWorX  Let .m4 files be prepared/unprepared, too.
+# 0.9.9    2018-11-23  sed, PrydeWorX  Fix check_name_reverts() to no longer double lines, and allow to "fix"
+#                                        name changes we did in mask blocks.
 #
 # ========================
 # === Little TODO list ===
@@ -58,7 +60,7 @@ use Try::Tiny;
 # ================================================================
 # ===        ==> ------ Help Text and Version ----- <==        ===
 # ================================================================
-Readonly my $VERSION     => "0.9.8"; ## Please keep this current!
+Readonly my $VERSION     => "0.9.9"; ## Please keep this current!
 Readonly my $VERSMIN     => "-" x length($VERSION);
 Readonly my $PROGDIR     => dirname($0);
 Readonly my $PROGNAME    => basename($0);
@@ -1248,6 +1250,10 @@ sub check_name_reverts {
 			next;
 		}
 
+		# We do not reject reverts in mask blocks.
+		# ----------------------------------------
+		$in_mask_block && (1 > $in_else_block) and next;
+
 		# Note down removals
 		# ---------------------------------
 		if ($$line =~ m/^-[# ]*\s*(.*elogind.*)\s*$/) {
@@ -1293,10 +1299,8 @@ sub check_name_reverts {
 				next;
 			}
 
-			# --- Case B) Otherwise replace the addition with our text, ---
-			# ---         unless we are in a mask block           .     ---
+			# --- Case B) Otherwise replace the addition with our text. ---
 			# -------------------------------------------------------------
-			$in_mask_block > 0 and (1 > $in_else_block) and next;
 			$our_text_long eq $replace_text
 				and $$line =~ s/systemd/elogind/g
 				 or $$line =~ s/systemd-logind/elogind/g;
