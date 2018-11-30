@@ -923,7 +923,7 @@ sub rework_patch {
 			chomp(@lNew);
 			push @lOut, @lNew;
 			unlink $pNew;
-		} else {
+		} elsif ( -f $pNew ) {
 			print "\nERROR [rework]: Can't open $pNew for reading!\n$!\n";
 			return 0;
 		}
