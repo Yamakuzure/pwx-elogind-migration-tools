@@ -42,6 +42,8 @@
 # 0.9.8    2018-08-14  sed, PrydeWorX  Let .m4 files be prepared/unprepared, too.
 # 0.9.9    2018-11-23  sed, PrydeWorX  Fix check_name_reverts() to no longer double lines, and allow to "fix"
 #                                        name changes we did in mask blocks.
+# 0.9.10   2019-01-18  sed, PrydeWorX  Make sure that empty commented lines do not get trailing spaces in
+#                                        shell files.
 #
 # ========================
 # === Little TODO list ===
@@ -2203,6 +2205,8 @@ sub unprepare_shell {
 			$hFile{source} =~ m/\.sym\.pwx$/
 				and $line = "  * " . $line
 				 or $line = "# "   . $line;
+			# Do not create empty comment lines with trailing spaces.
+			$line =~ s/(#)\s+$/$1/;
 		}
 
 		push @lOut, $line;
@@ -2241,6 +2245,8 @@ sub unprepare_shell {
 			and "@@" ne substr($line, 0, 2)
 			and (! ($line =~ m/^[ ]+#(?:if|else|endif)/) )
 			and substr($line, 1, 0) = "# ";
+		# Make sure not to demand to add empty comment lines with trailing spaces
+		$line =~ s/^(\+#)\s+$/$1/;
 		push @{$hFile{output}}, $line;
 	}
 
