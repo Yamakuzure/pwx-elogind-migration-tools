@@ -2,7 +2,7 @@
 # Only edit if you know what these do!
 
 ../systemd-stable   v229-stable c7f5a7d897 src-d6d3093a69 x
-../systemd-stable   v231-stable 33628598ef x              x
+../systemd-stable   v231-stable 33628598ef src-a7c2ac892a x
 ../systemd-stable   v232-stable 79a5d862a7 x              x
 ../systemd-stable   v233-stable 589fa9087a x              x
 ../systemd-stable   v234-stable 782c925f7f x              x
