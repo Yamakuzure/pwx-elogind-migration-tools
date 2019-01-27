@@ -1541,6 +1541,7 @@ sub diff_hFile {
 
 		# Shell and meson files must be prepared. See prepare_meson()
 		( $hFile{source} =~ m/meson/ or
+		  $hFile{source} =~ m/\.gitignore$/ or
 		  $hFile{source} =~ m/\.gperf$/ or
 		 ($hFile{source} =~ m/\.in$/ and (!($hFile{source} =~ m/\.policy\.in$/)) ) or
 		  $hFile{source} =~ m/\.m4$/ or
