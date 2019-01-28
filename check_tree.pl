@@ -44,6 +44,8 @@
 #                                        name changes we did in mask blocks.
 # 0.9.10   2019-01-18  sed, PrydeWorX  Make sure that empty commented lines do not get trailing spaces in
 #                                        shell files.
+# 0.9.11   2019-01-28  sed, PrydeWorX  Do not include trailing spaces in empty comment lines in patches for
+#                                        shell files.
 #
 # ========================
 # === Little TODO list ===
@@ -345,6 +347,8 @@ for my $file_part (@source_files) {
 	# That's it, write the file and be done!
 	if (open(my $fOut, ">", $hFile{patch})) {
 		for my $line (@{$hFile{output}}) {
+			# Do not assume empty comment lines with trailing spaces in shell files
+			$hFile{pwxfile} and $line =~ s/([+ -]#)\s+$/$1/;
 			print $fOut "$line\n";
 		}
 		close($fOut);
@@ -1254,7 +1258,7 @@ sub check_name_reverts {
 
 		# We do not reject reverts in mask blocks.
 		# ----------------------------------------
-		$in_mask_block && (1 > $in_else_block) and next;
+		$in_mask_block and (1 > $in_else_block) and next;
 
 		# Note down removals
 		# ---------------------------------
