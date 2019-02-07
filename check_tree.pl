@@ -1613,9 +1613,16 @@ sub generate_file_list {
 	# in all legal directories this program allows. Checking against
 	# the built %hWanted ensures that a user provided list of files
 	# is heeded.
-	for my $xDir ("docs", "factory", "m4", "man", "shell-completion", "src", "tools") {
+	for my $xDir ("doc", "docs", "factory", "m4", "man", "po", "shell-completion", "src", "tools") {
 		if ( -d "$xDir" ) {
 			find(\&wanted, "$xDir");
+		}
+	}
+
+	# There are a few root files we need to check, too
+	for my $xFile ("configure", "Makefile", "meson.build", "meson_options.txt", "NEWS", "README", "TODO") {
+		if ( -f "$xFile" ) {
+			find(\&wanted, "$xFile");
 		}
 	}
 
