@@ -567,7 +567,7 @@ sub generate_file_list {
 	# The idea now is, that we use File::Find to search for files
 	# in all legal directories this program allows.
 	print "Find relevant files...";
-	for my $xDir ( "docs", "factory", "m4", "man", "shell-completion", "src", "tools" ) {
+	for my $xDir ( "doc", "docs", "factory", "m4", "man", "po", "shell-completion", "src", "tools" ) {
 		if ( -d "$xDir" ) {
 			find( \&wanted, "$xDir" );
 		}
@@ -576,7 +576,8 @@ sub generate_file_list {
 	# There are also root files we need to check. Thanks to the usage of
 	# check_tree.pl to generate the later commit diffs, these can be safely
 	# added to our file list as well.
-	for my $xFile ( "Makefile", "Makefile.am", "TODO", "CODING_STYLE", "configure", ".mailmap", "LICENSE.GPL2", "meson_options.txt", "NEWS", "meson.build", "configure.ac", ".gitignore" ) {
+	for my $xFile ( ".gitignore", ".mailmap", "configure", "configure.ac", "Makefile", "Makefile.am",
+	                "meson.build", "meson_options.txt", "NEWS", "README", "TODO") {
 		-f "$xFile" and push @source_files, "./$xFile";
 	}
 	print " done - " . ( scalar @source_files ) . " files found\n";
