@@ -577,7 +577,7 @@ sub generate_file_list {
 	# check_tree.pl to generate the later commit diffs, these can be safely
 	# added to our file list as well.
 	for my $xFile ( ".gitignore", ".mailmap", "configure", "configure.ac", "Makefile", "Makefile.am",
-	                "meson.build", "meson_options.txt", "NEWS", "README", "TODO") {
+	                "meson.build", "meson_options.txt", "NEWS", "TODO") {
 		-f "$xFile" and push @source_files, "./$xFile";
 	}
 	print " done - " . ( scalar @source_files ) . " files found\n";
