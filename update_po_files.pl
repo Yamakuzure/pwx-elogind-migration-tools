@@ -6,6 +6,7 @@
 #
 # Version  Date        Maintainer      Changes, Additions, Fixes
 # 0.0.1    2017-03-12  sed, PrydeWorX  First basic design
+# 0.1.0    2019-02-18  sed, PrydeWorX  Fixed typo; PO files are now first restored before reworking them.
 #
 # ========================
 # === Little TODO list ===
@@ -92,21 +93,40 @@ for my $pofile (@source_files) {
 		print "ERROR READING: $!\n";
 		next;
 	}
-	
-	# --- 2) Copy @lIn to @lOut, commenting out all parts ---
-	# ---    belonging to files that do not exist.        ---
-	# -------------------------------------------------------
-	my $count     = 0;
+
+	# --- 2) Remove all masks from the input line, we are regenerating them ---
+	# -------------------------------------------------------------------------
+	my @lPo       = ();
 	my $in_block  = 0; ## 1 if in commented out block
-	my @lOut      = ();
-	my $was_block = 0; ## save in_block, so we know when to add elogind masks
+
 	for my $line (@lIn) {
 		chomp $line;
 		
+		if ( $line =~ m/^#if 0/ ) {
+			$in_block = 1;
+		} elsif ($line =~ m/^#endif/) {
+			$in_block = 0;
+		} else {
+			$in_block and $line =~ s/^#(?: )?//;
+			push @lPo, $line;
+		}
+	}
+
+	# --- 3) Copy @lIn to @lOut, commenting out all parts ---
+	# ---    belonging to files that do not exist.        ---
+	# -------------------------------------------------------
+	my $count     = 0;
+	my @lOut      = ();
+	my $was_block = 0; ## save in_block, so we know when to add elogind masks
+
+	$in_block = 0; ## reset
+
+	for my $line (@lPo) {
+
 		# in_block switches are done on file identifications lines, which look like
 		# this : "#: ../src/import/org.freedesktop.import1.policy.in.h:2"
 		if ($line =~ m/^#:\s+([^:]+):\d+/) {
-			# Note: There might be two file references, if the transalted text spans
+			# Note: There might be two file references, if the translated text spans
 			#       more than one line. The second path is the same as the first, so
 			#       it is sufficient not to end the regex with '$' here.
 			my $altfile = substr($1, 0, -2); ## .in files have an extra '.h' attached
@@ -119,12 +139,16 @@ for my $pofile (@source_files) {
 		if ($was_block != $in_block) {
 			$was_block
 				and push(@lOut, "#endif // 0\n")
-				 or push(@lOut, "#if 0 /// UNNEEDED by elgoind");
+				 or push(@lOut, "#if 0 /// UNNEEDED by elogind");
 			$was_block = $in_block;
 		}
 		
 		# If we are in block, comment out the line:
-		$in_block and $line = "# $line";
+		if ($in_block) {
+			length($line)
+				and $line = "# $line"
+				 or $line = "#";
+		}
 		
 		# Now push the line, it is ready.
 		push(@lOut, $line);
@@ -133,7 +157,7 @@ for my $pofile (@source_files) {
 	# Make sure to end the last block
 	$in_block and push(@lOut, "#endif // 0\n");
 	
-	# --- 3) Overwrite the input file with the adapted text. ---
+	# --- 4) Overwrite the input file with the adapted text. ---
 	# ----------------------------------------------------------
 	if (open(my $fOut, ">", $pofile)) {
 		for my $line (@lOut) {
