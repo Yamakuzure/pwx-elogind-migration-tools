@@ -1620,7 +1620,7 @@ sub generate_file_list {
 	}
 
 	# There are a few root files we need to check, too
-	for my $xFile ("configure", "Makefile", "meson.build", "meson_options.txt", "NEWS", "README", "TODO") {
+	for my $xFile ("configure", "Makefile", "meson.build", "meson_options.txt", "NEWS", "TODO") {
 		if ( -f "$xFile" ) {
 			find(\&wanted, "$xFile");
 		}
