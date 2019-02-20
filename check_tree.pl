@@ -46,6 +46,7 @@
 #                                        shell files.
 # 0.9.11   2019-01-28  sed, PrydeWorX  Do not include trailing spaces in empty comment lines in patches for
 #                                        shell files.
+# 0.9.12   2019-02-20  sed, PrydeWorX  Do not leave an undef hunk in $hFile{hunks}, report and ignore.
 #
 # ========================
 # === Little TODO list ===
@@ -64,7 +65,7 @@ use Try::Tiny;
 # ================================================================
 # ===        ==> ------ Help Text and Version ----- <==        ===
 # ================================================================
-Readonly my $VERSION     => "0.9.9"; ## Please keep this current!
+Readonly my $VERSION     => "0.9.12"; ## Please keep this current!
 Readonly my $VERSMIN     => "-" x length($VERSION);
 Readonly my $PROGDIR     => dirname($0);
 Readonly my $PROGNAME    => basename($0);
@@ -495,7 +496,8 @@ sub build_hHunk {
 		return 1;
 	}
 
-	print "Illegal hunk no $hFile{count}\n(Head: \"$head\")\n";
+	print "Illegal hunk no $hFile{count}\n(Head: \"$head\")\nIgnoring...";
+	$hFile{count}--;
 
 	return 0;
 }
