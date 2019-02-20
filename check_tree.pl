@@ -47,6 +47,7 @@
 # 0.9.11   2019-01-28  sed, PrydeWorX  Do not include trailing spaces in empty comment lines in patches for
 #                                        shell files.
 # 0.9.12   2019-02-20  sed, PrydeWorX  Do not leave an undef hunk in $hFile{hunks}, report and ignore.
+#                                      + Issue #1: Protect src/login/logind.conf.in
 #                                      + Issue #3: Do not consider files in man/rules/
 #                                      + Issue #4: Move additions right after mask endings up into the mask.
 #
@@ -212,6 +213,7 @@ sub is_mask_start;      ## Return 1 if the argument consists of any mask start
 sub parse_args;         ## Parse ARGV for the options we support
 sub prepare_shell;      ## Prepare shell (and meson) files for our processing
 sub prepare_xml;        ## Prepare XML files for our processing (Unmask double dashes in comments)
+sub protect_config;     ## Special function to not let diff add unwanted or remove our lines in logind.conf.in
 sub prune_hunk;         ## remove unneeded prefix and postfix lines.
 sub read_includes;      ## map include changes
 sub splice_includes;    ## Splice all includes that were marked for splicing
@@ -255,6 +257,10 @@ for my $file_part (@source_files) {
 	# ---------------------------------------------------------------------
 	for (my $pos = 0; $pos < $hFile{count}; ++$pos) {
 		$hHunk = $hFile{hunks}[$pos]; ## Global shortcut
+
+		# === Special 1) protect src/login/logind.conf.in =================
+		$hFile{source} =~ m,src/login/logind.conf.in, and
+			protect_config  and hunk_is_useful and prune_hunk or next;
 
 		# === 1) Check for elogind masks 1 (normal source code) ===========
 		check_masks and hunk_is_useful and prune_hunk or next;
@@ -377,23 +383,23 @@ END {
 	if (scalar @only_here) {
 		my $count = scalar @only_here;
 		my $fmt   = sprintf("%%d %d: %%s\n", length("$count"));
-	
+
 		printf("\n%d file%s only found in $WORKDIR:\n", $count, $count > 1 ? "s": "");
-	
+
 		for (my $i = 0; $i < $count; ++$i) {
 			printf($fmt, $i + 1, $only_here[$i]);
 		}
 	}
-	
+
 	# -------------------------------------------------------------------------
 	# --- Print out the list of failed hunks -> bug in hunk or program?     ---
 	# -------------------------------------------------------------------------
 	if (scalar @lFails) {
 		my $count = scalar @lFails;
-	
+
 		printf("\n%d file%s %s at least one fishy hunk:\n", $count,
 		       $count > 1 ? "s" : "", $count > 1 ? "have" : "has");
-	
+
 		for (my $i = 0; $i < $count; ++$i) {
 			print "=== $lFails[$i]{part} ===\n";
 			print " => $lFails[$i]{msg} <=\n";
@@ -413,7 +419,6 @@ END {
 
 	$do_stay or length($previous_commit) and checkout_upstream($previous_commit);
 }
-
 
 # ================================================================
 # ===        ==> ---- Function Implementations ---- <==        ===
@@ -449,7 +454,7 @@ sub build_hFile {
 	# Build the patch name
 	my $patch = $part;
 	$patch =~ s/\//_/g;
-	
+
 	# Build the central data structure.
 	%hFile = (
 		count  => 0,
@@ -994,7 +999,7 @@ sub check_masks {
 	# front of a mask start, diff will put it under the mask start, which
 	# would place it at the wrong position.
 	my $mask_block_start = -1;
-	
+
 	# If a mask block just ended and is followed by insertions, move the mask end.
 	# (See Issue #4)
 	my $after_mask_end = -1;
@@ -1119,9 +1124,10 @@ sub check_masks {
 				# Note: No change to $hHunk->{count} here, as the lines are moved.
 				next;
 			}
-			
+
 			# If new stuff is inserted right after a mask end, move it up into the mask.
 			# (See Issue #4)
+			# --------------------------------------------------------------------------
 			if ( $after_mask_end > -1 )  {
 				my $moved_line = $$line;
 				splice(@{$hHunk->{lines}}, $i, 1); ## Order matters here.
@@ -1134,7 +1140,7 @@ sub check_masks {
 			# End our else block awareness at the first non-insertion line after a mask block.
 			# ---------------------------------------------------------------------------------
 			$else_block_start = -1;
-	
+
 			# End our after mask block end awareness on the first non-insertion line
 			# ---------------------------------------------------------------------------------
 			$after_mask_end = -1;
@@ -1146,7 +1152,6 @@ sub check_masks {
 
 	return 1;
 }
-
 
 # -----------------------------------------------------------------------
 # --- Check for musl_libc compatibility blocks                        ---
@@ -1362,7 +1367,6 @@ sub check_name_reverts {
 	return 1;
 }
 
-
 # -----------------------------------------------------------------------
 # --- Check for attempts to uncomment unsupported API functions       ---
 # --- in .sym files.                                                  ---
@@ -1383,7 +1387,7 @@ sub check_sym_lines {
 	# Note down what is changed, so we can have inline updates
 	my %hAdditions = ();
 	my %hRemovals  = ();
-	
+
 	# We need a sortable line map for possible later splicing
 	my %hAddMap     = ();
 
@@ -1409,19 +1413,19 @@ sub check_sym_lines {
 			$hAddMap{$i} = $1;
 		}
 	}
-	
+
 	# Now we go backwards through the lines that got added and revert the reversals.
 	for my $i (sort { $b <=> $a } keys %hAddMap) {
 		my $item = $hAddMap{$i};
-		
+
 		# First a sanity check against double insertions.
 		$hAdditions{$item}{handled}
 			and return hunk_failed("check_sym_files: Line"
 				. ($i + 1) . ": Double addition of \"$item\" found!" );
-		
+
 		# New stuff is in order:
 		defined($hRemovals{$item}) or ++$hAdditions{$item}{handled} and next;
-		
+
 		# Here we simply undo the removal and splice the addition:
 		substr($hHunk->{lines}[$hRemovals{$item}{line}], 0, 1) = " ";
 		splice(@{$hHunk->{lines}}, $i, 1);
@@ -1431,7 +1435,6 @@ sub check_sym_lines {
 
 	return 1;
 }
-
 
 # -----------------------------------------------------------------------
 # --- Check for useless updates that do nothing.                      ---
@@ -1486,7 +1489,6 @@ sub check_useless {
 	return 1;
 }
 
-
 # -----------------------------------------------------------------------
 # --- Checkout the given refid on $upstream_path                      ---
 # --- Returns 1 on success, 0 otherwise.                              ---
@@ -1539,7 +1541,6 @@ sub checkout_upstream {
 
 	return 1;
 }
-
 
 # -----------------------------------------------------------------------
 # --- Completely clean up the current %hFile data structure.          ---
@@ -1663,7 +1664,7 @@ sub generate_file_list {
 		$hWanted{$xFile} == 2 and next; ## Already handled or unavailable
 		find(\&wanted, "$xFile");
 	}
-	
+
 	# All files that shall be created must be added manually now.
 	scalar keys %hToCreate and push @source_files, keys %hToCreate;
 
@@ -1779,7 +1780,6 @@ sub hunk_is_useful {
 	return 0;
 }
 
-
 # --------------------------------------------------------------
 # --- Return 1 if the argument consists of any insertion end ---
 # --------------------------------------------------------------
@@ -1794,10 +1794,8 @@ sub is_insert_end {
 		return 1;
 	}
 
-
 	return 0;
 }
-
 
 # ----------------------------------------------------------------
 # --- Return 1 if the argument consists of any insertion start ---
@@ -1814,7 +1812,6 @@ sub is_insert_start {
 
 	return 0;
 }
-
 
 # --------------------------------------------------------------
 # --- Return 1 if the argument consists of any mask else     ---
@@ -1833,7 +1830,6 @@ sub is_mask_else {
 	return 0;
 }
 
-
 # --------------------------------------------------------------
 # --- Return 1 if the argument consists of any mask end      ---
 # --------------------------------------------------------------
@@ -1850,7 +1846,6 @@ sub is_mask_end {
 
 	return 0;
 }
-
 
 # --------------------------------------------------------------
 # --- Return 1 if the argument consists of any mask start    ---
@@ -1870,7 +1865,6 @@ sub is_mask_start {
 
 	return 0;
 }
-
 
 # -----------------------------------------------------------------------
 # --- parse the given list for arguments.                             ---
@@ -1955,7 +1949,7 @@ sub parse_args {
 		print "ERROR: Please provide a path to upstream!\n\nUsage: $USAGE_SHORT\n";
 		$result = 0;
 	}
-	
+
 	# If --create was given, @wanted_files must not be empty
 	if ($result && !$show_help && $do_create && (0 == scalar @wanted_files)) {
 		print "ERROR: --create must not be used on the full tree!\n";
@@ -2118,6 +2112,54 @@ sub prepare_xml {
 
 	# The temporary file is our new source
 	$hFile{source} = $out;
+
+	return 1;
+}
+
+# -----------------------------------------------------------------------
+# --- Special function to not let diff add unwanted or remove our     ---
+# --- lines in logind.conf.in (See Issue #2)                          ---
+# -----------------------------------------------------------------------
+sub protect_config {
+
+	# Early exits:
+	defined($hHunk) or die("check_masks: hHunk is undef");
+	$hHunk->{useful} or die("check_masks: Nothing done but hHunk is useless?");
+
+	my $is_sleep_block = 0;
+
+	for (my $i = 0; $i < $hHunk->{count}; ++$i) {
+		my $line = \$hHunk->{lines}[$i]; ## Shortcut
+
+		# Kill addition of lines we do not need
+		# ---------------------------------------
+		if ( $$line =~ m,^\+[#]?(?:NAutoVTs|ReserveVT), ) {
+			splice(@{$hHunk->{lines}}, $i--, 1);
+			--$hHunk->{count};
+			next;
+		}
+
+		# Enter elogind specific [Sleep] block
+		# ------------------------------------------
+		if ( $$line =~ m,^\-\[Sleep\], ) {
+			substr($$line, 0, 1) = " "; ## Remove '-'
+
+			# The previous line is probably the deletion of the blank line before the block
+			($i > 0) and ( $hHunk->{lines}[$i - 1] =~ /^-/ ) and $hHunk->{lines}[$i - 1] = " ";
+
+			$is_sleep_block = 1;
+			next;
+		}
+
+		# Remove deletions of lines in our [Sleep] block
+		$is_sleep_block and ( $$line =~ m,^-, )
+			and substr($$line, 0, 1) = " " ## Remove '-'
+			and next;
+
+		# No sleep block
+		$is_sleep_block = 0;
+
+	} ## End of looping lines
 
 	return 1;
 }
