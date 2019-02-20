@@ -47,6 +47,7 @@
 # 0.9.11   2019-01-28  sed, PrydeWorX  Do not include trailing spaces in empty comment lines in patches for
 #                                        shell files.
 # 0.9.12   2019-02-20  sed, PrydeWorX  Do not leave an undef hunk in $hFile{hunks}, report and ignore.
+#                                      + Issue #3: Do not consider files in man/rules/
 #                                      + Issue #4: Move additions right after mask endings up into the mask.
 #
 # ========================
@@ -2501,6 +2502,7 @@ sub wanted {
 
 	-f $_ and ( (0 == $have_wanted) or defined($hWanted{$f}) )
 	      and (! ($_ =~ m/\.pwx$/ ) )
+	      and (! ($_ =~ m,man/rules/,) ) ## Protect generated man rules (Issue #3)
 	      and push @source_files, $File::Find::name
 	      and $is_wanted = 1;
 

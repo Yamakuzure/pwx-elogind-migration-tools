@@ -16,6 +16,7 @@
 # 0.3.0    2018-06-22  sed, PrydeWorX  Be sure to only send --create to check_tree.pl if the file
 #                                        is not already existing.
 # 0.4.0    2019-01-27  sed, PrydeWorX  Switch from topological to chronological order.
+# 0.4.1    2019-02-20  sed, PrydeWorX  Do not consider files in man/rules/ (Issue #3)
 #
 # ========================
 # === Little TODO list ===
@@ -33,7 +34,7 @@ use Try::Tiny;
 # ================================================================
 # ===        ==> ------ Help Text and Version ----- <==        ===
 # ================================================================
-Readonly my $VERSION     => "0.3.0";                                                # Please keep this current!
+Readonly my $VERSION     => "0.4.1"; ## Please keep this current!
 Readonly my $VERSMIN     => "-" x length($VERSION);
 Readonly my $PROGDIR     => dirname($0);
 Readonly my $PROGNAME    => basename($0);
@@ -1046,6 +1047,7 @@ sub wanted {
 
 	-f $_
 	  and ( !( $_ =~ m/\.pwx$/ ) )
+	  and (! ($_ =~ m,man/rules/,) ) ## Protect generated man rules (Issue #3)
 	  and push @source_files, $File::Find::name;
 
 	return 1;
