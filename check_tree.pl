@@ -47,6 +47,7 @@
 # 0.9.11   2019-01-28  sed, PrydeWorX  Do not include trailing spaces in empty comment lines in patches for
 #                                        shell files.
 # 0.9.12   2019-02-20  sed, PrydeWorX  Do not leave an undef hunk in $hFile{hunks}, report and ignore.
+#                                      + Issue #4: Move additions right after mask endings up into the mask.
 #
 # ========================
 # === Little TODO list ===
@@ -992,6 +993,10 @@ sub check_masks {
 	# front of a mask start, diff will put it under the mask start, which
 	# would place it at the wrong position.
 	my $mask_block_start = -1;
+	
+	# If a mask block just ended and is followed by insertions, move the mask end.
+	# (See Issue #4)
+	my $after_mask_end = -1;
 
 	# Note down how this hunk starts before first pruning
 	$hHunk->{masked_start} = $in_mask_block && !$in_else_block ? 1 : 0;
@@ -1010,6 +1015,7 @@ sub check_masks {
 			$in_mask_block    = 1;
 			$else_block_start = -1;
 			$mask_block_start = $i;
+			$after_mask_end   = -1;
 
 			# While we are here we can check the previous line.
 			# All masks shall be preceded by an empty line to enhance readability.
@@ -1029,6 +1035,7 @@ sub check_masks {
 				and return hunk_failed("check_masks: Insert start found while being in an insert block!");
 			substr($$line, 0, 1) = " "; ## Remove '-'
 			$in_insert_block  = 1;
+			$after_mask_end   = -1;
 
 			# While we are here we can check the previous line.
 			# All inserts shall be preceded by an empty line to enhance readability.
@@ -1051,6 +1058,7 @@ sub check_masks {
 			$in_else_block    = 1;
 			$else_block_start = $i; ## Here we might insert upstream additions
 			$mask_block_start = -1;
+			$after_mask_end   = -1;
 			next;
 		}
 
@@ -1059,6 +1067,7 @@ sub check_masks {
 		if (is_mask_end($$line)) {
 			$in_mask_block or return hunk_failed("check_masks: #endif // 0 found outside any mask block");
 			substr($$line, 0, 1) = " "; ## Remove '-'
+			$after_mask_end   = $in_else_block ? -1 : $i;
 			$in_mask_block    = 0;
 			$in_else_block    = 0;
 			$mask_block_start = -1;
@@ -1072,6 +1081,7 @@ sub check_masks {
 			substr($$line, 0, 1) = " "; ## Remove '-'
 			$in_insert_block  = 0;
 			$in_else_block    = 0;
+			$after_mask_end   = -1;
 			next;
 		}
 
@@ -1084,10 +1094,6 @@ sub check_masks {
 		  && ( $in_insert_block || ($in_mask_block && $in_else_block) ) ) {
 			substr($$line, 0, 1) = " "; ## Remove '-'
 		}
-
-		# End our else block awareness at the first empty line after a mask block.
-		# ------------------------------------------------------------------------
-		$$line =~ m,^\s+$, and ($else_block_start > -1) and (!$in_mask_block) and $else_block_start = -1;
 
 		# Special check for additions that might wreak havoc:
 		# ---------------------------------------------------
@@ -1110,7 +1116,27 @@ sub check_masks {
 				splice(@{$hHunk->{lines}}, $i, 1); ## Order matters here, too.
 				splice(@{$hHunk->{lines}}, $mask_block_start++, 0, $moved_line);
 				# Note: No change to $hHunk->{count} here, as the lines are moved.
+				next;
 			}
+			
+			# If new stuff is inserted right after a mask end, move it up into the mask.
+			# (See Issue #4)
+			if ( $after_mask_end > -1 )  {
+				my $moved_line = $$line;
+				splice(@{$hHunk->{lines}}, $i, 1); ## Order matters here.
+				splice(@{$hHunk->{lines}}, $after_mask_end++, 0, $moved_line);
+				# Note: No change to $hHunk->{count} here, as the lines are moved.
+				next;
+			}
+		} elsif ( !$in_mask_block ) {
+
+			# End our else block awareness at the first non-insertion line after a mask block.
+			# ---------------------------------------------------------------------------------
+			$else_block_start = -1;
+	
+			# End our after mask block end awareness on the first non-insertion line
+			# ---------------------------------------------------------------------------------
+			$after_mask_end = -1;
 		}
 	} ## End of looping lines
 
