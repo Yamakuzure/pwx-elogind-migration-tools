@@ -1434,31 +1434,55 @@ sub check_useless {
 	# Remember changes, as we need two runs
 	my %hChanges = ();
 
+	# remember empty line additions/removal, they, too, pop up occassionally
+	my %hEmpties = ();
+
 	# Map all additions and removals
 	for (my $i = 0; $i < $hHunk->{count}; ++$i) {
 		my $line = \$hHunk->{lines}[$i]; ## Shortcut
 
-		# Note down additions:
-		$$line =~ m/^\+(.+)$/
-			and $hChanges{add}{$1} = $i
+		# Note down addition of content:
+		$$line =~ m/^\+(.*\S)\s*$/
+			and $hChanges{add}{"$1"} = $i
 			and next;
 
-		# Note down removals:
-		$$line =~ m/^-(.+)$/
-			and $hChanges{rem}{$1} = $i
+		# Note down removal of content:
+		$$line =~ m/^-(.*\S)\s*$/
+			and $hChanges{rem}{"$1"} = $i
+			and next;
+
+		# Note down additions of empty lines
+		$$line =~ m/^\+\s*$/
+			and $hEmpties{add}{$i} = 1
+			and next;
+
+		# Note down removal of empty lines
+		$$line =~ m/^-\s*$/
+			and $hEmpties{rem}{$i} = 1
 			and next;
 	}
 
-	# Go through the removals and map what is to be spliced
+	# Go through the removals of content and map what is to be spliced
 	my %hSplices = ();
 	for my $rem (keys %{$hChanges{rem}}) {
-		my $line_add = defined($hChanges{add}{$rem}) ? $hChanges{add}{$rem} : 0;
-		my $line_rem = $hChanges{rem}{$rem};
+		my $line_add = defined($hChanges{add}{"$rem"}) ? $hChanges{add}{"$rem"} : 0;
+		my $line_rem = $hChanges{rem}{"$rem"};
 
 		if ( 1 == ($line_add - $line_rem) ) {
 			# Note: We always undo the removal and remove the addition.
 			$hSplices{$line_add} = 1;
 			substr($hHunk->{lines}[$line_rem], 0, 1) = " ";
+		}
+	}
+
+	# Go through the removals of empty lines and map what is to be spliced
+	for my $i (keys %{$hEmpties{rem}}) {
+		my $line_add = defined($hEmpties{add}{$i+1}) ? $i + 1 : 0;
+
+		if ( $line_add ) {
+			# Note: We always undo the removal and remove the addition.
+			$hSplices{$i+1} = 1;
+			substr($hHunk->{lines}[$i], 0, 1) = " ";
 		}
 	}
 
