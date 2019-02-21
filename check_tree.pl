@@ -2526,7 +2526,7 @@ sub wanted {
 
 	-f $_ and ( (0 == $have_wanted) or defined($hWanted{$f}) )
 	      and (! ($_ =~ m/\.pwx$/ ) )
-	      and (! ($_ =~ m,man/rules/,) ) ## Protect generated man rules (Issue #3)
+	      and (! ($File::Find::name =~ m,man/rules/,) ) ## Protect generated man rules (Issue #3)
 	      and push @source_files, $File::Find::name
 	      and $is_wanted = 1;
 
