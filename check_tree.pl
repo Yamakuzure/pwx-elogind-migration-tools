@@ -47,9 +47,9 @@
 # 0.9.11   2019-01-28  sed, PrydeWorX  Do not include trailing spaces in empty comment lines in patches for
 #                                        shell files.
 # 0.9.12   2019-02-20  sed, PrydeWorX  Do not leave an undef hunk in $hFile{hunks}, report and ignore.
-#                                      + Issue #1: Protect src/login/logind.conf.in
+#                                      + Issue #1/#4: Move additions right after mask endings up into the mask.
+#                                      + Issue #2: Protect src/login/logind.conf.in
 #                                      + Issue #3: Do not consider files in man/rules/
-#                                      + Issue #4: Move additions right after mask endings up into the mask.
 #
 # ========================
 # === Little TODO list ===
@@ -259,8 +259,9 @@ for my $file_part (@source_files) {
 		$hHunk = $hFile{hunks}[$pos]; ## Global shortcut
 
 		# === Special 1) protect src/login/logind.conf.in =================
-		$hFile{source} =~ m,src/login/logind.conf.in, and
-			protect_config  and hunk_is_useful and prune_hunk or next;
+		if ( $hFile{source} =~ m,src/login/logind.conf.in, ) {
+			protect_config and hunk_is_useful and prune_hunk or next;
+		}
 
 		# === 1) Check for elogind masks 1 (normal source code) ===========
 		check_masks and hunk_is_useful and prune_hunk or next;
@@ -990,19 +991,14 @@ sub check_masks {
 	# #if/#else/#/endif constructs can be put inside elogind mask blocks.
 	my $regular_ifs = 0;
 
-	# We have to know where an #else block ends. If upstream appends something
-	# to a block we commented out, diff adds it after the removal of our
-	# #else block. With this we can move the stuff up before the else.
-	my $else_block_start = -1;
-
 	# We have to note down mask starts. If a name revert takes place right in
 	# front of a mask start, diff will put it under the mask start, which
 	# would place it at the wrong position.
 	my $mask_block_start = -1;
 
 	# If a mask block just ended and is followed by insertions, move the mask end.
-	# (See Issue #4)
-	my $after_mask_end = -1;
+	# (See Issue #1 and #4)
+	my $mask_end_line = -1;
 
 	# Note down how this hunk starts before first pruning
 	$hHunk->{masked_start} = $in_mask_block && !$in_else_block ? 1 : 0;
@@ -1018,10 +1014,10 @@ sub check_masks {
 			$in_insert_block
 				and return hunk_failed("check_masks: Mask start found while being in an insert block!");
 			substr($$line, 0, 1) = " "; ## Remove '-'
+			$in_insert_block  = 0;
 			$in_mask_block    = 1;
-			$else_block_start = -1;
 			$mask_block_start = $i;
-			$after_mask_end   = -1;
+			$mask_end_line    = -1;
 
 			# While we are here we can check the previous line.
 			# All masks shall be preceded by an empty line to enhance readability.
@@ -1041,7 +1037,8 @@ sub check_masks {
 				and return hunk_failed("check_masks: Insert start found while being in an insert block!");
 			substr($$line, 0, 1) = " "; ## Remove '-'
 			$in_insert_block  = 1;
-			$after_mask_end   = -1;
+			$in_mask_block    = 0;
+			$mask_end_line    = -1;
 
 			# While we are here we can check the previous line.
 			# All inserts shall be preceded by an empty line to enhance readability.
@@ -1062,9 +1059,8 @@ sub check_masks {
 		  && is_mask_else($$line) ) {
 			substr($$line, 0, 1) = " "; ## Remove '-'
 			$in_else_block    = 1;
-			$else_block_start = $i; ## Here we might insert upstream additions
+			$mask_end_line    = $i;
 			$mask_block_start = -1;
-			$after_mask_end   = -1;
 			next;
 		}
 
@@ -1073,10 +1069,10 @@ sub check_masks {
 		if (is_mask_end($$line)) {
 			$in_mask_block or return hunk_failed("check_masks: #endif // 0 found outside any mask block");
 			substr($$line, 0, 1) = " "; ## Remove '-'
-			$after_mask_end   = $in_else_block ? -1 : $i;
 			$in_mask_block    = 0;
 			$in_else_block    = 0;
 			$mask_block_start = -1;
+			$mask_end_line == -1 and $mask_end_line = $i;
 			next;
 		}
 
@@ -1087,7 +1083,7 @@ sub check_masks {
 			substr($$line, 0, 1) = " "; ## Remove '-'
 			$in_insert_block  = 0;
 			$in_else_block    = 0;
-			$after_mask_end   = -1;
+			$mask_end_line    = -1;
 			next;
 		}
 
@@ -1106,11 +1102,12 @@ sub check_masks {
 		if ( $$line =~ m,^\+, ) {
 
 			# If upstream adds something after a mask #else block, we move it up before the #else.
+			# ( See issues #1 and #4 )
 			# ------------------------------------------------------------------------------------
-			if ( ($else_block_start > -1) && !$in_mask_block) {
+			if ( ($mask_end_line > -1) && !$in_mask_block) {
 				my $moved_line = $$line;
 				splice(@{$hHunk->{lines}}, $i, 1); ## Order matters here.
-				splice(@{$hHunk->{lines}}, $else_block_start++, 0, $moved_line);
+				splice(@{$hHunk->{lines}}, $mask_end_line++, 0, $moved_line);
 				# Note: No change to $hHunk->{count} here, as the lines are moved.
 				next;
 			}
@@ -1124,26 +1121,11 @@ sub check_masks {
 				# Note: No change to $hHunk->{count} here, as the lines are moved.
 				next;
 			}
-
-			# If new stuff is inserted right after a mask end, move it up into the mask.
-			# (See Issue #4)
-			# --------------------------------------------------------------------------
-			if ( $after_mask_end > -1 )  {
-				my $moved_line = $$line;
-				splice(@{$hHunk->{lines}}, $i, 1); ## Order matters here.
-				splice(@{$hHunk->{lines}}, $after_mask_end++, 0, $moved_line);
-				# Note: No change to $hHunk->{count} here, as the lines are moved.
-				next;
-			}
 		} elsif ( !$in_mask_block ) {
 
-			# End our else block awareness at the first non-insertion line after a mask block.
-			# ---------------------------------------------------------------------------------
-			$else_block_start = -1;
-
-			# End our after mask block end awareness on the first non-insertion line
-			# ---------------------------------------------------------------------------------
-			$after_mask_end = -1;
+			# End our mask block ending awareness at the first non-insertion line after a mask block.
+			# ---------------------------------------------------------------------------------------
+			$mask_end_line = -1;
 		}
 	} ## End of looping lines
 
