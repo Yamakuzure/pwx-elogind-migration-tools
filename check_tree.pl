@@ -275,17 +275,17 @@ for my $file_part (@source_files) {
 		# === 4) Check for debug constructs ===============================
 		check_debug and hunk_is_useful and prune_hunk or next;
 
-		# === 5) Check for elogind extra comments and information =========
-		check_comments and hunk_is_useful and prune_hunk or next;
-
-		# === 6) Check for useful blank line additions ====================
+		# === 5) Check for useful blank line additions ====================
 		check_blanks and hunk_is_useful and prune_hunk or next;
 
-		# === 7) Check for 'elogind' => 'systemd' reverts =================
+		# === 6) Check for 'elogind' => 'systemd' reverts =================
 		check_name_reverts and hunk_is_useful and prune_hunk or next;
 
-		# === 8) Check for elogind_*() function removals ==================
+		# === 7) Check for elogind_*() function removals ==================
 		check_func_removes and hunk_is_useful and prune_hunk or next;
+
+		# === 8) Check for elogind extra comments and information =========
+		check_comments and hunk_is_useful and prune_hunk or next;
 
 		# === 9) Check for any useless changes that do nothing ============
 		check_useless and hunk_is_useful and prune_hunk or next;
