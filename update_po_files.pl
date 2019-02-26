@@ -7,6 +7,7 @@
 # Version  Date        Maintainer      Changes, Additions, Fixes
 # 0.0.1    2017-03-12  sed, PrydeWorX  First basic design
 # 0.1.0    2019-02-18  sed, PrydeWorX  Fixed typo; PO files are now first restored before reworking them.
+# 0.2.0    2019-02-25  sed, PrydeWorX  Make sure that files with non-existent extensions are found.
 #
 # ========================
 # === Little TODO list ===
@@ -22,7 +23,7 @@ use Readonly;
 # ================================================================
 # ===        ==> ------ Help Text and Version ----- <==        ===
 # ================================================================
-Readonly my $VERSION     => "0.0.1"; ## Please keep this current!
+Readonly my $VERSION     => "0.2.0"; ## Please keep this current!
 Readonly my $VERSMIN     => "-" x length($VERSION);
 Readonly my $PROGDIR     => dirname($0);
 Readonly my $PROGNAME    => basename($0);
@@ -126,12 +127,30 @@ for my $pofile (@source_files) {
 		# in_block switches are done on file identifications lines, which look like
 		# this : "#: ../src/import/org.freedesktop.import1.policy.in.h:2"
 		if ($line =~ m/^#:\s+([^:]+):\d+/) {
+
 			# Note: There might be two file references, if the translated text spans
 			#       more than one line. The second path is the same as the first, so
 			#       it is sufficient not to end the regex with '$' here.
-			my $altfile = substr($1, 0, -2); ## .in files have an extra '.h' attached
+			my $f_name = basename($1);
+			my $f_dir  = dirname($1);
+
+			# The directory sometimes starts with "../" and sometimes without. As we
+			# are looking from the po file path, as that is the point from where we
+			# go relative, the "../" is important and must not be missing for us.
+			($f_dir =~ m,^\.\./,) || ($f_dir = "../" . $f_dir);
+			my $file_full = $po_file_path . "/" . $f_dir . "/" . $f_name;
+			my ($file_no_h, $file_no_in) = ($file_full, $file_full);
+
+			# Interestingly the policy files are listed as "policy.in.h", no matter how
+			# they are really named. So while there is org.freedesktop.login1.policy,
+			# it is listed as org.freedesktop.login1.policy.in.h
+			# But annoyngly the '.h' is missing in some files, and sometimes even both
+			# are missing.
+			$file_no_h  =~ s/\.h$//;
+			$file_no_in =~ s/\.in\.h$//;
+
 			$was_block  = $in_block;
-			$in_block   = (-f $po_file_path . "/" . $1) || (-f $po_file_path . "/" . $altfile) ? 0 : 1;
+			$in_block   = (-f $file_full) || (-f $file_no_h) || (-f $file_no_in) ? 0 : 1;
 			$in_block and ++$count;
 		}
 		
