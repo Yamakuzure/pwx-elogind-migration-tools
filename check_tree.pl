@@ -50,6 +50,8 @@
 #                                      + Issue #1/#4: Move additions right after mask endings up into the mask.
 #                                      + Issue #2: Protect src/login/logind.conf.in
 #                                      + Issue #3: Do not consider files in man/rules/
+# 1.0.0    2019-03-19  sed, PrydeWorX  Allow __GLIBC__ to be a mask/insert start/end keyword to make musl-libc
+#                                        compatibility easier to accomplish.
 #
 # ========================
 # === Little TODO list ===
@@ -68,7 +70,7 @@ use Try::Tiny;
 # ================================================================
 # ===        ==> ------ Help Text and Version ----- <==        ===
 # ================================================================
-Readonly my $VERSION     => "0.9.12"; ## Please keep this current!
+Readonly my $VERSION     => "1.0.0"; ## Please keep this current!
 Readonly my $VERSMIN     => "-" x length($VERSION);
 Readonly my $PROGDIR     => dirname($0);
 Readonly my $PROGNAME    => basename($0);
@@ -1795,7 +1797,7 @@ sub is_insert_end {
 
 	defined($line) and length($line) or return 0;
 
-	if ( ( $line =~ m,^[- ]?#endif\s*/(?:[*/]+)\s*1, )
+	if ( ( $line =~ m,^[- ]?#endif\s*/(?:[*/]+)\s*(?:1|__GLIBC__), )
 	  || ( $line =~ m,//\s+1\s+-->\s*$, )
 	  || ( $line =~ m,\*\s+//\s+1\s+\*\*/\s*$, ) ) {
 		return 1;
@@ -1813,7 +1815,8 @@ sub is_insert_start {
 	defined($line) and length($line) or return 0;
 
 	if ( ( $line =~ m/^[- ]?#if\s+1.+elogind/ )
-	  || ( $line =~ m/<!--\s+1.+elogind.+-->\s*$/  ) ) {
+	  || ( $line =~ m/<!--\s+1.+elogind.+-->\s*$/ )
+	  || ( $line =~ m/^[- ]?#ifndef.+__GLIBC__.+elogind/ ) ) {
 		return 1;
 	  }
 
@@ -1845,7 +1848,7 @@ sub is_mask_end {
 
 	defined($line) and length($line) or return 0;
 
-	if ( ( $line =~ m,^[- ]?#endif\s*/(?:[*/]+)\s*0, )
+	if ( ( $line =~ m,^[- ]?#endif\s*/(?:[*/]+)\s*(?:0|__GLIBC__), )
 	  || ( $line =~ m,//\s+0\s+-->\s*$, )
 	  || ( $line =~ m,\*\s+//\s+0\s+\*\*/\s*$, ) ) {
 		return 1;
@@ -1866,7 +1869,8 @@ sub is_mask_start {
 	  || (  ($line =~ m/<!--\s+0.+elogind/  )
 	    && !($line =~ m/-->\s*$/) )
 	  || (  ($line =~ m,/\*\*\s+0.+elogind,)
-	    && !($line =~ m,\*\*/\s*$,) ) ) {
+	    && !($line =~ m,\*\*/\s*$,) )
+	  || ($line =~ m/^[- ]?#ifdef.+__GLIBC__.+elogind/ ) ) {
 		return 1;
 	}
 
