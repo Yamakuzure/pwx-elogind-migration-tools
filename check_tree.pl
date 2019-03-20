@@ -1797,7 +1797,7 @@ sub is_insert_end {
 
 	defined($line) and length($line) or return 0;
 
-	if ( ( $line =~ m,^[- ]?#endif\s*/(?:[*/]+)\s*(?:1|__GLIBC__), )
+	if ( ( $line =~ m,^[- ]?#endif\s*/(?:[*/]+)\s*(?:1|!__GLIBC__), )
 	  || ( $line =~ m,//\s+1\s+-->\s*$, )
 	  || ( $line =~ m,\*\s+//\s+1\s+\*\*/\s*$, ) ) {
 		return 1;
