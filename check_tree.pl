@@ -52,6 +52,8 @@
 #                                      + Issue #3: Do not consider files in man/rules/
 # 1.0.0    2019-03-19  sed, PrydeWorX  Allow __GLIBC__ to be a mask/insert start/end keyword to make musl-libc
 #                                        compatibility easier to accomplish.
+# 1.0.1    2019-09-30  sed, PrydeWorX  Don't assume __GLIBC__ preprocessor masks to be regular masks, as they
+#                                        are already handled in check_musl().
 #
 # ========================
 # === Little TODO list ===
@@ -70,7 +72,7 @@ use Try::Tiny;
 # ================================================================
 # ===        ==> ------ Help Text and Version ----- <==        ===
 # ================================================================
-Readonly my $VERSION     => "1.0.0"; ## Please keep this current!
+Readonly my $VERSION     => "1.0.1"; ## Please keep this current!
 Readonly my $VERSMIN     => "-" x length($VERSION);
 Readonly my $PROGDIR     => dirname($0);
 Readonly my $PROGNAME    => basename($0);
@@ -1848,7 +1850,7 @@ sub is_mask_end {
 
 	defined($line) and length($line) or return 0;
 
-	if ( ( $line =~ m,^[- ]?#endif\s*/(?:[*/]+)\s*(?:0|__GLIBC__), )
+	if ( ( $line =~ m,^[- ]?#endif\s*/(?:[*/]+)\s*(?:0), )
 	  || ( $line =~ m,//\s+0\s+-->\s*$, )
 	  || ( $line =~ m,\*\s+//\s+0\s+\*\*/\s*$, ) ) {
 		return 1;
@@ -1869,8 +1871,7 @@ sub is_mask_start {
 	  || (  ($line =~ m/<!--\s+0.+elogind/  )
 	    && !($line =~ m/-->\s*$/) )
 	  || (  ($line =~ m,/\*\*\s+0.+elogind,)
-	    && !($line =~ m,\*\*/\s*$,) )
-	  || ($line =~ m/^[- ]?#ifdef.+__GLIBC__.+elogind/ ) ) {
+	    && !($line =~ m,\*\*/\s*$,) ) ) {
 		return 1;
 	}
 
