@@ -29,7 +29,7 @@ my_CFLAGS="$CFLAGS"
 my_LDFLAGS="$LDFLAGS"
 
 if [[ "x$xType" = "xdebug" ]]; then
-	my_CFLAGS="-Og -g3 -ggdb -ftrapv ${my_CFLAGS} -fPIE"
+	my_CFLAGS="-O0 -g3 -ggdb -ftrapv ${my_CFLAGS} -fPIE"
 	LDFLAGS="${my_LDFLAGS} -fPIE"
 else
 	my_CFLAGS="-O2 -fwrapv ${my_CFLAGS}"
