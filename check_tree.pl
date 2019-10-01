@@ -54,6 +54,7 @@
 #                                        compatibility easier to accomplish.
 # 1.0.1    2019-09-30  sed, PrydeWorX  Don't assume __GLIBC__ preprocessor masks to be regular masks, as they
 #                                        are already handled in check_musl().
+# 1.0.2    2019-10-01  sed, PrydeWorX  Completely handle __GLIBC__ masks/inserts in check_musl()
 #
 # ========================
 # === Little TODO list ===
@@ -72,7 +73,7 @@ use Try::Tiny;
 # ================================================================
 # ===        ==> ------ Help Text and Version ----- <==        ===
 # ================================================================
-Readonly my $VERSION     => "1.0.1"; ## Please keep this current!
+Readonly my $VERSION     => "1.0.2"; ## Please keep this current!
 Readonly my $VERSMIN     => "-" x length($VERSION);
 Readonly my $PROGDIR     => dirname($0);
 Readonly my $PROGNAME    => basename($0);
@@ -117,6 +118,7 @@ my $have_wanted     = 0;  ## Helper for finding relevant files (see wanted())
 my %hToCreate       = (); ## The keys are files that do not exist and shall be created.
 my %hWanted         = (); ## Helper hash for finding relevant files (see wanted())
 my $in_else_block   = 0;  ## Set to 1 if we switched from mask/unmask to 'else'.
+my $in_glibc_block  = 0;  ## Set to 1 if we enter a __GLIBC__ block
 my $in_mask_block   = 0;  ## Set to 1 if we entered an elogind mask block
 my $in_insert_block = 0;  ## Set to 1 if we entered an elogind addition block
 my $main_result     = 1;  ## Used for parse_args() only, as simple $result is local everywhere.
@@ -250,6 +252,7 @@ for my $file_part (@source_files) {
 
 	# Reset global state helpers
 	$in_else_block   = 0;
+	$in_glibc_block  = 0;
 	$in_mask_block   = 0;
 	$in_insert_block = 0;
 
@@ -1185,12 +1188,21 @@ sub check_musl {
 			next;
 		}
 
-		# Entering a __GLIBC__ block
+		# Entering a __GLIBC__ block as mask
 		# ---------------------------------------
-		if ( $$line =~ m/^-#if.+__GLIBC__/ ) {
+		if ( $$line =~ m/^-#if(?:def|\s+defined).+__GLIBC__/ ) {
 			## Note: Here it is perfectly fine to be in an elogind mask block.
 			substr($$line, 0, 1) = " "; ## Remove '-'
-			$in_mask_block++; ## Increase instead of setting this to 1.
+			$in_glibc_block = 1;
+			next;
+		}
+
+		# Entering a __GLIBC__ block as insert
+		# ---------------------------------------
+		if ( $$line =~ m/^-#if(?:ndef|\s+!defined).+__GLIBC__/ ) {
+			substr($$line, 0, 1) = " "; ## Remove '-'
+			$in_glibc_block = 1;
+			$in_else_block++;
 			next;
 		}
 
@@ -1204,11 +1216,11 @@ sub check_musl {
 		# Ending a __GLBC__ block
 		# ---------------------------------------
 		if ( $$line =~ m,^-#endif\s*///?.*__GLIBC__, ) {
-			(!$in_mask_block)
+			(!$in_glibc_block)
 				and return hunk_failed("check_musl: #endif // __GLIBC__ found outside any __GLIBC__ block");
 			substr($$line, 0, 1) = " "; ## Remove '-'
-			$in_mask_block--; ## Decrease instead of setting to 0. This allows such
-			$in_else_block--; ## blocks to reside in regular elogind mask/insert blocks.
+			$in_glibc_block = 0;
+			$in_else_block--;
 			next;
 		}
 
@@ -1218,8 +1230,8 @@ sub check_musl {
 		# Remove '-' prefixes in all lines within the musl (#else) blocks
 		# -------------------------------------------------------------------
 		if ( ($$line =~ m,^-,)
-		  && ($in_mask_block > 0)
-		  && ($in_else_block > 0 ) ) {
+		  && ($in_glibc_block > 0)
+		  && ($in_else_block > $in_mask_block) ) {
 			substr($$line, 0, 1) = " "; ## Remove '-'
 		}
 	} ## End of looping lines
@@ -1799,7 +1811,7 @@ sub is_insert_end {
 
 	defined($line) and length($line) or return 0;
 
-	if ( ( $line =~ m,^[- ]?#endif\s*/(?:[*/]+)\s*(?:1|!__GLIBC__), )
+	if ( ( $line =~ m,^[- ]?#endif\s*/(?:[*/]+)\s*1, )
 	  || ( $line =~ m,//\s+1\s+-->\s*$, )
 	  || ( $line =~ m,\*\s+//\s+1\s+\*\*/\s*$, ) ) {
 		return 1;
@@ -1817,8 +1829,7 @@ sub is_insert_start {
 	defined($line) and length($line) or return 0;
 
 	if ( ( $line =~ m/^[- ]?#if\s+1.+elogind/ )
-	  || ( $line =~ m/<!--\s+1.+elogind.+-->\s*$/ )
-	  || ( $line =~ m/^[- ]?#ifndef.+__GLIBC__.+elogind/ ) ) {
+	  || ( $line =~ m/<!--\s+1.+elogind.+-->\s*$/ ) ) {
 		return 1;
 	  }
 
