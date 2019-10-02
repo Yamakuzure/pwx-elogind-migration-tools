@@ -630,17 +630,17 @@ sub check_comments {
 
 		# Check for comment block start
 		# -----------------------------
-		if ( $$line =~ m,^-\s*(/[*]+|/[/]+).*elogind, ) {
+		if ( $$line =~ m,^-\s*(/\*+|//+)\s+.*elogind, ) {
 
 			# Sanity check:
 			$in_comment_block
 			  and return hunk_failed("check_comments: Comment block start found in comment block!");
 
-			substr( $$line, 0, 1 ) = " ";
-
 			# Only start the comment block if this is really a multiline comment
-			( !( $$line =~ m,\*/[^/]*$, ) )
+			( ($$line =~ m,^-\s*/\*+,) && !( $$line =~ m,\*/[^/]*$, ) )
 			  and $in_comment_block = 1;
+
+			substr( $$line, 0, 1 ) = " ";
 
 			next;
 		} ## end if ( $$line =~ m,^-\s*(/[*]+|/[/]+).*elogind,)
