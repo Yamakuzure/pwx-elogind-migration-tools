@@ -76,7 +76,7 @@ if [[ $minVers -gt 234 ]]; then
 			 -Dudevrulesdir=$PREFIX/lib/udev/rules.d \
 			 --libdir=$PREFIX/usr/lib64 -Drootlibdir=$PREFIX/lib64 \
 			 -Drootlibexecdir=$PREFIX/lib64/elogind \
-			 -Dsmack=true -Dman=auto -Dhtml=auto \
+			 -Dsmack=true -Dman=auto -Dhtml=auto -Defi=true \
 			 -Dcgroup-controller=openrc -Ddefault-hierarchy=$cgdefault \
 			 -Dacl=true -Dpam=true -Dselinux=false \
 			 -Dbashcompletiondir=$PREFIX/usr/share/bash-completion/completions \
