@@ -10,6 +10,7 @@
 # 0.2.0    2019-02-25  sed, PrydeWorX  Make sure that files with non-existent extensions are found.
 # 0.3.0    2019-02-26  sed, PrydeWorX  - Fix file references in po files, if the reference is wrong.
 #                                      - Fix duplication of empty lines when calling update_po_files.pl more than once.
+# 0.4.0    2019-10-11  sed, PrydeWorX  Do not "fix" input file names, and find those ending with .in and no .h
 #
 # ========================
 # === Little TODO list ===
@@ -25,7 +26,7 @@ use Readonly;
 # ================================================================
 # ===        ==> ------ Help Text and Version ----- <==        ===
 # ================================================================
-Readonly my $VERSION     => "0.3.0"; ## Please keep this current!
+Readonly my $VERSION     => "0.4.0"; ## Please keep this current!
 Readonly my $VERSMIN     => "-" x length($VERSION);
 Readonly my $PROGDIR     => dirname($0);
 Readonly my $PROGNAME    => basename($0);
@@ -147,7 +148,7 @@ for my $pofile (@source_files) {
 			# But annoyngly the '.h' is missing in some files, and sometimes even both
 			# are missing.
 			$f_no_h  =~ s/\.h$//;
-			$f_no_in =~ s/\.in\.h$//;
+			$f_no_in =~ s/\.in(?:\.h)?$//;
 
 			# Now see which file can be found.
 			$f_found = -f $f_ref ? $f_ref
@@ -158,12 +159,6 @@ for my $pofile (@source_files) {
 			$was_block  = $in_block;
 			$in_block   = length($f_found) ? 0 : 1;
 			$in_block and ++$count;
-
-			# If the listed reference is wrong, fix it.
-			if (length($f_found)) {
-				$f_found =~ s,^$po_file_path/,,; ## That must be removed again
-				($f_ref ne $f_found) and $line =~ s,$f_ref,$f_found,g;
-			}
 		}
 
 		# If the in_block switches, add elogind mask start or end
@@ -188,6 +183,11 @@ for my $pofile (@source_files) {
 				 or $line = "#";
 		}
 
+		# If we are not in a block, adapt systemd->elogind where appropriate
+		# (Unless this is some reference to the systemd documentation pages)
+		elsif ( ($line =~ m/systemd/) && !($line =~ m,freedesktop\.org/wiki,) ) {
+			$line =~ s/systemd(?:-login)?(?:d)?/elogind/g;
+		}
 		# Now push the line, it is ready.
 		push(@lOut, $line);
 
