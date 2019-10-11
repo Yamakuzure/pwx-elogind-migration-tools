@@ -1490,6 +1490,7 @@ sub check_name_reverts {
 			my $our_text_short = $our_text_long;
 			$our_text_long =~ s/systemd-logind/elogind/g;
 			$our_text_short =~ s/systemd/elogind/g;
+			$our_text_long eq $replace_text and $our_text_long =~ s/systemd-stable/elogind/g;
 
 			# There is some specialities:
 			# =============================================================
@@ -1497,9 +1498,13 @@ sub check_name_reverts {
 			# This refers to the systemd API headers that get installed,
 			# and must therefore not be renamed to elogind_headers.
 			$our_text_short =~ s/elogind_headers/systemd_headers/g;
+			$our_text_long  =~ s/elogind_headers/systemd_headers/g;
 
-			# 2) References to the systemd github site must not be changed
-			$replace_text =~ m,github\.com/systemd, and next;
+			# 2) References to the systemd github site must not be changed,
+			#    unless it is a reference to the issues tracker.
+			$replace_text =~ m,github\.com/systemd,
+				and (!($replace_text =~ m,/issues,))
+				and next;
 
 			# 3) /run/systemd/ must not be changed, as other applications
 			#    rely on that naming.
