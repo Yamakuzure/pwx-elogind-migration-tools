@@ -851,7 +851,7 @@ sub check_empty_masks {
 		if ( is_insert_start($$line) ) {
 			$local_imb
 			  and return hunk_failed("check_empty_masks: Insert start found while being in a mask block!");
-			$in_insert_block
+			$local_iib
 			  and return hunk_failed("check_empty_masks: Insert start found while being in an insert block!");
 			substr( $$line, 0, 1 ) = " ";  ## Remove '-'
 			$local_iib = 1;
