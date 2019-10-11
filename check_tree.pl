@@ -846,17 +846,15 @@ sub check_empty_masks {
 		# Entering an elogind mask
 		# ---------------------------------------
 		if ( is_mask_start($$line) ) {
-			$local_imb
-			  and return hunk_failed("check_empty_masks: Mask start found while being in a mask block!");
-			$local_iib
-			  and return hunk_failed("check_empty_masks: Mask start found while being in an insert block!");
+			# No checks needed, check_masks() already did that, and later pruning might make 
+			# checks here fail, if large else block removals got reverted and the hunk(s) pruned.
 			$local_iib = 0;
 			$local_imb = 1;
 
 			$mask_block_start = $i;
 
 			# Note down mask message in case we leave a message
-			$hHunk->{lines}[ $i - 1 ] =~ m,^[- ]///\s+(.+)$, and $mask_message = $1;
+			$$line =~ m,^[- ]///\s+(.+)$, and $mask_message = $1;
 
 			next;
 		} ## end if ( is_mask_start($$line...))
@@ -864,16 +862,11 @@ sub check_empty_masks {
 		# Entering an elogind insert
 		# ---------------------------------------
 		if ( is_insert_start($$line) ) {
-			$local_imb
-			  and return hunk_failed("check_empty_masks: Insert start found while being in a mask block!");
-			$local_iib
-			  and return hunk_failed("check_empty_masks: Insert start found while being in an insert block!");
-			substr( $$line, 0, 1 ) = " ";  ## Remove '-'
 			$local_iib = 1;
 			$local_ieb = 0;
 
 			# Note down mask message in case we leave a message
-			$hHunk->{lines}[ $i - 1 ] =~ m,^[- ]///\s+(.+)$, and $mask_message = $1;
+			$$line =~ m,^[- ]///\s+(.+)$, and $mask_message = $1;
 
 			next;
 		} ## end if ( is_insert_start($$line...))
@@ -912,7 +905,6 @@ sub check_empty_masks {
 		# Ending a Mask block
 		# ---------------------------------------
 		if ( is_mask_end($$line) ) {
-			$local_imb or return hunk_failed("check_empty_masks: #endif // 0 found outside any mask block");
 
 			# If the endif is right after the mask start, we have to do something about it.
 			if ( $i == ( $mask_block_start + 1 ) ) {
@@ -927,6 +919,18 @@ sub check_empty_masks {
 				$hHunk->{count} += 1;
 			} ## end if ( $i == ( $mask_block_start...))
 
+			# If we need an endif conversion, do it now:
+			elsif ($need_endif_conversion) {
+
+				# First re-enable the removal:
+				substr( $hHunk->{lines}[$i], 0, 1 ) = "-";
+
+				# Add the correct endif
+				splice( @{ $hHunk->{lines} }, $i + 1, 0, ( "+#endif // 1" ) );
+
+				$hHunk->{count} += 1;
+			} ## end if ($need_endif_conversion)
+
 			$local_imb             = 0;
 			$local_ieb             = 0;
 			$mask_block_start      = -1;
@@ -939,20 +943,6 @@ sub check_empty_masks {
 		# Ending an insert block
 		# ---------------------------------------
 		if ( is_insert_end($$line) ) {
-			$local_iib or return hunk_failed("check_empty_masks: #endif // 1 found outside any insert block");
-
-			# If we need an endif conversion, do it now:
-			if ($need_endif_conversion) {
-
-				# First re-enable the removal:
-				substr( $hHunk->{lines}[$i], 0, 1 ) = "-";
-
-				# Add the correct endif
-				splice( @{ $hHunk->{lines} }, $i + 1, 0, ( "+#endif // 1" ) );
-
-				$hHunk->{count} += 1;
-			} ## end if ($need_endif_conversion)
-
 			$local_iib             = 0;
 			$local_ieb             = 0;
 			$mask_block_start      = -1;
