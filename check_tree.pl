@@ -966,20 +966,16 @@ sub check_empty_masks {
 # ---    b) If there is an insertion of the very same include in one  ---
 # ---       of the surrounding lines, mark the insert for splicing    ---
 # ---       and undo the removal.                                     ---
-# ---    c) If there is an insertion somewhere else, let it be        ---
-# ---       removed here, and handle the insertion:                   ---
-# ---       - Outside a "needed by elogind" block: comment out the    ---
-# ---         inserted include.                                       ---
-# ---       - Inside a "needed by elogind" block: undo the removal    ---
-# ---         there.                                                  ---
 # --- 2) Insertions of new includes, where 1) does not apply:         ---
-# ---    a) If the include is new, comment it out to force a later    ---
-# ---       check. The compiler will tell us if it is needed.         ---
+# ---    a) If the include is new, let its be added. (*)              ---
 # ---    b) If the include is part of the "needed by elogind" block   ---
 # ---       already, allow the removal there and accept the regular   ---
 # ---       insertion here.                                           ---
 # --- 3) Removals of includes in "needed by elogind" blocks:          ---
 # ---    As 1) and 2) do not apply, simply undo any removal here.     ---
+# --- (*) : We used to comment out new includes for later checks. But ---
+# ---       big updates became an unbearable workload like that. Do a ---
+# ---       cleanup of the includes later seems to be the better way. ---
 # -----------------------------------------------------------------------
 sub check_includes {
 
@@ -1053,22 +1049,14 @@ sub check_includes {
 				my $hId = $hIncs{$inc}{elogind}{hunkid};
 				my $lId = $hIncs{$inc}{elogind}{lineid};
 				substr( $hFile{hunks}[$hId]{lines}[$lId], 0, 1 ) = " ";
-				$hIncs{$inc}{applied} = 1;
 			} elsif ( $hIncs{$inc}{insert}{elogind} ) {
 
 				# Do not move masked includes under our block.
 				$undos{ $hIncs{$inc}{remove}{lineid} } = 1;
-				$hIncs{$inc}{applied}                  = 1;
 				$hIncs{$inc}{insert}{spliceme}         = 1;
-			} else {
+			}
 
-				# Just comment out the insert.
-				my $hId = $hIncs{$inc}{insert}{hunkid};
-				my $lId = $hIncs{$inc}{insert}{lineid};
-				substr( $hFile{hunks}[$hId]{lines}[$lId], 0, 1 ) = "+//";
-				$hIncs{$inc}{applied} = 1;
-			} ## end else [ if ( $hIncs{$inc}{elogind...})]
-
+			$hIncs{$inc}{applied} = 1;
 			next;
 		}  ## End of ruleset 1
 
@@ -1081,13 +1069,8 @@ sub check_includes {
 			defined( $hIncs{$1}{insert}{hunkid} ) and $hIncs{$1}{insert}{hunkid} > -1
 			  or return hunk_failed("check_includes: Unrecorded insertion found!");
 
-			# Nicely enough we only have to check whether this is removed from
-			# any elogind includes block or not.
-			( -1 == $hIncs{$1}{elogind}{hunkid} )
-			  and substr( $$line, 0, 1 ) = "+//";  ## comment out for later check
+			# Nicely enough we are already set here.
 			$hIncs{$1}{applied} = 1;
-
-			# That's it. Cool, eh?
 
 			next;
 		} ## end if ( $$line =~ m,^\+\s*#include\s+[<"']([^>"']+)[>"'],)
