@@ -1513,7 +1513,7 @@ sub check_name_reverts {
 
 			# --- Case A) If this is a simple switch, undo it. ---
 			# ----------------------------------------------------
-			if ( length($o_txt) ) {
+			if ( length($o_txt) && ($hRemovals{$o_txt}{line} == ($i - 1)) ) {
 				substr( $hHunk->{lines}[ $hRemovals{$o_txt}{line} ], 0, 1 ) = " ";
 				$hRemovals{$o_txt}{spliceme} = $i;  ## Splice the addition
 				next;
@@ -1521,8 +1521,9 @@ sub check_name_reverts {
 
 			# --- Case B) Otherwise replace the addition with our text. ---
 			# -------------------------------------------------------------
-			$our_text_long eq $replace_text and $$line =~ s/systemd/elogind/g
-			  or $$line =~ s/systemd-logind/elogind/g;
+			$our_text_long eq $replace_text
+				and $$line =~ s/systemd/elogind/g
+				 or $$line =~ s/systemd-logind/elogind/g;
 		} ## end if ( $$line =~ m/^\+[# ]*\s*(.*systemd.*)\s*$/)
 	} ## end for ( my $i = 0 ; $i < ...)
 
