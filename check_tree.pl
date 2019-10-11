@@ -588,6 +588,8 @@ sub build_output {
 # ----       wants to add a missing blank line. As it tried to remove ---
 # ----       our mask first, it'll be added after. That's fine for    ---
 # ----       #endif, but not for #if 0.                               ---
+# ----       At the same time, removal of one blank line after our    ---
+# ----       endif is also not in order.                              ---
 # -----------------------------------------------------------------------
 sub check_blanks {
 
@@ -598,6 +600,7 @@ sub check_blanks {
 	for ( my $i = 0 ; $i < $hHunk->{count} ; ++$i ) {
 		my $line = \$hHunk->{lines}[$i];  ## Shortcut
 
+		# Check for misplaced addition
 		if (   ( $$line =~ m/^\+\s*$/ )
 			&& ( $i > 0 )
 			&& ( ( is_mask_start( $hHunk->{lines}[ $i - 1 ] ) || is_insert_start( $hHunk->{lines}[ $i - 1 ] ) ) ) )
@@ -608,6 +611,18 @@ sub check_blanks {
 			$hHunk->{lines}[ $i - 1 ] = $tmp;
 			next;
 		} ## end if ( ( $$line =~ m/^\+\s*$/...))
+
+		# Check for unpleasant removals
+		if (   ( $$line =~ m/^\-\s*$/ )
+			&& ( $i > 0 )
+			&& ( ( is_mask_end( $hHunk->{lines}[ $i - 1 ] ) || is_insert_end( $hHunk->{lines}[ $i - 1 ] ) ) )
+			&& ( !( $hHunk->{lines}[ $i + 1 ] =~ m/^[-+ ]\s*$/ ) ) )
+		{
+			# Revert the removal
+			substr($$line, 0, 1) = " ";
+			next;
+		} ## end if ( ( $$line =~ m/^\+\s*$/...))
+
 	} ## end for ( my $i = 0 ; $i < ...)
 
 	return 1;
