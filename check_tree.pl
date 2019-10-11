@@ -56,6 +56,8 @@
 #                                        are already handled in check_musl().
 # 1.0.2    2019-10-01  sed, PrydeWorX  Completely handle __GLIBC__ masks/inserts in check_musl()
 # 1.1.0    2019-10-02  sed, PrydeWorX  Add check_empty_masks() to detect masks that became empty
+# 1.2.0    2019-10-11  sed, PrydeWorX  Fixed check_empty_masks() to eliminate false positives and rewrote
+#                                        check_useless() so it can catch useless blocks, too.
 #
 # ========================
 # === Little TODO list ===
@@ -74,7 +76,7 @@ use Try::Tiny;
 # ================================================================
 # ===        ==> ------ Help Text and Version ----- <==        ===
 # ================================================================
-Readonly my $VERSION     => "1.1.0";                                                ## Please keep this current!
+Readonly my $VERSION     => "1.2.0"; ## Please keep this current!
 Readonly my $VERSMIN     => "-" x length($VERSION);
 Readonly my $PROGDIR     => dirname($0);
 Readonly my $PROGNAME    => basename($0);
