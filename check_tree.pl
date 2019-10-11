@@ -1617,74 +1617,63 @@ sub check_sym_lines {
 # -----------------------------------------------------------------------
 # --- Check for useless updates that do nothing.                      ---
 # --- The other checks and updates can lead to hunks that effectively ---
-# --- effectively do nothing as they end up like:                     ---
+# --- do nothing as they end up like:                                 ---
 # --- -foo                                                            ---
+# --- -bar                                                            ---
 # --- +foo                                                            ---
+# --- +bar                                                            ---
 # -----------------------------------------------------------------------
 sub check_useless {
 
 	# Early exits:
-	defined($hHunk)  or die("check_masks: hHunk is undef");
-	$hHunk->{useful} or die("check_masks: Nothing done but hHunk is useless?");
+	defined($hHunk)  or die("check_useless: hHunk is undef");
+	$hHunk->{useful} or die("check_useless: Nothing done but hHunk is useless?");
 
-	# Remember changes, as we need two runs
-	my %hChanges = ();
+	# Note down removals, and where they start
+	my %hRemovals = ();
+	my $r_start   = -1;
 
-	# remember empty line additions/removal, they, too, pop up occassionally
-	my %hEmpties = ();
+	# We later work with an offset, to check for useless changes to splice
+	my %hSplices  = ();
+	my $r_offset  = -1;
 
-	# Map all additions and removals
+	# Now go through the line and find out what is to be done
 	for ( my $i = 0 ; $i < $hHunk->{count} ; ++$i ) {
 		my $line = \$hHunk->{lines}[$i];  ## Shortcut
 
-		# Note down addition of content:
-		$$line =~ m/^\+(.*\S)\s*$/
-		  and $hChanges{add}{"$1"} = $i
-		  and next;
+		# --- (1) Note down removal ---
+		if ($$line =~ m/^-(.*)$/) {
+			my $token = $1;
+			$token =~ s/^\s+$//; ## No whitespace lines!
+			$r_start > -1 or $r_start = $i;
+			length($token)
+				and $hRemovals{$token} = $i
+				 or $hRemovals{"empty" . $i} = $i;
+			next;
+		}
 
-		# Note down removal of content:
-		$$line =~ m/^-(.*\S)\s*$/
-		  and $hChanges{rem}{"$1"} = $i
-		  and next;
+		# --- (2) Check Addition ---
+		if ($$line =~ m/^\+(.*)$/) {
+			my $token = $1;
+			$token =~ s/^\s+$//; ## No whitespace lines!
+			$r_offset > -1 or $r_offset = $i - $r_start;
+			if ( ( length($token) && ( ($hRemovals{$token} + $r_offset) == $i ) )
+			  || (!length($token) && ( defined($hRemovals{"empty" . ($i - $r_offset)}) ) ) )
+			{
+				# Yep, this has to be reverted.
+				substr($hHunk->{lines}[$i - $r_offset], 0, 1) = " ";
+				$hSplices{$i} = 1;
+			}
+			next;
+		}
 
-		# Note down additions of empty lines
-		$$line =~ m/^\+\s*$/
-		  and $hEmpties{add}{$i} = 1
-		  and next;
-
-		# Note down removal of empty lines
-		$$line =~ m/^-\s*$/
-		  and $hEmpties{rem}{$i} = 1
-		  and next;
+		# --- (3) Reset state on the first out-of-block line
+		$r_start   = -1;
+		$r_offset  = -1;
+		%hRemovals = ();
 	} ## end for ( my $i = 0 ; $i < ...)
 
-	# Go through the removals of content and map what is to be spliced
-	my %hSplices = ();
-	for my $rem ( keys %{ $hChanges{rem} } ) {
-		my $line_add = defined( $hChanges{add}{"$rem"} ) ? $hChanges{add}{"$rem"} : 0;
-		my $line_rem = $hChanges{rem}{"$rem"};
-
-		if ( 1 == ( $line_add - $line_rem ) ) {
-
-			# Note: We always undo the removal and remove the addition.
-			$hSplices{$line_add} = 1;
-			substr( $hHunk->{lines}[$line_rem], 0, 1 ) = " ";
-		} ## end if ( 1 == ( $line_add ...))
-	} ## end for my $rem ( keys %{ $hChanges...})
-
-	# Go through the removals of empty lines and map what is to be spliced
-	for my $i ( keys %{ $hEmpties{rem} } ) {
-		my $line_add = defined( $hEmpties{add}{ $i + 1 } ) ? $i + 1 : 0;
-
-		if ($line_add) {
-
-			# Note: We always undo the removal and remove the addition.
-			$hSplices{ $i + 1 } = 1;
-			substr( $hHunk->{lines}[$i], 0, 1 ) = " ";
-		} ## end if ($line_add)
-	} ## end for my $i ( keys %{ $hEmpties...})
-
-	# No go through the splice map and splice from back to front
+	# Now go through the splice map and splice from back to front
 	for my $line_no ( sort { $b <=> $a } keys %hSplices ) {
 		splice( @{ $hHunk->{lines} }, $line_no, 1 );
 		$hHunk->{count}--;
