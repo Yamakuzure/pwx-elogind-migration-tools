@@ -11,8 +11,8 @@
 ../systemd-stable   v237-stable 7909254c7a src-7909254c7a tgt-6770df07e
 ../systemd-stable   v238-stable 07f8cd571e src-07f8cd571e tgt-818501b9c
 ../systemd-stable   v239-stable 35ae9b9caa src-dc25432f92 tgt-0b119b116
-../systemd-stable   v241-stable fd9617cf25 src-fd4fe9235d tgt-edfe5f5e1
-../systemd-stable   v243-stable 6dfbe58ee7 src-fab6f010ac tgt-5fc34baab
+../systemd-stable   v241-stable 99b085975b src-323cdf4d4d tgt-c395257d8
+../systemd-stable   v243-stable 6d97aca0d5 src-ef677436aa tgt-0ccf84b85
 ../systemd-upstream master      1697a28567 src-1697a28567 tgt-815d55d96
 ../systemd-upstream v234        d6d0473dc9 src-782c925f7f x
 ../systemd-upstream v236        83fefc8888 src-f78a88beca x
