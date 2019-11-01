@@ -1494,19 +1494,13 @@ sub check_name_reverts {
 
 			# There is some specialities:
 			# =============================================================
-			# 1) In some meson files, we need the variable "systemd_headers".
-			# This refers to the systemd API headers that get installed,
-			# and must therefore not be renamed to elogind_headers.
-			$our_text_short =~ s/elogind_headers/systemd_headers/g;
-			$our_text_long  =~ s/elogind_headers/systemd_headers/g;
-
-			# 2) References to the systemd github site must not be changed,
+			# 1) References to the systemd github site must not be changed,
 			#    unless it is a reference to the issues tracker.
 			$replace_text =~ m,github\.com/systemd,
 				and (!($replace_text =~ m,/issues,))
 				and next;
 
-			# 3) /run/systemd/ must not be changed, as other applications
+			# 2) /run/systemd/ must not be changed, as other applications
 			#    rely on that naming.
 			# Note: The /run/elogind.pid file is not touched by that, as
 			#       systemd does not have something like that.
@@ -1531,6 +1525,12 @@ sub check_name_reverts {
 			$our_text_long eq $replace_text
 				and $$line =~ s/systemd/elogind/g
 				 or $$line =~ s/systemd-logind/elogind/g;
+
+			# In some meson files, we need the variable "systemd_headers".
+			# This refers to the systemd API headers that get installed,
+			# and must therefore not be renamed to elogind_headers.
+			$$line =~ s/elogind_headers/systemd_headers/g;
+
 		} ## end if ( $$line =~ m/^\+[# ]*\s*(.*systemd.*)\s*$/)
 	} ## end for ( my $i = 0 ; $i < ...)
 
