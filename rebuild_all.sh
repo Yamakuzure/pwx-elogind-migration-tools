@@ -71,6 +71,7 @@ if [[ $minVers -gt 234 ]]; then
 			--wrap-mode nodownload --libdir lib64 \
 			--localstatedir $PREFIX/var/lib  --sysconfdir $PREFIX/etc \
 			 -Ddocdir=$PREFIX/usr/share/doc/elogind-9999 \
+			 -Defi=true \
 			 -Dhtmldir=$PREFIX/usr/share/doc/elogind-9999/html \
 			 -Dpamlibdir=$PREFIX/lib64/security \
 			 -Dudevrulesdir=$PREFIX/lib/udev/rules.d \
