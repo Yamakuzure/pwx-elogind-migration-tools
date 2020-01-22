@@ -618,6 +618,7 @@ sub check_blanks {
 		if (   ( $$line =~ m/^\-\s*$/ )
 			&& ( $i > 0 )
 			&& ( ( is_mask_end( $hHunk->{lines}[ $i - 1 ] ) || is_insert_end( $hHunk->{lines}[ $i - 1 ] ) ) )
+			&& ( $i < ($hHunk->{count} - 1) )
 			&& ( !( $hHunk->{lines}[ $i + 1 ] =~ m/^[-+ ]\s*$/ ) ) )
 		{
 			# Revert the removal
