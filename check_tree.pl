@@ -1187,6 +1187,10 @@ sub check_masks {
 	# (See Issue #1 and #4)
 	my $mask_end_line = -1;
 
+	# If kept/added lines have to be moved from inside or right below our domain
+	# blocks, this variable records the line at which they have to be moved.
+	my $move_to_line = -1;
+
 	# Note down how this hunk starts before first pruning
 	$hHunk->{masked_start} = $in_mask_block && !$in_else_block ? 1 : 0;
 
@@ -1205,6 +1209,7 @@ sub check_masks {
 			$in_mask_block    = 1;
 			$mask_block_start = $i;
 			$mask_end_line    = -1;
+			$move_to_line     = -1;
 
 			# While we are here we can check the previous line.
 			# All masks shall be preceded by an empty line to enhance readability.
@@ -1224,10 +1229,11 @@ sub check_masks {
 			$in_insert_block
 			  and return hunk_failed("check_masks: Insert start found while being in an insert block!");
 			substr( $$line, 0, 1 ) = " ";  ## Remove '-'
-			$in_insert_block = 1;
-			$in_mask_block   = 0;
-			$mask_block_start = $i;
+			$in_insert_block  = 1;
+			$in_mask_block    = 0;
+			$mask_block_start = -1;
 			$mask_end_line    = -1;
+			$move_to_line     = $i;
 
 			# While we are here we can check the previous line.
 			# All inserts shall be preceded by an empty line to enhance readability.
@@ -1250,9 +1256,8 @@ sub check_masks {
 			&& is_mask_else($$line) )
 		{
 			substr( $$line, 0, 1 ) = " ";  ## Remove '-'
-			$in_else_block    = 1;
-			$mask_end_line    = $i;
-			$mask_block_start = -1;
+			$in_else_block = 1;
+			$move_to_line  = $i;
 			next;
 		} ## end if ( $in_mask_block &&...)
 
@@ -1274,7 +1279,6 @@ sub check_masks {
 			$in_insert_block or return hunk_failed("check_masks: #endif // 1 found outside any insert block");
 			substr( $$line, 0, 1 ) = " ";  ## Remove '-'
 			$in_insert_block  = 0;
-			$in_else_block    = 0;
 			$mask_block_start = -1;
 			$mask_end_line    = $i;
 			next;
@@ -1305,14 +1309,13 @@ sub check_masks {
 				#    kept common line inside our domain.
 				# All these cases can be handled with two simple solutions.
 				# ------------------------------------------------------------------------------------
-				my $cpy_line    = $$line;
-				my $tgt_line_no = $mask_end_line > -1 ? $mask_end_line : $mask_block_start;
+				my $cpy_line = $$line;
 
 				# Case 1 ; The keeper: Copy the offending line back above the else/insert
 				# -----------------------------------------------------------------------
 				if ( $$line =~m,^ , ) {
 					substr( $cpy_line, 0, 1 ) = "+";  ## Above, this is an addition.
-					splice( @{ $hHunk->{lines} }, $tgt_line_no++, 0, $cpy_line );
+					splice( @{ $hHunk->{lines} }, $move_to_line++, 0, $cpy_line );
 					$hHunk->{count} += 1;
 					$i++; ## We have to advance i, or the next iteration puts as back here.
 				}
@@ -1321,8 +1324,8 @@ sub check_masks {
 				# -----------------------------------------------------------------------
 				else {
 					splice( @{ $hHunk->{lines} }, $i, 1 );  ## Order matters here.
-					splice( @{ $hHunk->{lines} }, $tgt_line_no++, 0, $cpy_line );
-	
+					splice( @{ $hHunk->{lines} }, $move_to_line++, 0, $cpy_line );
+
 					# Note: No change to $hHunk->{count} here, as the lines are moved.
 				} ## end if ( ( $mask_end_line ...))
 
@@ -1331,12 +1334,30 @@ sub check_masks {
 
 				next;
 			}
-		} elsif ( !$in_mask_block ) {
+		}
+
+		# Being here means that we are in a mask block or outside of any block.
+		# A special thing to consider is when diff wants to change the end or
+		# add something to the end of a mask block, or right before an insertion
+		# block.
+		# As our blocks are getting removed by diff, the addition will happen
+		# right after that. So anything added the very next lines after we have
+		# exited our domain must be moved up.
+		if ( !$in_mask_block ) {
+			if ( ($move_to_line > -1) && ( $$line =~ m,^\+, ) ) {
+				my $cpy_line = $$line;
+				splice( @{ $hHunk->{lines} }, $i, 1 );  ## Order matters here.
+				splice( @{ $hHunk->{lines} }, $move_to_line++, 0, $cpy_line );
+
+				# Note: Again no change to $hHunk->{count} here, as the lines are moved.
+				next;
+			}
 
 			# End our mask block ending awareness at the first non-insertion line after a mask block.
 			# ---------------------------------------------------------------------------------------
 			$mask_end_line = -1;
-		} ## end elsif ( !$in_mask_block )
+			$move_to_line  = -1;
+		}
 	}  ## End of looping lines
 
 	# Note down how this hunk ends before first pruning
