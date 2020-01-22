@@ -886,17 +886,20 @@ sub check_empty_masks {
 			$local_ieb = 1;
 
 			# If the else starts right after a mask start, we have to do something about it.
-			if ( $i == ( $mask_block_start + 1 ) ) {
+			if ( $i && ($i == ( $mask_block_start + 1 )) ) {
 
 				# Re-enable the removal of the "#if 0" and of the "#else" line
 				substr( $hHunk->{lines}[ $i - 1 ], 0, 1 ) = "-";
 				substr( $hHunk->{lines}[$i],       0, 1 ) = "-";
 
 				# Add a note that we converted this and add an insert mask
-				splice( @{ $hHunk->{lines} }, $i + 1, 0, ( "+/// elogind empty mask else converted", "+#if 1 /// $mask_message" ) );
+				splice( @{ $hHunk->{lines} }, $i + 1, 0, (
+						"+/// elogind empty mask else converted",
+						"+#if 1 /// $mask_message" ) );
 
 				$hHunk->{count} += 2;
 				$need_endif_conversion = 1;
+				$i += 2; ## Already known...
 			} ## end if ( $i == ( $mask_block_start...))
 
 			$mask_block_start = -1;
@@ -909,7 +912,7 @@ sub check_empty_masks {
 		if ( is_mask_end($$line) ) {
 
 			# If the endif is right after the mask start, we have to do something about it.
-			if ( $i == ( $mask_block_start + 1 ) ) {
+			if ( $i && ($i == ( $mask_block_start + 1 )) ) {
 
 				# Re-enable the removal of the "#if 0" and of the "#endif" line
 				substr( $hHunk->{lines}[ $i - 1 ], 0, 1 ) = "-";
@@ -931,6 +934,7 @@ sub check_empty_masks {
 				splice( @{ $hHunk->{lines} }, $i + 1, 0, ( "+#endif // 1" ) );
 
 				$hHunk->{count} += 1;
+				$i += 1; ## Already known...
 			} ## end if ($need_endif_conversion)
 
 			$local_imb             = 0;
