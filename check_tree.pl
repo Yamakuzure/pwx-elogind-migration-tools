@@ -1226,7 +1226,8 @@ sub check_masks {
 			substr( $$line, 0, 1 ) = " ";  ## Remove '-'
 			$in_insert_block = 1;
 			$in_mask_block   = 0;
-			$mask_end_line   = -1;
+			$mask_block_start = $i;
+			$mask_end_line    = -1;
 
 			# While we are here we can check the previous line.
 			# All inserts shall be preceded by an empty line to enhance readability.
@@ -1263,7 +1264,7 @@ sub check_masks {
 			$in_mask_block    = 0;
 			$in_else_block    = 0;
 			$mask_block_start = -1;
-			$mask_end_line == -1 and $mask_end_line = $i;
+			$mask_end_line    = $i;
 			next;
 		} ## end if ( is_mask_end($$line...))
 
@@ -1272,49 +1273,64 @@ sub check_masks {
 		if ( is_insert_end($$line) ) {
 			$in_insert_block or return hunk_failed("check_masks: #endif // 1 found outside any insert block");
 			substr( $$line, 0, 1 ) = " ";  ## Remove '-'
-			$in_insert_block = 0;
-			$in_else_block   = 0;
-			$mask_end_line   = -1;
+			$in_insert_block  = 0;
+			$in_else_block    = 0;
+			$mask_block_start = -1;
+			$mask_end_line    = $i;
 			next;
 		} ## end if ( is_insert_end($$line...))
 
 		# End regular #if
 		$$line =~ m/^-#endif/ and --$regular_ifs;
 
-		# Remove '-' prefixes in all lines within insert and mask-else blocks
-		# -------------------------------------------------------------------
-		if (   ( $$line =~ m,^-, )
-			&& ( $in_insert_block || ( $in_mask_block && $in_else_block ) ) )
-		{
-			substr( $$line, 0, 1 ) = " ";  ## Remove '-'
-		}
-
-		# Special check for additions that might wreak havoc:
-		# ---------------------------------------------------
-		if ( $$line =~ m,^\+, ) {
-
-			# If upstream adds something after a mask #else block, we move it up before the #else.
-			# ( See issues #1 and #4 )
-			# ------------------------------------------------------------------------------------
-			if ( ( $mask_end_line > -1 ) && !$in_mask_block ) {
-				my $moved_line = $$line;
-				splice( @{ $hHunk->{lines} }, $i, 1 );  ## Order matters here.
-				splice( @{ $hHunk->{lines} }, $mask_end_line++, 0, $moved_line );
-
-				# Note: No change to $hHunk->{count} here, as the lines are moved.
-				next;
-			} ## end if ( ( $mask_end_line ...))
-
-			# If a name reverts pulls a line under a mask start, push it back up.
+		# Special treatment for all mask-else and insert blocks.
+		# (Well, that's what this function is all about, isn't it?)
+		if ( $in_insert_block || ( $in_mask_block && $in_else_block ) ) {
+			# Remove '-' prefixes in all lines within insert and mask-else blocks
 			# -------------------------------------------------------------------
-			if ( ( $mask_block_start > -1 ) && $in_mask_block && ( 1 == ( $i - $mask_block_start ) ) ) {
-				my $moved_line = $$line;
-				splice( @{ $hHunk->{lines} }, $i, 1 );  ## Order matters here, too.
-				splice( @{ $hHunk->{lines} }, $mask_block_start++, 0, $moved_line );
+			if ( $$line =~ m,^-, ) {
+				substr( $$line, 0, 1 ) = " ";  ## Remove '-'
+			}
 
-				# Note: No change to $hHunk->{count} here, as the lines are moved.
+			# Special check for additions/keepers that might (will!) wreak havoc:
+			# -------------------------------------------------------------------
+			else {
+
+				# The following cases have been met:
+				# a) upstream adds something after a mask #else block ( See issues #1 and #4 )
+				# b) name reverts push lines under a mask start
+				# c) diff removes lines from a masked block or before an insert, but keeps
+				#    common lines inside mask-else or insert blocks
+				# d) as a follow-up on c), diff wants to add a line and adds it after the
+				#    kept common line inside our domain.
+				# All these cases can be handled with two simple solutions.
+				# ------------------------------------------------------------------------------------
+				my $cpy_line    = $$line;
+				my $tgt_line_no = $mask_end_line > -1 ? $mask_end_line : $mask_block_start;
+
+				# Case 1 ; The keeper: Copy the offending line back above the else/insert
+				# -----------------------------------------------------------------------
+				if ( $$line =~m,^ , ) {
+					substr( $cpy_line, 0, 1 ) = "+";  ## Above, this is an addition.
+					splice( @{ $hHunk->{lines} }, $tgt_line_no++, 0, $cpy_line );
+					$hHunk->{count} += 1;
+					$i++; ## We have to advance i, or the next iteration puts as back here.
+				}
+
+				# Case 1 ; The addition: move the offending line back above the else/insert
+				# -----------------------------------------------------------------------
+				else {
+					splice( @{ $hHunk->{lines} }, $i, 1 );  ## Order matters here.
+					splice( @{ $hHunk->{lines} }, $tgt_line_no++, 0, $cpy_line );
+	
+					# Note: No change to $hHunk->{count} here, as the lines are moved.
+				} ## end if ( ( $mask_end_line ...))
+
+				# No matter whether we have copied or moved, the if/else moved down.
+				$mask_end_line > -1 and ++$mask_end_line or ++$mask_block_start;
+
 				next;
-			} ## end if ( ( $mask_block_start...))
+			}
 		} elsif ( !$in_mask_block ) {
 
 			# End our mask block ending awareness at the first non-insertion line after a mask block.
