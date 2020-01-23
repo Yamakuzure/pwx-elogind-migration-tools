@@ -58,6 +58,9 @@
 # 1.1.0    2019-10-02  sed, PrydeWorX  Add check_empty_masks() to detect masks that became empty
 # 1.2.0    2019-10-11  sed, PrydeWorX  Fixed check_empty_masks() to eliminate false positives and rewrote
 #                                        check_useless() so it can catch useless blocks, too.
+# 1.2.1    2020-01-23  sed, PrydeWorX  Fixed a bug that caused large removals to be undone if they started
+#                                        right after additional includes for elogind. Further improved
+#                                        check_masks() greatly!
 #
 # ========================
 # === Little TODO list ===
@@ -76,7 +79,7 @@ use Try::Tiny;
 # ================================================================
 # ===        ==> ------ Help Text and Version ----- <==        ===
 # ================================================================
-Readonly my $VERSION     => "1.2.0"; ## Please keep this current!
+Readonly my $VERSION     => "1.2.1"; ## Please keep this current!
 Readonly my $VERSMIN     => "-" x length($VERSION);
 Readonly my $PROGDIR     => dirname($0);
 Readonly my $PROGNAME    => basename($0);
@@ -1122,10 +1125,11 @@ sub check_includes {
 			next;
 		} ## end if ( $$line =~ m,^[- ]\s*//+.*needed by elogind.*,i)
 
-		# === Other 2 : elogind include blocks end, when the first not      ===
-		# ===           removed EMPTY line is found                         ===
+		# === Other 2 : elogind include blocks end, when the first line is  ===
+		# ===           found that does not starts with #include            ===
+		# ===
 		# =====================================================================
-		$in_elogind_block and ( $$line =~ m,^[ +]\s*$, ) and $in_elogind_block = 0;
+		$in_elogind_block and (!( $$line =~ m,^.\s*#include$, )) and $in_elogind_block = 0;
 
 		# === Other 3 : Undo all other removals in elogind include blocks   ===
 		# =====================================================================
@@ -1519,7 +1523,7 @@ sub check_name_reverts {
 
 		# Note down removals
 		# ---------------------------------
-		if ( $$line =~ m/^-[# ]*\s*(.*elogind.*)\s*$/ ) {
+		if ( $$line =~ m/^[- ][# ]*\s*(.*elogind.*)\s*$/ ) {
 			$hRemovals{$1} = { line => $i, spliceme => 0 };
 			next;
 		}
