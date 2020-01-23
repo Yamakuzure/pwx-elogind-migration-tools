@@ -1299,7 +1299,7 @@ sub check_masks {
 
 			# Special check for additions/keepers that might (will!) wreak havoc:
 			# -------------------------------------------------------------------
-			else {
+			elsif ( $move_to_line > -1 ) {
 
 				# The following cases have been met:
 				# a) upstream adds something after a mask #else block ( See issues #1 and #4 )
@@ -1362,7 +1362,7 @@ sub check_masks {
 	}  ## End of looping lines
 
 	# Note down how this hunk ends before first pruning
-	$hHunk->{masked_end} = $in_mask_block && !$in_else_block ? 1 : 0;
+	$hHunk->{masked_end}  = $in_mask_block && !$in_else_block ? 1 : 0;
 
 	return 1;
 } ## end sub check_masks
