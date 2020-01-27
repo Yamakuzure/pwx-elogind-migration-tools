@@ -860,7 +860,7 @@ sub check_empty_masks {
 			$mask_block_start = $i;
 
 			# Note down mask message in case we leave a message
-			$$line =~ m,^[- ]///\s+(.+)$, and $mask_message = $1;
+			$$line =~ m,///\s*(.+)\s*$, and $mask_message = $1;
 
 			next;
 		} ## end if ( is_mask_start($$line...))
@@ -872,7 +872,7 @@ sub check_empty_masks {
 			$local_ieb = 0;
 
 			# Note down mask message in case we leave a message
-			$$line =~ m,^[- ]///\s+(.+)$, and $mask_message = $1;
+			$$line =~ m,///\s*(.+)\s*$, and $mask_message = $1;
 
 			next;
 		} ## end if ( is_insert_start($$line...))
@@ -1129,7 +1129,14 @@ sub check_includes {
 		# ===           found that does not starts with #include            ===
 		# ===
 		# =====================================================================
-		$in_elogind_block and (!( $$line =~ m,^.\s*#include$, )) and $in_elogind_block = 0;
+		if ( $in_elogind_block && !( $$line =~ m,^.\s*#include$, ) ) {
+
+			# diff may want to remove the first empty line after our block.
+			( $$line =~ m,^-\s*$, ) and substr( $$line, 0, 1 ) = " ";
+
+			# Done now...
+			$in_elogind_block = 0;
+		}
 
 		# === Other 3 : Undo all other removals in elogind include blocks   ===
 		# =====================================================================
