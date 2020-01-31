@@ -61,6 +61,8 @@
 # 1.2.1    2020-01-23  sed, PrydeWorX  Fixed a bug that caused large removals to be undone if they started
 #                                        right after additional includes for elogind. Further improved
 #                                        check_masks() greatly!
+# 1.2.2    2020-01-31  sed, PrydeWorX  Do the checking whether shell/xml preparations are needed a bit more
+#                                        sophisticated and effectively.
 #
 # ========================
 # === Little TODO list ===
@@ -79,7 +81,7 @@ use Try::Tiny;
 # ================================================================
 # ===        ==> ------ Help Text and Version ----- <==        ===
 # ================================================================
-Readonly my $VERSION     => "1.2.1"; ## Please keep this current!
+Readonly my $VERSION     => "1.2.2"; ## Please keep this current!
 Readonly my $VERSMIN     => "-" x length($VERSION);
 Readonly my $PROGDIR     => dirname($0);
 Readonly my $PROGNAME    => basename($0);
@@ -115,6 +117,29 @@ Options :
 #;
 
 # ================================================================
+# ===       ==> -------- File name patterns -------- <==       ===
+# ================================================================
+Readonly my %FILE_NAME_PATTERNS => (
+	"shell" => [
+		'Makefile',
+		'meson',
+		'\.gitignore$',
+		'\.gperf$',
+		'\.in$',
+		'\.m4$',
+		'\.pl$',
+		'\.po$',
+		'\.sh$',
+		'\.sym$'
+	],
+	"xml" => [
+		'\.xml$',
+		'\.ent\.in$',
+		'\.policy\.in$/'
+	]
+);
+
+# ================================================================
 # ===        ==> -------- Global variables -------- <==        ===
 # ================================================================
 my $do_create       = 0;   ## If set to 1, a non-existing file is created.
@@ -145,10 +170,12 @@ my %hFile = ();  ## Main data structure to manage a complete compare of two file
                  # ( count  : Number of hunks stored
                  #   create : Set to 1 if this is a new file to be created, 0 otherwise.
                  #   hunks  : Arrayref with the Hunks, stored in %hHunk instances
+                 #   is_sh  : 1 if the file name has a known shell pattern
+                 #   is_xml : 1 if the file name has a known xml pattern
                  #   output : Arrayref with the lines of the final patch
                  #   part   : local relative file path
                  #   patch  : PROGDIR/patches/<part>.patch (With / replaced by _ in <part>)
-                 #   pwxfile: Set to 1 if it is a prepared shell file (See prepare_shell())
+                 #   pwxfile: Set to 1 if it is a prepared shell/xml file (See prepare_[shell,xml]())
                  #   source : WORKDIR/<part>
                  #   target : UPSTREAM/<part>
                  # )
@@ -367,7 +394,7 @@ for my $file_part (@source_files) {
 	  and printf( "%d Hunk%s\n", $have_hunk, $have_hunk > 1 ? "s" : "" )
 	  or print("clean\n");
 
-	# Shell and meson files must be unprepared. See unprepare_shell()
+	# Shell and xml files must be unprepared. See unprepare_[shell,xml]()
 	$hFile{pwxfile} and ( unprepare_shell or unprepare_xml );
 
 	# Now skip the writing if there are no hunks
@@ -475,11 +502,25 @@ sub build_hFile {
 	my $patch = $part;
 	$patch =~ s/\//_/g;
 
+	# Determine whether this is a shell or xml file needing preparations.
+	my $is_sh  = 0;
+	my $is_xml = 0;
+	for my $pat (@{$FILE_NAME_PATTERNS{"xml"}}) {
+		$part =~ m/$pat/ and $is_xml = 1 and last;
+	}
+	if ( 0 == $is_xml ) {
+		for my $pat (@{$FILE_NAME_PATTERNS{"shell"}}) {
+			$part =~ m/$pat/ and $is_sh = 1 and last;
+		}
+	}
+
 	# Build the central data structure.
 	%hFile = (
 		count   => 0,
 		create  => $isNew,
 		hunks   => [],
+		is_sh   => $is_sh,
+		is_xml  => $is_xml,
 		output  => [],
 		part    => "$part",
 		patch   => "$PROGDIR/patches/${patch}.patch",
@@ -1831,15 +1872,11 @@ sub diff_hFile {
 		$? or print "same\n" and return 0;
 
 		# Shell and meson files must be prepared. See prepare_meson()
-		( $hFile{source} =~ m/Makefile/ or $hFile{source} =~ m/meson/ or $hFile{source} =~ m/\.gitignore$/ or $hFile{source} =~ m/\.gperf$/ or ( $hFile{source} =~ m/\.in$/ and ( !( $hFile{source} =~ m/\.policy\.in$/ ) ) ) or $hFile{source} =~ m/\.m4$/ or $hFile{source} =~ m/\.pl$/ or $hFile{source} =~ m/\.po$/ or $hFile{source} =~ m/\.sh$/ or $hFile{source} =~ m/\.sym$/ )
-		  and $hFile{pwxfile} = 1
-		  and prepare_shell;
+		$hFile{is_sh} and $hFile{pwxfile} = 1 and prepare_shell;
 
 		# We mask double dashes in XML comments using XML hex entities. These
 		# must be unmasked for processing.
-		( $hFile{source} =~ m/\.xml$/ or $hFile{source} =~ m/\.policy\.in$/ )
-		  and $hFile{pwxfile} = 1
-		  and prepare_xml;
+		$hFile{is_xml} and $hFile{pwxfile} = 1 and prepare_xml;
 	} ## end if ( 0 == $hFile{create...})
 
 	# Let's have three shortcuts:
@@ -2506,10 +2543,7 @@ sub unprepare_shell {
 	my @lOut = ();
 
 	# Do not handle XML files here
-	$out =~ m/\.xml$/ and return 0;
-
-	# policy files are xml, too
-	$out =~ m/\.policy\.in$/ and return 0;
+	$hFile{is_xml} and return 0;
 
 	# Leech the temporary file
 	if ( open( my $fIn, "<", $in ) ) {
@@ -2615,6 +2649,9 @@ sub unprepare_xml {
 	my $out  = substr( $in, 0, -4 );
 	my @lIn  = ();
 	my @lOut = ();
+
+	# Do not handle shell files here
+	$hFile{is_sh} and return 0;
 
 	# Leech the temporary file
 	if ( open( my $fIn, "<", $in ) ) {
