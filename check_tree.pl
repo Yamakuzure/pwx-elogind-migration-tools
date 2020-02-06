@@ -63,6 +63,7 @@
 #                                        check_masks() greatly!
 # 1.2.2    2020-01-31  sed, PrydeWorX  Do the checking whether shell/xml preparations are needed a bit more
 #                                        sophisticated and effectively.
+# 1.3.0    2020-02-06  sed, PrydeWorX  From now on mask elses must be "#else // 0" to be recognized.
 #
 # ========================
 # === Little TODO list ===
@@ -81,7 +82,7 @@ use Try::Tiny;
 # ================================================================
 # ===        ==> ------ Help Text and Version ----- <==        ===
 # ================================================================
-Readonly my $VERSION     => "1.2.2"; ## Please keep this current!
+Readonly my $VERSION     => "1.3.0"; ## Please keep this current!
 Readonly my $VERSMIN     => "-" x length($VERSION);
 Readonly my $PROGDIR     => dirname($0);
 Readonly my $PROGNAME    => basename($0);
@@ -924,10 +925,7 @@ sub check_empty_masks {
 		# Switching from Mask to else.
 		# Note: Inserts have no #else, they make no sense.
 		# ---------------------------------------
-		if (   $local_imb
-			&& !$regular_ifs
-			&& is_mask_else($$line) )
-		{
+		if ( is_mask_else($$line) ) {
 			$local_ieb = 1;
 
 			# If the else starts right after a mask start, we have to do something about it.
@@ -1219,7 +1217,7 @@ sub check_includes {
 # ---       can also be done with :                                   ---
 # ---       Masking : "<!-- 0 /// <comment>" and "// 0 -->"           ---
 # ---       Adding  : "<!-- 1 /// <comment> --> and "<!-- // 1 -->"   ---
-# ---       Else    : "<!-- else -->"                                 ---
+# ---       Else    : "<!-- else // 0 -->"                                 ---
 # -----------------------------------------------------------------------
 sub check_masks {
 
@@ -1304,10 +1302,10 @@ sub check_masks {
 		# Switching from Mask to else.
 		# Note: Inserts have no #else, they make no sense.
 		# ---------------------------------------
-		if (   $in_mask_block
-			&& !$regular_ifs
-			&& is_mask_else($$line) )
-		{
+		if ( is_mask_else($$line) ) {
+			$in_mask_block
+			  or return hunk_failed("check_masks: Mask else found outside any mask block!");
+
 			substr( $$line, 0, 1 ) = " ";  ## Remove '-'
 			$in_else_block = 1;
 			$move_to_line  = $i;
@@ -1458,7 +1456,6 @@ sub check_musl {
 		# Quick mask checks, we must have the intermediate states
 		# -------------------------------------------------------
 		is_mask_start($$line) and ++$in_mask_block and next;
-		is_mask_else($$line) and ++$in_else_block and substr( $$line, 0, 1 ) = " " and next;
 		if ( is_mask_end($$line) ) {
 			$in_mask_block--;
 			$in_else_block--;
@@ -1486,9 +1483,13 @@ sub check_musl {
 		# Count regular #if
 		$$line =~ m/^-#if/ and ++$regular_ifs;
 
-		# Switching from __GLIBC__ to else - not needed.
-		# (done by is_else_block() above)
+		# Switching from __GLIBC__ to else
 		# ---------------------------------------
+		if ( $$line =~ m,^[- ]?#else\s+[/]+\s+__GLIBC__, ) {
+			++$in_else_block;
+			substr( $$line, 0, 1 ) = " ";
+			next;
+		}
 
 		# Ending a __GLBC__ block
 		# ---------------------------------------
@@ -2110,9 +2111,9 @@ sub is_mask_else {
 
 	defined($line) and length($line) or return 0;
 
-	if (   ( $line =~ m/^[- ]?#else/ )
-		|| ( $line =~ m/else\s+-->\s*$/ )
-		|| ( $line =~ m,\*\s+else\s+\*\*/\s*$, ) )
+	if (   ( $line =~ m,^[- ]?#else\s+[/]+\s+0, )
+		|| ( $line =~ m,else\s+[/]+\s+0\s+-->\s*$, )
+		|| ( $line =~ m,\*\s+else\s+[/]+\s+0\s+\*\*/\s*$, ) )
 	{
 		return 1;
 	} ## end if ( ( $line =~ m/^[- ]?#else/...))
@@ -2309,7 +2310,11 @@ sub prepare_shell {
 				die("Illegal file");
 			}
 			$is_block = 1;
-		} elsif ( $is_block && is_mask_else($line) ) {
+		} elsif ( is_mask_else($line) ) {
+			if ( !$is_block ) {
+				print "ERROR: $in:$line_no : Mask else outside mask!\n";
+				die("Illegal file");
+			}
 			$is_else = 1;
 		} elsif ( is_mask_end($line) ) {
 			if ( !$is_block ) {
@@ -2379,7 +2384,11 @@ sub prepare_xml {
 				die("Illegal file");
 			}
 			$is_block = 1;
-		} elsif ( $is_block && is_mask_else($line) ) {
+		} elsif ( is_mask_else($line) ) {
+			if ( !$is_block ) {
+				print "ERROR: $in:$line_no : Mask else outside mask!\n";
+				die("Illegal file");
+			}
 			$is_else = 1;
 		} elsif ( is_mask_end($line) ) {
 			if ( !$is_block ) {
@@ -2568,7 +2577,11 @@ sub unprepare_shell {
 				die("Illegal file");
 			}
 			$is_block = 1;
-		} elsif ( $is_block && is_mask_else($line) ) {
+		} elsif ( is_mask_else($line) ) {
+			if ( !$is_block ) {
+				print "ERROR: $in:$line_no : Mask else outside mask!\n";
+				die("Illegal file");
+			}
 			$is_else = 1;
 		} elsif ( is_mask_end($line) ) {
 			if ( !$is_block ) {
@@ -2620,7 +2633,7 @@ sub unprepare_shell {
 		is_mask_end($line)   and $is_block = 0;
 		is_mask_start($line) and $is_block = 1;
 		$is_block or $is_else = 0;
-		$is_block and is_mask_else($line) and $is_else = 1;
+		is_mask_else($line) and $is_else = 1;
 		$is_block
 		  and ( !$is_else )
 		  and "@@" ne substr( $line, 0, 2 )
@@ -2676,7 +2689,11 @@ sub unprepare_xml {
 				die("Illegal file");
 			}
 			$is_block = 1;
-		} elsif ( $is_block && is_mask_else($line) ) {
+		} elsif ( is_mask_else($line) ) {
+			if ( !$is_block ) {
+				print "ERROR: $in:$line_no : Mask else outside mask!\n";
+				die("Illegal file");
+			}
 			$is_else = 1;
 		} elsif ( is_mask_end($line) ) {
 			if ( !$is_block ) {
@@ -2720,7 +2737,7 @@ sub unprepare_xml {
 		is_mask_end($line)   and $is_block = 0;
 		is_mask_start($line) and $is_block = 1;
 		$is_block or $is_else = 0;
-		$is_block and is_mask_else($line) and $is_else = 1;
+		is_mask_else($line) and $is_else = 1;
 		$is_block
 		  and ( !$is_else )
 		  and $line =~ s/([^<!]+)--([^>]+)/${1}&#x2D;&#x2D;${2}/g;
