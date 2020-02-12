@@ -51,20 +51,6 @@ if [[ $minVers -gt 234 ]]; then
 
 	extra_opts="$@"
 
-	set +x
-	if [[ "x$extra_opts" != "x" ]]; then
-		echo -n "Configure ? [y/N] (cg $cgdefault) [$extra_opts]"
-	else
-		echo -n "Configure ? [y/N] (cg $cgdefault)  "
-	fi
-	read answer
-
-	if [[ "x$answer" != "xy" ]]; then
-		exit 0
-	fi
-
-	set -x
-
 	CFLAGS="-march=native -pipe ${my_CFLAGS} -Wall -Wextra -Wunused -Wno-unused-parameter -Wno-unused-result -ftree-vectorize" \
 	LDFLAGS="${my_LDFLAGS}" \
 		meson $debug_opt --prefix $PREFIX/usr -Drootprefix=$PREFIX \
@@ -84,17 +70,8 @@ if [[ $minVers -gt 234 ]]; then
 			 -Dzshcompletiondir=$PREFIX/usr/share/zsh/site-functions \
 			 $extra_opts $(pwd -P) $(pwd -P)/build
 
-	set +x
-	echo -n "Build and install ? [y/N] "
-	read answer
-
-	if [[ "x$answer" = "xy" ]]; then
-		set -x
-		ninja -C build man/update-man-rules && \
-		ninja -C build                      && \
-		ninja -C build install
-		set +x
-	fi
+  ninja -C build man/update-man-rules
+  set +x
 else
 	# Up to 233 the old autotools build system is used
 
