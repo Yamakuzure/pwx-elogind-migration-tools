@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="Perl5Settings">
+    <option name="targetPerlVersion">
+      <PerlVersion>
+        <option name="major" value="28" />
+        <option name="revision" value="5" />
+      </PerlVersion>
+    </option>
+    <option name="PERL_CRITIC_ENABLED" value="true" />
+    <option name="PERL_TIDY_ARGS" value="-l=168 -dt=4 -csc -ce -nbl -nolc -msc=2 -iscl -otr -cab=1" />
+    <option name="PERL_CRITIC_ARGS" value="--stern" />
+  </component>
+</project>
