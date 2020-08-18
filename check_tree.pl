@@ -64,6 +64,8 @@
 # 1.2.2    2020-01-31  sed, PrydeWorX  Do the checking whether shell/xml preparations are needed a bit more
 #                                        sophisticated and effectively.
 # 1.3.0    2020-02-06  sed, PrydeWorX  From now on mask elses must be "#else // 0" to be recognized.
+# 1.3.1    2020-08-18  sed, PrydeWorX  As this is easy to get wrong, elogind include additions can be be marked
+#                                        with "needed for elogind", too.
 #
 # ========================
 # === Little TODO list ===
@@ -82,7 +84,7 @@ use Try::Tiny;
 # ================================================================
 # ===        ==> ------ Help Text and Version ----- <==        ===
 # ================================================================
-Readonly my $VERSION     => "1.3.0"; ## Please keep this current!
+Readonly my $VERSION     => "1.3.1"; ## Please keep this current!
 Readonly my $VERSMIN     => "-" x length($VERSION);
 Readonly my $PROGDIR     => dirname($0);
 Readonly my $PROGNAME    => basename($0);
@@ -968,7 +970,7 @@ sub check_empty_masks {
 			} ## end if ( $i == ( $mask_block_start...))
 
 			# If we need an endif conversion, do it now:
-			elsif ($need_endif_conversion) {
+			elsif ( $need_endif_conversion ) {
 
 				# First re-enable the removal:
 				substr( $hHunk->{lines}[$i], 0, 1 ) = "-";
@@ -1149,7 +1151,7 @@ sub check_includes {
 
 		# === Other 1 : Look for "needed by elogind" block starts           ===
 		# =====================================================================
-		if ( $$line =~ m,^[- ]\s*//+.*needed by elogind.*,i ) {
+		if ( $$line =~ m,^[- ]\s*//+.*needed\s+(?:by|for)\s+elogind.*,i ) {
 			$in_elogind_block = 1;
 
 			# Never remove the block start
@@ -1162,7 +1164,7 @@ sub check_includes {
 			  and substr( $hHunk->{lines}[ $i - 1 ], 0, 1 ) = " ";
 
 			next;
-		} ## end if ( $$line =~ m,^[- ]\s*//+.*needed by elogind.*,i)
+		} ## end if ( $$line =~ m,^[- ]\s*//+.*needed\s+(?:by|for)\s+elogind.*,i)
 
 		# === Other 2 : elogind include blocks end, when the first line is  ===
 		# ===           found that does not starts with #include            ===
@@ -2798,7 +2800,7 @@ sub read_includes {
 		} ## end if ( $in_elogind_block...)
 
 		# elogind include blocks are started by a comment featuring "needed by elogind"
-		if ( $$line =~ m,^[ -]\s*/+.*needed by elogind.*,i ) {
+		if ( $$line =~ m,^[ -]\s*/+.*needed\s+(?:by|for)\s+elogind.*,i ) {
 			$in_elogind_block = 1;
 			next;
 		}
