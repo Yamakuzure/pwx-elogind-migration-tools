@@ -1748,7 +1748,7 @@ sub check_useless {
 		# --- (1) Note down removal ---
 		if ($$line =~ m/^-(.*)$/) {
 			my $token = $1 || "";
-			$token =~ s/^\s+$//; ## No whitespace lines!
+			$token =~ s/\s+$//; ## No trailing whitespace/lines!
 			$r_start > -1 or $r_start = $i;
 			length($token)
 				and $hRemovals{$token} = $i
@@ -1759,7 +1759,7 @@ sub check_useless {
 		# --- (2) Check Addition ---
 		if ($$line =~ m/^\+(.*)$/) {
 			my $token = $1 || "";
-			$token =~ s/^\s+$//; ## No whitespace lines!
+			$token =~ s/\s+$//; ## No trailing whitespace/lines!
 			$r_offset > -1 or $r_offset = $i - $r_start;
 			if ( ( length($token) && ( defined($hRemovals{$token}) && ($hRemovals{$token} + $r_offset) == $i ) )
 			  || (!length($token) && ( defined($hRemovals{"empty" . ($i - $r_offset)}) ) ) )
