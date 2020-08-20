@@ -70,7 +70,9 @@
 # ========================
 # === Little TODO list ===
 # ========================
-# currently nothing...
+#
+# * check_name_reverts() should be enhanced to not fail if there are reverts on 2+ consecutive lines
+#
 # ------------------------
 use strict;
 use warnings;
