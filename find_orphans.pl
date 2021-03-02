@@ -104,7 +104,7 @@ sub wanted;               ## Callback function for File::Find
 
 $main_result = parse_args( @ARGV );
 ( ( !$main_result ) ## Note: Error or --help given, then exit.
-	  or ( $show_help and print "$USAGE_LONG" ) ) and exit( !$main_result );
+  or ( $show_help and print "$USAGE_LONG" ) ) and exit( !$main_result );
 generate_file_list or exit 1;
 generate_build_map or exit 1;
 generate_include_map or exit 1;
@@ -142,7 +142,7 @@ while ( 1 == $have_change ) {
 
 		$include_map{ $bn }{ is_header } or next;        ## source files already handled
 		$include_map{ $bn }{ included_in } > 0 and next; ## Not interesting (yet)
-		defined( $invalidated{ $bn } ) and next;             ## Already handled
+		defined( $invalidated{ $bn } ) and next;         ## Already handled
 
 		# So the file is nowhere included, and not recorded, if we are here.
 		$have_change = 1;
@@ -154,8 +154,8 @@ while ( 1 == $have_change ) {
 		# Only add to %orphans what actually exists
 		defined( $known_files{ $bn } ) or next;
 		defined( $include_map{ $bn }{ built_by } )
-			  and $orphans{ $bn } = 3
-			  or $orphans{ $bn }  = 2;
+		and $orphans{ $bn } = 3
+		or $orphans{ $bn }  = 2;
 
 	}
 }
@@ -169,8 +169,8 @@ END {
 
 		# In any case, but showing help, print out the orphan list
 		scalar keys %orphans
-			  and print "\nThe orphans have been found:\n================\n"
-			  or print "\nNo orphans were found\n";
+		and print "\nThe orphans have been found:\n================\n"
+		or print "\nNo orphans were found\n";
 		for my $status ( 1 .. 3 ) {
 			1 == $status and print( " 1) These source files are not built:\n----------------\n" );
 			2 == $status and print( " 2) These headers are nowhere included:\n----------------\n" );
@@ -180,8 +180,8 @@ END {
 				my $fp = $include_map{ $fn }{ file_path };
 				"unknown" eq $fp and next;
 				$status < 3
-					  and printf( " - $file_fmt\n", $fp )
-					  or printf( " - $file_fmt -> %s\n", $fp, $include_map{ $fn }{ built_by } );
+				and printf( " - $file_fmt\n", $fp )
+				or printf( " - $file_fmt -> %s\n", $fp, $include_map{ $fn }{ built_by } );
 			}
 		}
 		# Let's print out all includes that are needed, and listed in the original
@@ -190,7 +190,7 @@ END {
 		for my $fn ( sort keys %include_map ) {
 			defined( $known_files{ $fn } ) or next;
 			if ( ( $include_map{ $fn }{ included_in } > 0 )
-				  && !defined( $include_map{ $fn }{ built_by } ) ) {
+			     && !defined( $include_map{ $fn }{ built_by } ) ) {
 				my $mf = "_unknown";
 				for my $bf ( keys %build_map ) {
 					defined( $build_map{ $bf }{ $fn } ) and $mf = $bf and last;
@@ -201,14 +201,14 @@ END {
 		scalar keys %build_missing and print "\nNeeded headers not in build lists:\n================\n";
 		for my $bf ( sort keys %build_missing ) {
 			"_unknown" eq $bf
-				  and print " - Not in any build file at all :\n"
-				  or print " - $bf :\n";
-			for my $fn ( sort keys %{$build_missing{$bf}} ) {
+			and print " - Not in any build file at all :\n"
+			or print " - $bf :\n";
+			for my $fn ( sort keys %{ $build_missing{$bf} } ) {
 				print "   * $fn\n";
 			}
 		}
 	} ## not showing help
-}         ## end END
+}     ## end END
 
 # ================================================================
 # ===        ==> ---- Function Implementations ---- <==        ===
@@ -259,12 +259,12 @@ sub generate_build_map {
 
 			# Record our findings in the build map
 			$is_masked and ( (
-				  ( ( 0 < $build_map{ $bf }{ $bn } ) and $build_map{ $bf }{ $bn } = 2 )
-					    or $build_map{ $bf }{ $bn }                           = -1
-			) or (
-				  ( ( 0 > $build_map{ $bf }{ $bn } ) and $build_map{ $bf }{ $bn } = 2 )
-					    or $build_map{ $bf }{ $bn }                           = 1
-			) );
+				                   ( ( 0 < $build_map{ $bf }{ $bn } ) and $build_map{ $bf }{ $bn } = 2 )
+				                   or $build_map{ $bf }{ $bn }                                     = -1
+			                 ) or (
+				                   ( ( 0 > $build_map{ $bf }{ $bn } ) and $build_map{ $bf }{ $bn } = 2 )
+				                   or $build_map{ $bf }{ $bn }                                     = 1
+			                 ) );
 
 			# Pre-fill the include map if this entry is not masked
 			$is_masked and next;
@@ -277,7 +277,7 @@ sub generate_build_map {
 				  file_path   => $fp
 			};
 		} ## End of scanning lines
-	}         ## End of foreach @build_files
+	}     ## End of foreach @build_files
 
 	return 1;
 }
@@ -305,14 +305,14 @@ sub generate_file_list {
 
 	# Just to be sure...
 	scalar @build_files
-		  or print( "ERROR: No build files found? Where the hell are we?\n" )
-		  and return 0;
+	or print( "ERROR: No build files found? Where the hell are we?\n" )
+	   and return 0;
 	scalar @header_files
-		  or print( "ERROR: No header files found? Where the hell are we?\n" )
-		  and return 0;
+	or print( "ERROR: No header files found? Where the hell are we?\n" )
+	   and return 0;
 	scalar @source_files
-		  or print( "ERROR: No source files found? Where the hell are we?\n" )
-		  and return 0;
+	or print( "ERROR: No source files found? Where the hell are we?\n" )
+	   and return 0;
 
 	# Get the maximum file length and build $file_fmt
 	my $mlen = 0;
@@ -342,8 +342,8 @@ sub generate_include_map {
 
 		$bn = basename( $sf );
 		$sf =~ m/\.h[^.]*/
-			  and $is_header = 1
-			  or $is_header  = 0;
+		and $is_header = 1
+		or $is_header  = 0;
 
 		# Init the map entry, if this file was not found in and meson.build file
 		defined( $include_map{ $bn } ) or $include_map{ $bn } = {
@@ -389,7 +389,7 @@ sub generate_include_map {
 				$include_map{ $if }{ included_in }        += 1;
 			}
 		} ## End of scanning source file
-	}         ## End of checking source and header files
+	}     ## End of checking source and header files
 
 	return 1;
 }
@@ -401,10 +401,10 @@ sub generate_include_map {
 # -----------------------------------------------------------------------
 sub invalidate_includes {
 	my ( $sf ) = @_;
-	foreach my $fn ( keys %{$include_map{ $sf }{ includes }} ) {
+	foreach my $fn ( keys %{ $include_map{ $sf }{ includes } } ) {
 		defined( $include_map{ $fn } ) or next;
 		if ( defined( $include_map{ $fn }{ included_by }{ $sf } )
-			  && ( $include_map{ $fn }{ included_by }{ $sf } > 0 ) ) {
+		     && ( $include_map{ $fn }{ included_by }{ $sf } > 0 ) ) {
 			$include_map{ $fn }{ included_by }{ $sf } = 0;
 			$include_map{ $fn }{ included_in }        -= 1;
 		}
@@ -447,10 +447,10 @@ sub parse_args {
 sub wanted {
 
 	-f $_
-		  and ( ( ( $_ =~ m/\.c(?:pp|xx)?$/ ) and push @source_files, $File::Find::name )
-		     or ( ( $_ =~ m/\.h(?:pp|xx)?$/ ) and push @header_files, $File::Find::name )
-		     or ( ( $_ =~ m/meson\.build$/ )  and push @build_files,  $File::Find::name ) )
-		  and $known_files{ basename( $_ ) } = 1;
+	and ( ( ( $_ =~ m/\.c(?:pp|xx)?$/ ) and push @source_files, $File::Find::name )
+	      or ( ( $_ =~ m/\.h(?:pp|xx)?$/ ) and push @header_files, $File::Find::name )
+	      or ( ( $_ =~ m/meson\.build$/ ) and push @build_files, $File::Find::name ) )
+	and $known_files{ basename( $_ ) } = 1;
 
 	return 1;
 } ## end sub wanted
