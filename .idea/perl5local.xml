@@ -3,14 +3,16 @@
   <component name="Perl5LocalSettings">
     <option name="externalLibrariesPaths">
       <list>
-        <option value="/usr/lib64/perl5/5.32" />
+        <option value="/usr/lib64/perl5/5.34" />
+        <option value="/usr/lib64/perl5/vendor_perl/5.34" />
         <option value="/usr/lib64/perl5/vendor_perl/5.32" />
         <option value="/usr/lib64/perl5/vendor_perl/5.30.3" />
       </list>
     </option>
-    <option name="perlInterpreter" value="Local, System: Perl 5.32.1" />
+    <option name="perlInterpreter" value="Local, System: Perl 5.34.0" />
   </component>
   <component name="Perl5XSubsState">
+    <option name="isActual" value="false" />
     <option name="myFilesMap">
       <map>
         <entry key="/usr/lib64/perl5/5.32/x86_64-linux/auto/B/B.so" value="1613378148624" />

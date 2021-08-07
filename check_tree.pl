@@ -2623,7 +2623,7 @@ sub unprepare_shell {
 		$is_block
 		and ( !$is_else )
 		and '@@' ne substr( $line, 0, 2 )
-		and ( !( $line =~ m/^[ ]+#(?:if|else|endif)/ ) )
+		and ( !( $line =~ m/^[- ]+#(?:if|else|endif)/ ) )
 		and substr( $line, 1, 0 ) = "# ";
 
 		# Make sure not to demand to add empty comment lines with trailing spaces
