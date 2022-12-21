@@ -341,7 +341,7 @@ sub apply_patch {
 			return 0;
 		};
 
-		print "It looks like we were missing " . ( scalar @lRev ) . " commits. Trying to apply...\n";
+		print "It looks like we were missing " . ( scalar @lRev ) . " commits. Trying to apply the relevant ones...\n";
 
 		for my $line ( @lRev ) {
 			chomp $line;
@@ -352,7 +352,7 @@ sub apply_patch {
 				defined( $next_id ) and ( 0 == $lPatches[$next_id]{"applied"} ) or next;
 
 				foreach my $next_patch ( @{ $lPatches[$next_id]{"paths"} } ) {
-					$done += apply_patch( $next_patch );
+					( -f "$output_path/$next_patch" ) and $done += apply_patch( "$output_path/$next_patch" );
 				}
 			}
 		} ## end for my $line (@lRev)
