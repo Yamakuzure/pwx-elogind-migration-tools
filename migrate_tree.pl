@@ -352,7 +352,7 @@ sub apply_patch {
 				defined( $next_id ) and ( 0 == $lPatches[$next_id]{"applied"} ) or next;
 
 				foreach my $next_patch ( @{ $lPatches[$next_id]{"paths"} } ) {
-					( -f "$output_path/$next_patch" ) and $done += apply_patch( "$output_path/$next_patch" );
+					( -f "$output_path/$next_patch" ) and ( $file ne $next_patch ) and $done += apply_patch( "$output_path/$next_patch" );
 				}
 			}
 		} ## end for my $line (@lRev)
@@ -362,7 +362,7 @@ sub apply_patch {
 
 		# Now, if $done is greater than 1, we can try the failed commit again
 		print "Applied $done commits.\n";
-		( $done > 0 ) and $result = apply_patch( $pFile ) or return 0;
+		( $done > 0 ) and $result = apply_patch( $pFile );
 	}
 
 	( $result > 0 ) or return $result; ## Give up and exit if everything fails
