@@ -17,6 +17,7 @@
 #                                        is not already existing.
 # 0.4.0    2019-01-27  sed, PrydeWorX  Switch from topological to chronological order.
 # 0.4.1    2019-02-20  sed, PrydeWorX  Do not consider files in man/rules/ (Issue #3)
+# 0.4.2    2022-12-21  sed, PrydeWorX  Try to remedy patch failures by looking for missing commits in between.
 #
 # ========================
 # === Little TODO list ===
@@ -24,7 +25,7 @@
 #
 use strict;
 use warnings;
-use Cwd qw(getcwd abs_path);
+use Cwd qw( getcwd abs_path );
 use File::Basename;
 use File::Find;
 use Git::Wrapper;
@@ -34,15 +35,15 @@ use Try::Tiny;
 # ================================================================
 # ===        ==> ------ Help Text and Version ----- <==        ===
 # ================================================================
-Readonly my $VERSION     => "0.4.1"; ## Please keep this current!
-Readonly my $VERSMIN     => "-" x length( $VERSION );
-Readonly my $PROGDIR     => dirname( $0 );
-Readonly my $PROGNAME    => basename( $0 );
-Readonly my $WORKDIR     => getcwd();
-Readonly my $CHECK_TREE  => abs_path( $PROGDIR . "/check_tree.pl" );
+Readonly my $VERSION => "0.4.1"; ## Please keep this current!
+Readonly my $VERSMIN => "-" x length( $VERSION );
+Readonly my $PROGDIR => dirname( $0 );
+Readonly my $PROGNAME => basename( $0 );
+Readonly my $WORKDIR => getcwd();
+Readonly my $CHECK_TREE => abs_path( $PROGDIR . "/check_tree.pl" );
 Readonly my $COMMIT_FILE => abs_path( $PROGDIR . "/last_mutual_commits.csv" );
 Readonly my $USAGE_SHORT => "$PROGNAME <--help|[OPTIONS] <upstream path> <refid>>";
-Readonly my $USAGE_LONG  => qq#
+Readonly my $USAGE_LONG => qq#
 elogind git tree migration V$VERSION
 ----------------------------$VERSMIN
 
@@ -50,7 +51,7 @@ elogind git tree migration V$VERSION
   commit, branch or tag. Then search its history since the last mutual commit
   for any commit that touches at least one file in any subdirectory of the
   directory this script was called from.
-  
+
   Please note that this program was written especially for elogind. It is very
   unlikely that it can be used in any other project.
 
@@ -86,12 +87,15 @@ Notes:
 my $commit_count   = 0;  # It is easiest to count the relevant commits globally.
 my $commits_read   = 0;  # Set to one once the commit file is completely read.
 my $do_advance     = 0;  # If set by --advance, use src-<hash> as last commit.
-my %hSrcCommits    = (); # Record here which patch file is which commit.
 my %hDirectories   = (); # Filled when searching relevant files, used to validate new files.
+my %hPatches       = (); # A simple reverse hash to get from file to index in @lPatches
+my %hRefIDs        = (); # A simple hash to get from ref id to index in @lPatches
+my %hSrcCommits    = (); # Record here which patch file is which commit.
 my @lCommits       = (); # List of all relevant commits that have been found, in topological order.
 my $main_result    = 1;  # Used for parse_args() only, as simple $result is local everywhere.
 my $mutual_commit  = ""; # The last mutual commit to use. Will be read from csv if not set by args.
 my $output_path    = "";
+my @lPatches       = (); # List of hashrefs with the patch information (File, refid, whether applied or not)
 my $previous_refid = ""; # Store current upstream state, so we can revert afterwards.
 my $prg_line       = ""; # Current line when showing progress
 my $show_help      = 0;
@@ -128,27 +132,6 @@ my %hMutuals = (); # Mapping of the $COMMIT_FILE, that works as follows:
 #     the next last mutual commit, when this migration run is finished. To make
 #     this automatic, the --advance option triggers exactly that.
 
-# ================================================================
-# ===        ==> --------  Function list   -------- <==        ===
-# ================================================================
-
-sub apply_patches;      # Apply a reworked patch.
-sub build_hCommits;     # Build a hash of commits for the current hFile.
-sub build_hFile;        # Add an entry to hFiles for a specific target file.
-sub build_lCommits;     # Build the topological list of all relevant commits.
-sub build_lPatches;     # Fill $output_path with formatted patches from @lCommits.
-sub check_tree;         # Use check_tree.pl on the given commit and file.
-sub checkout_tree;      # Checkout the given refid on the given path.
-sub generate_file_list; # Find all relevant files and store them in @wanted_files
-sub get_last_mutual;    # Find or read the last mutual refid between this and the upstream tree.
-sub handle_sig;         # Signal handler so we don't break without writing a new commit file.
-sub parse_args;         # Parse ARGV for the options we support
-sub rework_patch;       # Use check_tree.pl to generate valid diffs on all valid files within the patch.
-sub set_last_mutual;    # Write back %hMutuals to $COMMIT_FILE
-sub shorten_refid;      # Take DIR and REFID and return the shortest possible REFID in DIR.
-sub show_prg;           # Helper to show a progress line that is not permanent.
-sub wanted;             # Callback function for File::Find
-
 # set signal-handlers
 local $SIG{'INT'}  = \&handle_sig;
 local $SIG{'QUIT'} = \&handle_sig;
@@ -163,9 +146,9 @@ local $SIG{'TERM'} = \&handle_sig;
 $output_path = abs_path( "$PROGDIR/patches" );
 $main_result = parse_args( @ARGV );
 (
-	  ( !$main_result ) ## Note: Error or --help given, then exit.
-	  or ( $show_help and print "$USAGE_LONG" ) ) and exit( !$main_result );
-get_last_mutual and generate_file_list
+	( !$main_result ) ## Note: Error or --help given, then exit.
+	or ( $show_help and print "$USAGE_LONG" ) ) and exit( !$main_result );
+get_last_mutual() and generate_file_list()
 or exit 1;
 checkout_tree( $upstream_path, $wanted_refid, 1 )
 or exit 1;
@@ -181,8 +164,9 @@ or exit 1;
 print "Searching relevant commits ...";
 for my $file_part ( @source_files ) {
 	build_hFile( $file_part ) or next;
-	build_hCommits or next;
+	build_hCommits() or next;
 }
+show_prg( "" );
 printf( " %d commits found\n", $commit_count );
 
 # -----------------------------------------------------------------
@@ -191,13 +175,13 @@ printf( " %d commits found\n", $commit_count );
 # ---    a list that has the correct order the commits must be  ---
 # ---    applied.                                               ---
 # -----------------------------------------------------------------
-build_lCommits or exit 1;
+build_lCommits() or exit 1;
 
 # -----------------------------------------------------------------
 # --- 3) Go through the relevant commits and create formatted   ---
 # ---    patches for them.                                      ---
 # -----------------------------------------------------------------
-build_lPatches or exit 1;
+build_lPatches() or exit 1;
 
 # -----------------------------------------------------------------
 # --- 4) Go through the patches and rewrite them. We only want  ---
@@ -219,6 +203,16 @@ for ( my $i    = 0; $i < $commit_count; ++$i ) {
 		exit 1;
 	}
 
+	my $file = basename( $lFiles[0] );
+	my $id   = $hPatches{$file};
+	defined( $id ) or print "\nERROR: $lFiles[0] not listed in hPatches!\n" and return 0;
+	defined( $lPatches[$id]{"applied"} ) or print "\nERROR: $lFiles[0] not listed in lPatches!\n" and return 0;
+
+	# If the patch was already applied (for some error recoverage) then skip it.
+	( 1 == $lPatches[$id]{"applied"} ) and show_prg( "Skipping $file - already applied" ) and next;
+
+	# Now rework the patch
+	# ---------------------------------------------------------
 	show_prg( sprintf( "Reworking %s", basename( $lFiles[0] )));
 	my $r = rework_patch( $lFiles[0] );
 	$r or exit 1;    ## Error detected
@@ -230,7 +224,11 @@ for ( my $i    = 0; $i < $commit_count; ++$i ) {
 	# ---    gets patched later.                                ---
 	# -------------------------------------------------------------
 	show_prg( sprintf( "Applying  %s", basename( $lFiles[0] )));
-	apply_patch( $lFiles[0] ) or exit 1;
+	$r = apply_patch( $lFiles[0] );
+
+	if ( 0 == $r ) {
+		exit 1;
+	}
 
 	# The patch file is no longer needed. Keeping it would lead to confusion.
 	unlink( $lFiles[0] );
@@ -246,7 +244,7 @@ show_prg( "" );
 # ================================================================
 
 END {
-	set_last_mutual;
+	set_last_mutual();
 	length( $previous_refid ) and checkout_tree( $upstream_path, $previous_refid, 0 );
 }
 
@@ -262,6 +260,17 @@ sub apply_patch {
 	my $git         = Git::Wrapper->new( $WORKDIR );
 	my @lGitRes     = ();
 	my $patch_lines = "";
+
+	# --- Ensure everything is solid ---
+	# ----------------------------------
+	my $file = basename( $pFile );
+	my $id   = $hPatches{$file};
+	defined( $id ) or print "\nERROR: $file not listed in hPatches!\n" and return 0;
+	defined( $lPatches[$id]{"applied"} ) or print "\nERROR: $file not listed in lPatches!\n" and return 0;
+
+	# If the patch was already applied, do not try it again.
+	( 1 == $lPatches[$id]{"applied"} ) and return 1;
+
 
 	# --- 1) Read the patch, we have to use it directly via STDIN ---
 	# ---------------------------------------------------------------
@@ -280,15 +289,15 @@ sub apply_patch {
 	my $result = 1;
 	try {
 		@lGitRes = $git->am(
-			  {
-					"3"    => 1,
-					-STDIN => $patch_lines
-			  } );
+			{
+				"3"    => 1,
+				-STDIN => $patch_lines
+			} );
 	} ## end try
 	catch {
 		# We try again without 3-way-merging
 		$git->am( { "abort" => 1 } );
-		show_prg( sprintf( "Applying  %s (2nd try)", basename( $pFile )));
+		show_prg( sprintf( "Applying  %s (2nd try)", $file ));
 		$result = 0;
 	};
 
@@ -306,18 +315,72 @@ sub apply_patch {
 			print "Exit Code : " . $_->status . "\n";
 			print "Message   : " . $_->error . "\n";
 		};
-		$result or return $result; ## Give up and exit
-	}                              ## end if ( 0 == $result )
+	} ## end if ( 0 == $result )
 
-	# --- 4) Get the new commit id, so we can update %hMutuals ---
+	# --- 4) If this did not work, try to apply missing patches, then this one. ---
+	# -----------------------------------------------------------------------------
+	if ( 0 == $result ) {
+		print "Trying to identify missing commits ...\n";
+
+		my $prv_rid = $previous_refid;
+
+		( $prv_rid ne $wanted_refid ) and checkout_tree( $upstream_path, $wanted_refid, 1 );
+
+		my $refid  = $lPatches[$id]{"refid"};
+		my $mutual = $hMutuals{$upstream_path}{$wanted_refid}{mutual_full};
+		my @lRev   = ();
+		my $done   = 0; ## Don't return 1 if this stays being zero or we'll get an endless loop if nothing appliable is found!
+
+		try {
+			my $git_ex = Git::Wrapper->new( $upstream_path );
+			@lRev      = $git_ex->rev_list( { "reverse" => 1, "no-merges" => 1, "full-history" => 1, "dense" => 1, "topo-order" => 1 }, "${mutual}...${refid}" );
+		} catch {
+			print "ERROR: Couldn't fetch commits\n";
+			print "Exit Code : " . $_->status . "\n";
+			print "Message   : " . $_->error . "\n";
+			return 0;
+		};
+
+		print "It looks like we were missing " . ( scalar @lRev ) . " commits. Trying to apply...\n";
+
+		for my $line ( @lRev ) {
+			chomp $line;
+
+			if ( defined( $hCommits{$line} ) ) {
+				# The commit is relevant for us
+				my $next_id = $hRefIDs{$line};
+				defined( $next_id ) and ( 0 == $lPatches[$next_id]{"applied"} ) or next;
+
+				foreach my $next_patch ( @{ $lPatches[$next_id]{"paths"} } ) {
+					$done += apply_patch( $next_patch );
+				}
+			}
+		} ## end for my $line (@lRev)
+
+		# Revert to where we were
+		( $prv_rid ne $previous_refid ) and checkout_tree( $upstream_path, $prv_rid, 1 );
+
+		# Now, if $done is greater than 1, we can try the failed commit again
+		print "Applied $done commits.\n";
+		( $done > 0 ) and $result = apply_patch( $pFile ) or return 0;
+	}
+
+	( $result > 0 ) or return $result; ## Give up and exit if everything fails
+
+	# --- 5) Get the new commit id, so we can update %hMutuals ---
 	# ---------------------------------------------------------------
 	$hMutuals{$upstream_path}{$wanted_refid}{tgt} = shorten_refid( $WORKDIR, "HEAD" );
 	length( $hMutuals{$upstream_path}{$wanted_refid}{tgt} ) or return 0; # Give up and exit
 
 	# The commit of the just applied patch file becomes the last mutual commit.
-	$hMutuals{$upstream_path}{$wanted_refid}{mutual} =
-		  shorten_refid( $upstream_path, $hSrcCommits{$pFile} );
+	$hMutuals{$upstream_path}{$wanted_refid}{mutual_full} = $hSrcCommits{$pFile};
+	$hMutuals{$upstream_path}{$wanted_refid}{mutual}      =
+		shorten_refid( $upstream_path, $hSrcCommits{$pFile} );
 	length( $hMutuals{$upstream_path}{$wanted_refid}{mutual} ) or return 0; # Give up and exit
+
+	# --- 6) "Tick off" the patch in our patch list ---
+	# ------------------------------------------------------------------
+	( $result > 0 ) and $lPatches[$id]{"applied"} = 1;
 
 	return $result;
 } ## end sub apply_patch
@@ -327,7 +390,7 @@ sub apply_patch {
 # ------------------------------------------------------
 sub build_hCommits {
 	my $git  = Git::Wrapper->new( $upstream_path );
-	my @lRev = $git->rev_list( { "reverse" => 1, }, "${mutual_commit}...${wanted_refid}", $hFile->{src} );
+	my @lRev = $git->rev_list( {}, "${mutual_commit}...${wanted_refid}", $hFile->{src} );
 
 	for my $line ( @lRev ) {
 		chomp $line;
@@ -345,7 +408,7 @@ sub build_hCommits {
 sub build_lCommits {
 	my $git = Git::Wrapper->new( $upstream_path );
 
-	my @lRev = $git->rev_list( { "reverse" => 1, }, "${mutual_commit}...${wanted_refid}" );
+	my @lRev = $git->rev_list( { "reverse" => 1, "no-merges" => 1, "full-history" => 1, "dense" => 1, "topo-order" => 1 }, "${mutual_commit}...${wanted_refid}" );
 
 	for my $line ( @lRev ) {
 		chomp $line;
@@ -381,9 +444,9 @@ sub build_hFile {
 
 	# Build the central data structure.
 	$hFiles{$tgt} = {
-		  patch => $output_path . "/" . $patch . ".patch",
-		  src   => $src,
-		  tgt   => $tgt
+		patch => $output_path . "/" . $patch . ".patch",
+		src   => $src,
+		tgt   => $tgt
 	};
 
 	# This is now our current hFile
@@ -405,19 +468,19 @@ sub build_lPatches {
 	for my $refid ( @lCommits ) {
 		@lRev = $git->rev_list( { "1" => 1, oneline => 1 }, $refid );
 
-		show_prg( sprintf( "Building %03d: %s", ++$cnt, $lRev[0] ));
+		show_prg( sprintf( "Building %03d: %s", ++$cnt, substr( $lRev[0], 0, 49 )));
 
 		try {
 			@lPath = $git->format_patch(
-				  {
-						"1"                  => 1,
-						"find-copies"        => 1,
-						"find-copies-harder" => 1,
-						"numbered"           => 1,
-						"output-directory"   => $output_path
-				  },
-				  "--start-number=$cnt",
-				  $refid
+				{
+					"1"                  => 1,
+					"find-copies"        => 1,
+					"find-copies-harder" => 1,
+					"numbered"           => 1,
+					"output-directory"   => $output_path
+				},
+				"--start-number=$cnt",
+				$refid
 			);
 		} ## end try
 		catch {
@@ -426,15 +489,27 @@ sub build_lPatches {
 			print "Message   : " . $_->error . "\n";
 			$result = 0;
 		};
-		$result or return $result;
-	} ## end for my $refid (@lCommits)
-	$cnt and show_prg( "" ) and print( "$cnt patches built\n" );
 
-	# Just a safe guard, that is almost guaranteed to never catch.
-	if ( $cnt != $commit_count ) {
-		print "ERROR: $commit_count patches expected, but only $cnt patches generated!\n";
-		return 0;
-	}
+		$result or return $result;
+
+		# Write down the paths relevant for this:
+		while ( my $path = shift @lPath ) {
+			my $file     = basename( $path );
+			defined( $hPatches{$file} ) and print "\nERROR: $file already exists in hPatches!\n" and exit 1;
+			$hPatches{$file} = $cnt;
+			if ( defined( $lPatches[$cnt]{paths} ) ) {
+				push( @{ $lPatches[$cnt]{paths} }, $file );
+			} else {
+				$lPatches[$cnt] = {
+					"applied" => 0,
+					"paths"   => [ $file ],
+					"refid"   => $refid
+				};
+			}
+			defined( $hRefIDs{$refid} ) or $hRefIDs{$refid} = $cnt;
+		}
+	} ## end for my $refid (@lCommits)
+	$cnt and show_prg( "" ) and print( "$cnt / $commit_count patches built (" . ( $commit_count - $cnt ) . " merge commits skipped)\n" );
 
 	return 1;
 } ## end sub build_lPatches
@@ -447,7 +522,7 @@ sub check_tree {
 	my $stNew                     = "";
 
 	# If this is the creation of a new file, the hFile must be built.
-	if ( $isNew ) {
+	if ( $isNew > 0 ) {
 		my $tgt_file = basename( $file );
 		my $tgt_dir  = dirname( $file );
 		$tgt_file =~ s/systemd/elogind/g;
@@ -461,9 +536,9 @@ sub check_tree {
 		my $patch = $tgt;
 		$patch =~ s/\//_/g;
 		$hFiles{$file} = {
-			  patch => $output_path . "/" . $patch . ".patch",
-			  src   => $file,
-			  tgt   => $tgt
+			patch => $output_path . "/" . $patch . ".patch",
+			src   => $file,
+			tgt   => $tgt
 		};
 		$stNew = "--create ";
 	} ## end if ($isNew)
@@ -628,9 +703,9 @@ sub get_last_mutual {
 					checkout_tree( $usp, $ref, 0 ) or return 0;
 
 					$hMutuals{$usp}{$ref} = {
-						  mutual => shorten_refid( $usp, $mut ),
-						  src    => undef,
-						  tgt    => undef
+						mutual => shorten_refid( $usp, $mut ),
+						src    => undef,
+						tgt    => undef
 					};
 					$src =~ m/^src-(\S+)$/ and $hMutuals{$usp}{$ref}{src} = shorten_refid( $usp, $1 );
 					$tgt =~ m/^tgt-(\S+)$/ and $hMutuals{$usp}{$ref}{tgt} = shorten_refid( $WORKDIR, $1 );
@@ -944,8 +1019,8 @@ sub set_last_mutual {
 	# Don't do anything if we haven't finished reading the commit file:
 	$commits_read or return 1;
 
-	my $out_text                      =
-		  "# Automatically generated commit information\n" . "# Only edit if you know what these do!\n\n";
+	my $out_text =
+		"# Automatically generated commit information\n" . "# Only edit if you know what these do!\n\n";
 	my ( $pLen, $rLen, $mLen, $sLen ) = ( 0, 0, 0, 0 ); # Length for the fmt
 
 	# First we need a length to set all fields to.
@@ -954,8 +1029,8 @@ sub set_last_mutual {
 	for my $path ( sort keys %hMutuals ) {
 		length( $path ) > $pLen and $pLen = length( $path );
 		for my $refid ( sort keys %{ $hMutuals{$path} } ) {
-			my $hM                                                                =
-				  $hMutuals{$path}{$refid}; # Shortcut!
+			my $hM =
+				$hMutuals{$path}{$refid}; # Shortcut!
 			length( $refid ) > $rLen and $rLen                                    = length( $refid );
 			length( $hM->{mutual} ) > $mLen and $mLen                             = length( $hM->{mutual} );
 			defined( $hM->{src} ) and ( length( $hM->{src} ) > 4 ) and $hM->{src} = "src-" . $hM->{src}
@@ -1027,7 +1102,7 @@ sub show_prg {
 
 	$prg_line = $msg;
 
-	if ( length( $prg_line ) ) {
+	if ( length( $prg_line ) > 0 ) {
 		local $| = 1;
 		print $msg;
 	}
