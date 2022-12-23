@@ -172,6 +172,7 @@ END {
 		and print "\nThe orphans have been found:\n================\n"
 		or print "\nNo orphans were found\n";
 		for my $status ( 1 .. 3 ) {
+			my $have_some = 0;
 			1 == $status and print( " 1) These source files are not built:\n----------------\n" );
 			2 == $status and print( " 2) These headers are nowhere included:\n----------------\n" );
 			3 == $status and print( " 3) These headers are also listed in build files:\n----------------\n" );
@@ -182,6 +183,19 @@ END {
 				$status < 3
 				and printf( " - $file_fmt\n", $fp )
 				or printf( " - $file_fmt -> %s\n", $fp, $include_map{ $fn }{ built_by } );
+				++$have_some;
+			}
+			if ( ($have_some > 0) && ($status < 3) ) {
+				print( "Copy&Paste List:\n" );
+				for my $fn ( sort keys %orphans ) {
+					$orphans{ $fn } == $status or next;
+					my $fp = $include_map{ $fn }{ file_path };
+					"unknown" eq $fp and next;
+					printf( "$fp " );
+				}
+				print "\n================\n";
+			} elsif ( 0 == $have_some ) {
+				print " ...none found ...\n";
 			}
 		}
 		# Let's print out all includes that are needed, and listed in the original
