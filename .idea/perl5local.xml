@@ -9,7 +9,7 @@
         <option value="/usr/lib64/perl5/vendor_perl/5.36/x86_64-linux" />
       </list>
     </option>
-    <option name="perlInterpreter" value="Local, System: Perl 5.34.0" />
+    <option name="perlInterpreter" value="Local, System: Perl 5.36.0" />
   </component>
   <component name="Perl5XSubsState">
     <option name="myFilesMap">

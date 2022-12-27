@@ -1590,11 +1590,12 @@ sub check_name_reverts {
 
 			# There is some specialities:
 			# =============================================================
-			# 1) References to the systemd github site must not be changed,
+			# 1) References to the systemd github or .io site must not be changed,
 			#    unless it is a reference to the issues tracker.
 			$replace_text =~ m,github\.com/systemd,
 			and ( !( $replace_text =~ m,/issues, ) )
 			and next;
+			$replace_text =~ m,systemd\.io, and next;
 
 			# 2) /run/systemd/ must not be changed, as other applications
 			#    rely on that naming.
