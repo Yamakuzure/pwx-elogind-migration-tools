@@ -136,8 +136,11 @@ Readonly my %FILE_NAME_PATTERNS => (
 		'\.m4$',
 		'\.pl$',
 		'\.po$',
+		'\.py$',
 		'\.sh$',
-		'\.sym$'
+		'\.sym$',
+		'bash/loginctl',
+		'zsh/_loginctl'
 	],
 	"xml"   => [
 		'\.xml$',
@@ -1633,6 +1636,8 @@ sub check_name_reverts {
 			# and must therefore not be renamed to elogind_headers.
 			$$line =~ s/elogind_headers/systemd_headers/g;
 
+			# systemd-sleep.conf is *not* elogind-sleep.conf, but just sleep.conf in elogind
+			$$line =~ s/(?:systemd|elogind)-(sleep.conf)/$1/;
 		} ## end if ( $$line =~ m/^\+[# ]*\s*(.*systemd.*)\s*$/)
 	}     ## end for ( my $i = 0 ; $i < ...)
 
