@@ -1603,6 +1603,11 @@ sub check_name_reverts {
 			#       systemd does not have something like that.
 			$replace_text =~ m,/run/systemd, and next;
 
+			# 3) References to systemd-homed and other tools not shipped by elogind
+			#    must not be changed either, or users might think elogind has its
+			#    own replacements.
+			$replace_text =~ m,systemd-(home|import|journal|network|oom|passwor|udev)d, and next;
+
 			# Make the following easier with a simple shortcut:
 			my $o_txt =
 				defined( $hRemovals{$our_text_long} ) ? $our_text_long
