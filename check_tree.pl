@@ -284,7 +284,7 @@ and (
 	checkout_upstream( $wanted_commit ) ## Note: Does nothing if $wanted_commit is already checked out.
 	or exit 1
 );
-generate_file_list or exit 1; ## Note: @wanted_files is heeded.
+generate_file_list() or exit 1; ## Note: @wanted_files is heeded.
 
 # ================================================================
 # ===        ==> -------- = MAIN PROGRAM = -------- <==        ===
@@ -1610,6 +1610,9 @@ sub check_name_reverts {
 			#    must not be changed either, or users might think elogind has its
 			#    own replacements.
 			$replace_text =~ m,systemd-(home|import|journal|network|oom|passwor|udev)d, and next;
+
+			# 4) To be a dropin-replacement, we also need to not change any org[./]freedesktop[./]systemd strings
+			$replace_text =~ m,/?org[./]freedesktop[./]systemd, and next;
 
 			# Make the following easier with a simple shortcut:
 			my $o_txt =
