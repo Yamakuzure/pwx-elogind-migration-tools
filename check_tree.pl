@@ -67,12 +67,13 @@
 # 1.3.1    2020-08-18  sed, PrydeWorX  As this is easy to get wrong, elogind include additions can be be marked
 #                                        with "needed for elogind", too.
 # 1.3.2    2021-03-02  sed, PrydeWorX  Add LINGUAS to the list of shell files, as elogind has additional locales now.
+# 1.4.0    2023-05-12  sed, EdenWorX   Fix accidential renaming of systemd-only apps and revert reversals into mask blocks.
 #
 # ========================
 # === Little TODO list ===
 # ========================
 #
-# * check_name_reverts() should be enhanced to not fail if there are reverts on 2+ consecutive lines
+# ...nothing right now...
 #
 # ------------------------
 use strict;
@@ -87,7 +88,7 @@ use Try::Tiny;
 # ================================================================
 # ===        ==> ------ Help Text and Version ----- <==        ===
 # ================================================================
-Readonly my $VERSION => "1.3.2"; ## Please keep this current!
+Readonly my $VERSION => "1.4.0"; ## Please keep this current!
 Readonly my $VERSMIN => "-" x length( $VERSION );
 Readonly my $PROGDIR => dirname( $0 );
 Readonly my $PROGNAME => basename( $0 );
@@ -1570,13 +1571,12 @@ sub check_name_reverts {
 			next;
 		}
 
-		# We do not reject reverts in mask blocks.
-		# ----------------------------------------
-		$in_mask_block and ( 1 > $in_else_block ) and next;
-
 		# Note down removals
 		# ---------------------------------
 		if ( $$line =~ m/^[- ][# ]*\s*(.*elogind.*)\s*$/ ) {
+			# We do not reject reverts in mask blocks.
+			$in_mask_block and ( 1 > $in_else_block ) and next;
+			# Otherwise note it down
 			$hRemovals{$1} = { line => $i, spliceme => 0 };
 			next;
 		}
@@ -1584,12 +1584,7 @@ sub check_name_reverts {
 		# Check Additions
 		# ---------------------------------
 		if ( $$line =~ m/^\+[# ]*\s*(.*systemd.*)\s*$/ ) {
-			my $replace_text   = $1;
-			my $our_text_long  = $replace_text;
-			my $our_text_short = $our_text_long;
-			$our_text_long =~ s/systemd-logind/elogind/g;
-			$our_text_short =~ s/systemd/elogind/g;
-			$our_text_long eq $replace_text and $our_text_long =~ s/systemd-stable/elogind/g;
+			my $replace_text = $1;
 
 			# There is some specialities:
 			# =============================================================
@@ -1606,33 +1601,83 @@ sub check_name_reverts {
 			#       systemd does not have something like that.
 			$replace_text =~ m,/run/systemd, and next;
 
-			# 3) References to systemd-homed and other tools not shipped by elogind
+			# 3) To be a dropin-replacement, we also need to not change any org[./]freedesktop[./]systemd strings
+			$replace_text =~ m,/?org[./]freedesktop[./]systemd, and next;
+
+			# 4) Do not replace referrals to systemd[1]
+			$replace_text =~ m,systemd\[1\], and next;
+
+			# 5) References to systemd-homed and other tools not shipped by elogind
 			#    must not be changed either, or users might think elogind has its
 			#    own replacements.
-			$replace_text =~ m,systemd-(home|import|journal|network|oom|passwor|udev)d, and next;
+			my $is_wrong_replace = ( ( $replace_text =~ m,systemd-(home|import|journal|network|oom|passwor|udev)d, ) ||
+			                         ( $replace_text =~ m,systemd-(analyze|creds|cryptsetup|firstboot|home|nspawn|repart|syscfg|sysusers|tmpfiles|devel/), ) )
+			                       ? 1 : 0;
 
-			# 4) To be a dropin-replacement, we also need to not change any org[./]freedesktop[./]systemd strings
-			$replace_text =~ m,/?org[./]freedesktop[./]systemd, and next;
+			# We have to differentiate between simple systemd, longer systemd-logind and man page volume numbers
+			my $our_text_long  = $replace_text;
+			my $our_text_short = $our_text_long;
+			$our_text_long =~ s/systemd-logind/elogind/g;
+			$our_text_short =~ s/systemd/elogind/g;
+			$our_text_long eq $replace_text and $our_text_long =~ s/systemd-stable/elogind/g;
+			my $our_text_man_page = $our_text_short;
+			$our_text_man_page =~ s,<manvolnum>1</manvolnum>,<manvolnum>8</manvolnum>,;
 
 			# Make the following easier with a simple shortcut:
 			my $o_txt =
-				defined( $hRemovals{$our_text_long} ) ? $our_text_long
-				: defined( $hRemovals{$our_text_short} ) ? $our_text_short
-				  : "";
+				defined( $hRemovals{$our_text_long} ) ? $our_text_long :
+				defined( $hRemovals{$our_text_short} ) ? $our_text_short :
+				defined( $hRemovals{$our_text_man_page} ) ? $our_text_man_page :
+				"";
 
-			# --- Case A) If this is a simple switch, undo it. ---
-			# ----------------------------------------------------
-			if ( length( $o_txt ) && ( $hRemovals{$o_txt}{line} == ( $i - 1 ) ) ) {
+			# --- Case A) If we accidentally renamed a systemd-only tool to elogind-<foo>,  ---
+			# ---         although we do not ship it, do not deny the reversal.             ---
+			# ---------------------------------------------------------------------------------
+
+			if ( 1 == $is_wrong_replace ) {
+				( 0 < length( $o_txt ) ) and next;
+
+				# However, if the patch wants to _add_ a reference to a tool we do not ship, splice it away
+				$hRemovals{$replace_text}{spliceme} = $i;
+
+				# If this is followed by an empty line addition, splice that, too
+				( $i < ( $hHunk->{count} - 1 ) ) and
+				( $hHunk->{lines}[$i + 1] =~ m,^\+[#]*\s*[*/]*\s*$, ) and
+				$hRemovals{$replace_text . "_blank"}{spliceme} = $i + 1;
+			}
+
+			# --- Case B) If this is a simple switch, or a move from non-masked to masked, undo it. ---
+			# -----------------------------------------------------------------------------------------
+			if ( ( 0 < length( $o_txt ) ) && (
+				( $hRemovals{$o_txt}{line} == ( $i - 1 ) ) ||
+				( $in_mask_block && ( 1 > $in_else_block ) ) ) ) {
 				substr( $hHunk->{lines}[ $hRemovals{$o_txt}{line} ], 0, 1 ) = " ";
 				$hRemovals{$o_txt}{spliceme}                                = $i; ## Splice the addition
 				next;
 			}
 
-			# --- Case B) Otherwise replace the addition with our text. ---
-			# -------------------------------------------------------------
-			$our_text_long eq $replace_text
-			and $$line =~ s/systemd/elogind/g
-			or $$line =~ s/systemd-logind/elogind/g;
+			# --- Case C) Otherwise replace the addition with our text, if we have one. ---
+			# -----------------------------------------------------------------------------
+			if ( $our_text_short ne $our_text_man_page ) {
+				#				printf( "\nReplacing (man)\n\t'%s' with\n\t'%s'\n\t\t\ŧ", $replace_text, $our_text_man_page );
+				$$line =~ s,systemd,elogind,g;
+				$$line =~ s,<manvolnum>1</manvolnum>,<manvolnum>8</manvolnum>,;
+			} elsif ( $replace_text ne $our_text_long ) {
+				#				printf( "\nReplacing (long)\n\t'%s' with\n\t'%s'\n\t\t\ŧ", $replace_text, $our_text_long );
+				$replace_text =~ m/systemd-stable/
+				and $$line =~ s,systemd-stable,elogind,g
+				or $$line =~ s,systemd-logind,elogind,g;
+			} elsif ( $replace_text ne $our_text_short ) {
+				#				printf( "\nReplacing (short)\n\t'%s' with\n\t'%s'\n\t\t\ŧ", $replace_text, $our_text_short );
+				$$line =~ s,systemd,elogind,g;
+			} else {
+				print "\nERROR: This does not make sense:\n";
+				printf( "\treplace_text     : '%s'\n", $replace_text );
+				printf( "\tour_text_short   : '%s'\n", $our_text_short );
+				printf( "\tour_text_long    : '%s'\n", $our_text_long );
+				printf( "\tour_text_man_page: '%s'\n", $our_text_man_page );
+				exit 1;
+			}
 
 			# In some meson files, we need the variable "systemd_headers".
 			# This refers to the systemd API headers that get installed,
@@ -1640,7 +1685,8 @@ sub check_name_reverts {
 			$$line =~ s/elogind_headers/systemd_headers/g;
 
 			# systemd-sleep.conf is *not* elogind-sleep.conf, but just sleep.conf in elogind
-			$$line =~ s/(?:systemd|elogind)-(sleep.conf)/$1/;
+			$$line =~ s/(?:systemd|elogind)-(sleep\.conf)/$1/;
+
 		} ## end if ( $$line =~ m/^\+[# ]*\s*(.*systemd.*)\s*$/)
 	}     ## end for ( my $i = 0 ; $i < ...)
 

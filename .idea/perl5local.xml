@@ -12,6 +12,7 @@
     <option name="perlInterpreter" value="Local, System: Perl 5.36.0" />
   </component>
   <component name="Perl5XSubsState">
+    <option name="isActual" value="false" />
     <option name="myFilesMap">
       <map>
         <entry key="/usr/lib64/perl5/5.36/x86_64-linux/auto/B/B.so" value="1674644830002" />
