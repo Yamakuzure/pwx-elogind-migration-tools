@@ -284,7 +284,7 @@ and (
 	checkout_upstream( $wanted_commit ) ## Note: Does nothing if $wanted_commit is already checked out.
 	or exit 1
 );
-generate_file_list() or exit 1; ## Note: @wanted_files is heeded.
+generate_file_list or exit 1; ## Note: @wanted_files is heeded.
 
 # ================================================================
 # ===        ==> -------- = MAIN PROGRAM = -------- <==        ===
@@ -549,11 +549,12 @@ sub build_hFile {
 sub build_hHunk {
 	my ( $head, @lHunk ) = @_;
 	my $pos              = $hFile{count}++;
+	my $mark = '@@';
 
 	# The first line must be the hunk positional and size data.
 	# Example: @@ -136,6 +136,8 @@
 	# That is @@ -<source line>,<source length> +<target line>,<target length> @@
-	if ( $head =~ m/^@@ -(\d+),\d+ \+(\d+),\d+ @@/ ) {
+	if ( $head =~ m/^${mark} -(\d+),\d+ \+(\d+),\d+ ${mark}/ ) {
 		%{ $hFile{hunks}[$pos] } = (
 			count        => 0,
 			idx          => $pos,
