@@ -18,6 +18,7 @@
 # 0.4.0    2019-01-27  sed, PrydeWorX  Switch from topological to chronological order.
 # 0.4.1    2019-02-20  sed, PrydeWorX  Do not consider files in man/rules/ (Issue #3)
 # 0.4.2    2022-12-21  sed, PrydeWorX  Try to remedy patch failures by looking for missing commits in between.
+# 0.4.3    2023-10-25  sed, EdenWorX   If merge commits were skipped, substract them from the total commit count.
 #
 # ========================
 # === Little TODO list ===
@@ -35,7 +36,7 @@ use Try::Tiny;
 # ================================================================
 # ===        ==> ------ Help Text and Version ----- <==        ===
 # ================================================================
-Readonly my $VERSION => "0.4.1"; ## Please keep this current!
+Readonly my $VERSION => "0.4.3"; ## Please keep this current!
 Readonly my $VERSMIN => "-" x length( $VERSION );
 Readonly my $PROGDIR => dirname( $0 );
 Readonly my $PROGNAME => basename( $0 );
@@ -199,7 +200,7 @@ for ( my $i    = 0; $i < $commit_count; ++$i ) {
 		print "\nERROR: $fmt results in more than one patch!\n";
 		exit 1;
 	} elsif ( 1 > scalar @lFiles ) {
-		print "\nERROR: No patches found for $fmt!";
+		print "\nERROR: No patches found for $fmt!\n";
 		exit 1;
 	}
 
@@ -509,7 +510,17 @@ sub build_lPatches {
 			defined( $hRefIDs{$refid} ) or $hRefIDs{$refid} = $cnt;
 		}
 	} ## end for my $refid (@lCommits)
-	$cnt and show_prg( "" ) and print( "$cnt / $commit_count patches built (" . ( $commit_count - $cnt ) . " merge commits skipped)\n" );
+
+	# Show what we've got and fix the commit count if merge commits were skipped
+	if ( $cnt > 0 ) {
+		my $merge_commits = $commit_count - $cnt;
+		show_prg( "" );
+
+		( $merge_commits >= 0 ) or print "ERROR: More commits found than listed? ($cnt > $commit_count)\n" and exit 1;
+
+		print( "$cnt / $commit_count patches built, $merge_commits merge commits skipped.\n" );
+		$commit_count -= $merge_commits;
+	}
 
 	return 1;
 } ## end sub build_lPatches
