@@ -550,7 +550,7 @@ sub build_hFile {
 sub build_hHunk {
 	my ( $head, @lHunk ) = @_;
 	my $pos              = $hFile{count}++;
-	my $mark = '@@';
+	my $mark             = '@@';
 
 	# The first line must be the hunk positional and size data.
 	# Example: @@ -136,6 +136,8 @@
@@ -1574,7 +1574,8 @@ sub check_name_reverts {
 
 		# Note down removals
 		# ---------------------------------
-		if ( $$line =~ m/^[- ][# ]*\s*(.*elogind.*)\s*$/ ) {
+		if ( $$line =~ m/^[- ][#\/* ]*\s*(.*elogind.*)\s*[*\/ ]*$/ ) {
+			# printf("%s removal %d: \"%s\"\n", ($in_mask_block && ( 1 > $in_else_block )) ? "IGNORE" : "Note down", $i, $1);
 			# We do not reject reverts in mask blocks.
 			$in_mask_block and ( 1 > $in_else_block ) and next;
 			# Otherwise note it down
@@ -1584,8 +1585,12 @@ sub check_name_reverts {
 
 		# Check Additions
 		# ---------------------------------
-		if ( $$line =~ m/^\+[# ]*\s*(.*systemd.*)\s*$/ ) {
+		if ( $$line =~ m/^\+[#\/* ]*\s*(.*systemd.*)\s*[*\/ ]*$/ ) {
 			my $replace_text = $1;
+
+			# printf("%s addition %d: \"%s\"\n", ($in_mask_block && ( 1 > $in_else_block )) ? "IGNORE" : "Note down", $i, $1);
+			# We do not reject reverts in mask blocks.
+			$in_mask_block and ( 1 > $in_else_block ) and next;
 
 			# There is some specialities:
 			# =============================================================
@@ -1620,7 +1625,7 @@ sub check_name_reverts {
 			my $our_text_short = $our_text_long;
 			$our_text_long =~ s/systemd-logind/elogind/g;
 			$our_text_short =~ s/systemd/elogind/g;
-			$our_text_long eq $replace_text and $our_text_long =~ s/systemd-stable/elogind/g;
+			$our_text_long eq $replace_text and $our_text_long =~ s/systemd-stable/elogind/g; # Alternative if systemd-logind does not match
 			my $our_text_man_page = $our_text_short;
 			$our_text_man_page =~ s,<manvolnum>1</manvolnum>,<manvolnum>8</manvolnum>,;
 
@@ -1631,6 +1636,7 @@ sub check_name_reverts {
 				defined( $hRemovals{$our_text_man_page} ) ? $our_text_man_page :
 				"";
 
+			# printf("Got o_txt %d: \"%s\"\n", $i, $o_txt);
 			# --- Case A) If we accidentally renamed a systemd-only tool to elogind-<foo>,  ---
 			# ---         although we do not ship it, do not deny the reversal.             ---
 			# ---------------------------------------------------------------------------------
@@ -1654,22 +1660,23 @@ sub check_name_reverts {
 				( $in_mask_block && ( 1 > $in_else_block ) ) ) ) {
 				substr( $hHunk->{lines}[ $hRemovals{$o_txt}{line} ], 0, 1 ) = " ";
 				$hRemovals{$o_txt}{spliceme}                                = $i; ## Splice the addition
+				# printf("Undo %d and splice %d\n", $hRemovals{$o_txt}{line}, $i);
 				next;
 			}
 
 			# --- Case C) Otherwise replace the addition with our text, if we have one. ---
 			# -----------------------------------------------------------------------------
 			if ( $our_text_short ne $our_text_man_page ) {
-				#				printf( "\nReplacing (man)\n\t'%s' with\n\t'%s'\n\t\t\ŧ", $replace_text, $our_text_man_page );
+				# printf( "\nReplacing (man)\n\t'%s' with\n\t'%s'\n\t\t\t", $replace_text, $our_text_man_page );
 				$$line =~ s,systemd,elogind,g;
 				$$line =~ s,<manvolnum>1</manvolnum>,<manvolnum>8</manvolnum>,;
 			} elsif ( $replace_text ne $our_text_long ) {
-				#				printf( "\nReplacing (long)\n\t'%s' with\n\t'%s'\n\t\t\ŧ", $replace_text, $our_text_long );
+				# printf( "\nReplacing (long)\n\t'%s' with\n\t'%s'\n\t\t\t", $replace_text, $our_text_long );
 				$replace_text =~ m/systemd-stable/
 				and $$line =~ s,systemd-stable,elogind,g
 				or $$line =~ s,systemd-logind,elogind,g;
 			} elsif ( $replace_text ne $our_text_short ) {
-				#				printf( "\nReplacing (short)\n\t'%s' with\n\t'%s'\n\t\t\ŧ", $replace_text, $our_text_short );
+				# printf( "\nReplacing (short)\n\t'%s' with\n\t'%s'\n\t\t\t", $replace_text, $our_text_short );
 				$$line =~ s,systemd,elogind,g;
 			} else {
 				print "\nERROR: This does not make sense:\n";
@@ -1687,7 +1694,7 @@ sub check_name_reverts {
 
 			# systemd-sleep.conf is *not* elogind-sleep.conf, but just sleep.conf in elogind
 			$$line =~ s/(?:systemd|elogind)-(sleep\.conf)/$1/;
-
+			# printf("Final line: '%s'\n", $$line);
 		} ## end if ( $$line =~ m/^\+[# ]*\s*(.*systemd.*)\s*$/)
 	}     ## end for ( my $i = 0 ; $i < ...)
 
@@ -1697,6 +1704,7 @@ sub check_name_reverts {
 	for my $k ( keys %hRemovals ) {
 		$hRemovals{$k}{spliceme} or next;
 		$hSplices{ $hRemovals{$k}{spliceme} } = 1;
+		# printf("Splice line %d", $hRemovals{$k}{spliceme});
 	}
 	for my $l ( sort { $b <=> $a } keys %hSplices ) {
 		splice( @{ $hHunk->{lines} }, $l, 1 );
