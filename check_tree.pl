@@ -713,7 +713,8 @@ sub check_comments {
 			( ( $$line =~ m,^-\s*/\*+, ) && !( $$line =~ m,\*/[^/]*$, ) )
 			and $in_comment_block = 1;
 
-			substr( $$line, 0, 1 ) = " ";
+			# Revert the substract *if* this is not in a mask block
+			$in_mask_block and ( 1 > $in_else_block ) or substr( $$line, 0, 1 ) = " ";
 
 			next;
 		} ## end if ( $$line =~ m,^-\s*(/[*]+|/[/]+).*elogind,)
