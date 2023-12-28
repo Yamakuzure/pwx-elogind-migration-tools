@@ -332,31 +332,35 @@ sub apply_patch {
 		my @lRev   = ();
 		my $done   = 0; ## Don't return 1 if this stays being zero or we'll get an endless loop if nothing appliable is found!
 
-		try {
-			my $git_ex = Git::Wrapper->new( $upstream_path );
-			@lRev      = $git_ex->rev_list( { "reverse" => 1, "no-merges" => 1, "full-history" => 1, "dense" => 1, "topo-order" => 1 }, "${mutual}...${refid}" );
-		} catch {
-			print "ERROR: Couldn't fetch commits\n";
-			print "Exit Code : " . $_->status . "\n";
-			print "Message   : " . $_->error . "\n";
-			return 0;
-		};
+		if (defined($mutual)) {
+			try {
+				my $git_ex = Git::Wrapper->new( $upstream_path );
+				@lRev      = $git_ex->rev_list( { "reverse" => 1, "no-merges" => 1, "full-history" => 1, "dense" => 1, "topo-order" => 1 }, "${mutual}...${refid}" );
+			} catch {
+				print "ERROR: Couldn't fetch commits\n";
+				print "Exit Code : " . $_->status . "\n";
+				print "Message   : " . $_->error . "\n";
+				return 0;
+			};
 
-		print "It looks like we were missing " . ( scalar @lRev ) . " commits. Trying to apply the relevant ones...\n";
+			print "It looks like we were missing " . ( scalar @lRev ) . " commits. Trying to apply the relevant ones...\n";
 
-		for my $line ( @lRev ) {
-			chomp $line;
+			for my $line ( @lRev ) {
+				chomp $line;
 
-			if ( defined( $hCommits{$line} ) ) {
-				# The commit is relevant for us
-				my $next_id = $hRefIDs{$line};
-				defined( $next_id ) and ( 0 == $lPatches[$next_id]{"applied"} ) or next;
+				if ( defined( $hCommits{$line} ) ) {
+					# The commit is relevant for us
+					my $next_id = $hRefIDs{$line};
+					defined( $next_id ) and ( 0 == $lPatches[$next_id]{"applied"} ) or next;
 
-				foreach my $next_patch ( @{ $lPatches[$next_id]{"paths"} } ) {
-					( -f "$output_path/$next_patch" ) and ( $file ne $next_patch ) and $done += apply_patch( "$output_path/$next_patch" );
+					foreach my $next_patch ( @{ $lPatches[$next_id]{"paths"} } ) {
+						( -f "$output_path/$next_patch" ) and ( $file ne $next_patch ) and $done += apply_patch( "$output_path/$next_patch" );
+					}
 				}
-			}
-		} ## end for my $line (@lRev)
+			} ## end for my $line (@lRev)
+		} else {
+			print "No known last mutual commit, breaking off!\n";
+		}
 
 		# Revert to where we were
 		( $prv_rid ne $previous_refid ) and checkout_tree( $upstream_path, $prv_rid, 1 );
