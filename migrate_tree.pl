@@ -132,6 +132,7 @@ my %hMutuals = (); # Mapping of the $COMMIT_FILE, that works as follows:
 # (*) When this entry was written. This means that src-<hash> can be used as
 #     the next last mutual commit, when this migration run is finished. To make
 #     this automatic, the --advance option triggers exactly that.
+my %hPatchTgts = (); # Maps {patch_file} to {tgt1 => 1, tgt2 => 1, ..., tgtn => 1}
 
 # set signal-handlers
 local $SIG{'INT'}  = \&handle_sig;
@@ -287,7 +288,8 @@ sub apply_patch {
 
 	# --- 2) Try to apply the patch as is                         ---
 	# ---------------------------------------------------------------
-	my $result = 1;
+	my $result       = 1;
+	my $patch_direct = 0;
 	try {
 		@lGitRes = $git->am(
 			{
@@ -296,11 +298,34 @@ sub apply_patch {
 			} );
 	} ## end try
 	catch {
-		# We try again without 3-way-merging
-		$git->am( { "abort" => 1 } );
-		show_prg( sprintf( "Applying  %s (2nd try)", $file ));
-		$result = 0;
+		# Let's try with a direct patch, git apply can not apply fuzzy
+		$patch_direct = 1;
+		$result       = 0;
 	};
+
+	if ( $patch_direct > 0 ) {
+		show_prg( sprintf( "Applying %s directly", $file ));
+		my @patch = ( "/usr/bin/patch", "-p", "1", "-i", $pFile );
+		if ( system( @patch ) ) {
+			$git->am( { "abort" => 1 } );
+			show_prg( sprintf( "Applying  %s FAILED [%d]", $file, ( $? & 127 )));
+		} else {
+			# We have to add all relevant target files before "am" can continue
+			for my $tgt ( keys %{ $hPatchTgts{$pFile} } ) {
+				$git->add( $tgt );
+			}
+			try {
+				$git->am( { "continue" => 1 } );
+				$result = 1;
+			} ## end try
+			catch {
+				# Let's try with a direct patch, git apply can not apply fuzzy
+				$git->am( { "abort" => 1 } );
+				show_prg( sprintf( "Applying  %s FAILED", $file ));
+				$patch_direct = 0;
+			};
+		}
+	}
 
 	if ( 0 == $result ) {
 
@@ -332,7 +357,7 @@ sub apply_patch {
 		my @lRev   = ();
 		my $done   = 0; ## Don't return 1 if this stays being zero or we'll get an endless loop if nothing appliable is found!
 
-		if (defined($mutual)) {
+		if ( defined( $mutual ) ) {
 			try {
 				my $git_ex = Git::Wrapper->new( $upstream_path );
 				@lRev      = $git_ex->rev_list( { "reverse" => 1, "no-merges" => 1, "full-history" => 1, "dense" => 1, "topo-order" => 1 }, "${mutual}...${refid}" );
@@ -964,6 +989,9 @@ sub rework_patch {
 			or defined( $hDirectories{ dirname( $src ) } )
 			   and $real = $src;
 		}
+
+		# Remember that the found real target is relevant for this patch
+		$hPatchTgts{$pFile}{$real} = 1;
 
 		# We neither need diffs on invalid files, nor new files in invalid directories.
 		length( $real ) or next;
