@@ -990,11 +990,11 @@ sub rework_patch {
 			   and $real = $src;
 		}
 
-		# Remember that the found real target is relevant for this patch
-		$hPatchTgts{$pFile}{$real} = 1;
-
 		# We neither need diffs on invalid files, nor new files in invalid directories.
 		length( $real ) or next;
+
+		# Remember that the found real target is relevant for this patch
+		$hPatchTgts{$pFile}{$real} = 1;
 
 		# Now use $real to get the patch needed, if it is set.
 		my $pNew = check_tree( $commit, $real, $isNew );
