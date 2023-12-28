@@ -68,6 +68,9 @@
 #                                        with "needed for elogind", too.
 # 1.3.2    2021-03-02  sed, PrydeWorX  Add LINGUAS to the list of shell files, as elogind has additional locales now.
 # 1.4.0    2023-05-12  sed, EdenWorX   Fix accidential renaming of systemd-only apps and revert reversals into mask blocks.
+# 1.4.1    2023-12-28  sed, EdenWorX   Do not revert a name change if the reversal moves the line into a mask.
+#                                        Also check for reversals where the removal is anywhere before the addition. This fixes
+#                                        multiline-comments to magically multiply when patches are applied by migrate_tree.pl..
 #
 # ========================
 # === Little TODO list ===
@@ -88,7 +91,7 @@ use Try::Tiny;
 # ================================================================
 # ===        ==> ------ Help Text and Version ----- <==        ===
 # ================================================================
-Readonly my $VERSION => "1.4.0"; ## Please keep this current!
+Readonly my $VERSION => "1.4.1"; ## Please keep this current!
 Readonly my $VERSMIN => "-" x length( $VERSION );
 Readonly my $PROGDIR => dirname( $0 );
 Readonly my $PROGNAME => basename( $0 );
@@ -222,7 +225,8 @@ my %hIncs = (); ## Hash for remembered includes over different hunks.
 #                 sysinc : Set to 1 if it is <include>, 0 otherwise.
 #     }
 # } }
-my @lFails = (); ## List of failed hunks. These are worth noting down in an extra structure, as these
+my %hProtected = (); ## check_name_reverts() writes notes down lines here, which check_comments() shall not touch
+my @lFails     = (); ## List of failed hunks. These are worth noting down in an extra structure, as these
 # mean that something is fishy about a file, like elogind mask starts within masks.
 # The structure is:
 # ( { hunk : the failed hunk for later printing
@@ -333,6 +337,7 @@ for my $file_part ( @source_files ) {
 		check_blanks and hunk_is_useful and prune_hunk or next;
 
 		# === 6) Check for 'elogind' => 'systemd' reverts =================
+		%hProtected = ();
 		check_name_reverts and hunk_is_useful and prune_hunk or next;
 
 		# === 7) Check for elogind_*() function removals ==================
@@ -701,6 +706,9 @@ sub check_comments {
 	for ( my $i  = 0; $i < $hHunk->{count}; ++$i ) {
 		my $line = \$hHunk->{lines}[$i]; ## Shortcut
 
+		# Ignore protected lines
+		defined( $hProtected{$$line} ) and next;
+
 		# Check for comment block start
 		# -----------------------------
 		if ( $$line =~ m,^-\s*(/\*+|//+)\s+.*elogind, ) {
@@ -844,6 +852,9 @@ sub check_func_removes {
 
 	for ( my $i  = 0; $i < $hHunk->{count}; ++$i ) {
 		my $line = \$hHunk->{lines}[$i]; ## Shortcut
+
+		# Ignore protected lines
+		defined( $hProtected{$$line} ) and next;
 
 		# Check for elogind_*() call
 		# -------------------------------------------------------------------
@@ -1544,7 +1555,9 @@ sub check_name_reverts {
 
 	# Note down what is changed, so we can have inline updates
 	my %hRemovals = (); ## {string}{line}     = line_no
+	##         {masked}   = 1 in mask block, 0 not masked or in else block
 	##         {spliceme} = 1 for splicing, 0 otherwise
+
 
 	# Remember the final mask state for later reversal
 	# ------------------------------------------------
@@ -1572,15 +1585,14 @@ sub check_name_reverts {
 			$in_else_block = 0;
 			next;
 		}
+		my $is_masked_now = ( ( $in_mask_block > 0 ) && ( 1 < $in_else_block ) ) ? 1 : 0;
 
 		# Note down removals
 		# ---------------------------------
 		if ( $$line =~ m/^[- ][#\/* ]*\s*(.*elogind.*)\s*[*\/ ]*$/ ) {
-			# printf("%s removal %d: \"%s\"\n", ($in_mask_block && ( 1 > $in_else_block )) ? "IGNORE" : "Note down", $i, $1);
-			# We do not reject reverts in mask blocks.
-			$in_mask_block and ( 1 > $in_else_block ) and next;
-			# Otherwise note it down
-			$hRemovals{$1} = { line => $i, spliceme => 0 };
+			# printf("Noting down removal %d: \"%s\"\n", $i, $1);
+			# Note it down for later:
+			$hRemovals{$1} = { line => $i,, masked => $is_masked_now, spliceme => 0 };
 			next;
 		}
 
@@ -1589,9 +1601,7 @@ sub check_name_reverts {
 		if ( $$line =~ m/^\+[#\/* ]*\s*(.*systemd.*)\s*[*\/ ]*$/ ) {
 			my $replace_text = $1;
 
-			# printf("%s addition %d: \"%s\"\n", ($in_mask_block && ( 1 > $in_else_block )) ? "IGNORE" : "Note down", $i, $1);
-			# We do not reject reverts in mask blocks.
-			$in_mask_block and ( 1 > $in_else_block ) and next;
+			# printf("Noting down addition %d: \"%s\"\n", $i, $1);
 
 			# There is some specialities:
 			# =============================================================
@@ -1636,6 +1646,7 @@ sub check_name_reverts {
 				defined( $hRemovals{$our_text_short} ) ? $our_text_short :
 				defined( $hRemovals{$our_text_man_page} ) ? $our_text_man_page :
 				"";
+			# If we had this text removed, $o_txt is now the removed version of this addition
 
 			# printf("Got o_txt %d: \"%s\"\n", $i, $o_txt);
 			# --- Case A) If we accidentally renamed a systemd-only tool to elogind-<foo>,  ---
@@ -1643,7 +1654,7 @@ sub check_name_reverts {
 			# ---------------------------------------------------------------------------------
 
 			if ( 1 == $is_wrong_replace ) {
-				( 0 < length( $o_txt ) ) and next;
+				( 0 < length( $o_txt ) ) and $hProtected{$$line} = 1 and next;
 
 				# However, if the patch wants to _add_ a reference to a tool we do not ship, splice it away
 				$hRemovals{$replace_text}{spliceme} = $i;
@@ -1651,14 +1662,16 @@ sub check_name_reverts {
 				# If this is followed by an empty line addition, splice that, too
 				( $i < ( $hHunk->{count} - 1 ) ) and
 				( $hHunk->{lines}[$i + 1] =~ m,^\+[#]*\s*[*/]*\s*$, ) and
+				$hRemovals{$replace_text . "_blank"}{masked}   = $is_masked_now;
 				$hRemovals{$replace_text . "_blank"}{spliceme} = $i + 1;
 			}
 
 			# --- Case B) If this is a simple switch, or a move from non-masked to masked, undo it. ---
 			# -----------------------------------------------------------------------------------------
 			if ( ( 0 < length( $o_txt ) ) && (
-				( $hRemovals{$o_txt}{line} == ( $i - 1 ) ) ||
-				( $in_mask_block && ( 1 > $in_else_block ) ) ) ) {
+				( $hRemovals{$o_txt}{line} < $i ) ||
+				( $is_masked_now && ( $hRemovals{$o_txt}{masked} < 1 ) )
+			) ) {
 				substr( $hHunk->{lines}[ $hRemovals{$o_txt}{line} ], 0, 1 ) = " ";
 				$hRemovals{$o_txt}{spliceme}                                = $i; ## Splice the addition
 				# printf("Undo %d and splice %d\n", $hRemovals{$o_txt}{line}, $i);
