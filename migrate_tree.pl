@@ -19,6 +19,8 @@
 # 0.4.1    2019-02-20  sed, PrydeWorX  Do not consider files in man/rules/ (Issue #3)
 # 0.4.2    2022-12-21  sed, PrydeWorX  Try to remedy patch failures by looking for missing commits in between.
 # 0.4.3    2023-10-25  sed, EdenWorX   If merge commits were skipped, substract them from the total commit count.
+# 0.4.4    2023-12-29  sed, EdenWorX   If a merge does not work, try to patch directly. If this also fails, give
+#                                        detailed instructions to the user about how to continue.
 #
 # ========================
 # === Little TODO list ===
@@ -36,7 +38,7 @@ use Try::Tiny;
 # ================================================================
 # ===        ==> ------ Help Text and Version ----- <==        ===
 # ================================================================
-Readonly my $VERSION => "0.4.3"; ## Please keep this current!
+Readonly my $VERSION => "0.4.4"; ## Please keep this current!
 Readonly my $VERSMIN => "-" x length( $VERSION );
 Readonly my $PROGDIR => dirname( $0 );
 Readonly my $PROGNAME => basename( $0 );
@@ -288,27 +290,31 @@ sub apply_patch {
 
 	# --- 2) Try to apply the patch as is                         ---
 	# ---------------------------------------------------------------
-	my $result       = 1;
-	my $patch_direct = 0;
+	my $result = 0;
+
 	try {
 		@lGitRes = $git->am(
 			{
 				"3"    => 1,
 				-STDIN => $patch_lines
 			} );
+		$result = 1;
 	} ## end try
 	catch {
-		# Let's try with a direct patch, git apply can not apply fuzzy
-		$patch_direct = 1;
-		$result       = 0;
+		show_prg( sprintf( "Applying %s with 'git am' failed!", $file ));
 	};
 
-	if ( $patch_direct > 0 ) {
-		show_prg( sprintf( "Applying %s directly", $file ));
+	if ( 0 == $result ) {
+		# --- 3) Try to apply the patch directly                      ---
+		# ---------------------------------------------------------------
+		show_prg( sprintf( "Applying %s directly\n", $file ));
 		my @patch = ( "/usr/bin/patch", "-p", "1", "-i", $pFile );
 		if ( system( @patch ) ) {
-			$git->am( { "abort" => 1 } );
-			show_prg( sprintf( "Applying  %s FAILED [%d]", $file, ( $? & 127 )));
+			# We have to fix this by hand... great...
+			printf( "\nApplying %s directly FAILED [%d]\n", $file, ( $? & 127 ));
+			print( "Fix above errors, add all files to git, issue 'git am --continue' and\n" );
+			printf( "Set last mutual commit to '%s'\n", shorten_refid( $upstream_path, $hSrcCommits{$pFile} ));
+			exit 1;
 		} else {
 			# We have to add all relevant target files before "am" can continue
 			for my $tgt ( keys %{ $hPatchTgts{$pFile} } ) {
@@ -321,27 +327,10 @@ sub apply_patch {
 			catch {
 				# Let's try with a direct patch, git apply can not apply fuzzy
 				$git->am( { "abort" => 1 } );
-				show_prg( sprintf( "Applying  %s FAILED", $file ));
-				$patch_direct = 0;
+				show_prg( sprintf( "Applying  %s FAILED\n", $file ));
 			};
 		}
 	}
-
-	if ( 0 == $result ) {
-
-		# --- 3) Try to apply the patch without 3-way-merging         ---
-		# ---------------------------------------------------------------
-
-		try {
-			@lGitRes = $git->am( { -STDIN => $patch_lines } );
-			$result  = 1;
-		} catch {
-			$git->am( { "abort" => 1 } );
-			print "\nERROR: Couldn't apply $pFile\n";
-			print "Exit Code : " . $_->status . "\n";
-			print "Message   : " . $_->error . "\n";
-		};
-	} ## end if ( 0 == $result )
 
 	# --- 4) If this did not work, try to apply missing patches, then this one. ---
 	# -----------------------------------------------------------------------------
