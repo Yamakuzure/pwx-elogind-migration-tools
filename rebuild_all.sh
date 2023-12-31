@@ -54,7 +54,7 @@ if [[ $minVers -gt 234 ]]; then
 	CFLAGS="-march=native -pipe ${my_CFLAGS} -Wall -Wextra -Wunused -Wno-unused-parameter -Wno-unused-result -ftree-vectorize" \
 	LDFLAGS="${my_LDFLAGS}" \
 		meson $debug_opt --prefix $PREFIX/usr \
-			--wrap-mode nodownload --libdir lib64 \
+			--wrap-mode nodownload --libdir lib64 --libexecdir $PREFIX/lib64/elogind \
 			--localstatedir $PREFIX/var/lib  --sysconfdir $PREFIX/etc \
 			 -Ddocdir=$PREFIX/usr/share/doc/elogind-9999 \
 			 -Defi=true \
@@ -62,7 +62,6 @@ if [[ $minVers -gt 234 ]]; then
 			 -Dpamlibdir=$PREFIX/lib64/security \
 			 -Dudevrulesdir=$PREFIX/lib/udev/rules.d \
 			 --libdir=$PREFIX/usr/lib64 \
-			 -Dlibexecdir=$PREFIX/lib64/elogind \
 			 -Dsmack=true -Dman=auto -Dhtml=auto -Defi=true \
 			 -Dcgroup-controller=openrc -Ddefault-hierarchy=$cgdefault \
 			 -Dacl=enabled -Dpam=enabled -Dselinux=disabled \
