@@ -62,7 +62,7 @@ if [[ $minVers -gt 234 ]]; then
 			 -Dpamlibdir=$PREFIX/lib64/security \
 			 -Dudevrulesdir=$PREFIX/lib/udev/rules.d \
 			 --libdir=$PREFIX/usr/lib64 \
-			 -Drootlibexecdir=$PREFIX/lib64/elogind \
+			 -Dlibexecdir=$PREFIX/lib64/elogind \
 			 -Dsmack=true -Dman=auto -Dhtml=auto -Defi=true \
 			 -Dcgroup-controller=openrc -Ddefault-hierarchy=$cgdefault \
 			 -Dacl=enabled -Dpam=enabled -Dselinux=disabled \
