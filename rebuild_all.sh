@@ -53,7 +53,7 @@ if [[ $minVers -gt 234 ]]; then
 
 	CFLAGS="-march=native -pipe ${my_CFLAGS} -Wall -Wextra -Wunused -Wno-unused-parameter -Wno-unused-result -ftree-vectorize" \
 	LDFLAGS="${my_LDFLAGS}" \
-		meson $debug_opt --prefix $PREFIX/usr -Drootprefix=$PREFIX \
+		meson $debug_opt --prefix $PREFIX/usr \
 			--wrap-mode nodownload --libdir lib64 \
 			--localstatedir $PREFIX/var/lib  --sysconfdir $PREFIX/etc \
 			 -Ddocdir=$PREFIX/usr/share/doc/elogind-9999 \
@@ -61,11 +61,11 @@ if [[ $minVers -gt 234 ]]; then
 			 -Dhtmldir=$PREFIX/usr/share/doc/elogind-9999/html \
 			 -Dpamlibdir=$PREFIX/lib64/security \
 			 -Dudevrulesdir=$PREFIX/lib/udev/rules.d \
-			 --libdir=$PREFIX/usr/lib64 -Drootlibdir=$PREFIX/lib64 \
+			 --libdir=$PREFIX/usr/lib64 \
 			 -Drootlibexecdir=$PREFIX/lib64/elogind \
 			 -Dsmack=true -Dman=auto -Dhtml=auto -Defi=true \
 			 -Dcgroup-controller=openrc -Ddefault-hierarchy=$cgdefault \
-			 -Dacl=true -Dpam=true -Dselinux=false \
+			 -Dacl=enabled -Dpam=enabled -Dselinux=disabled \
 			 -Dbashcompletiondir=$PREFIX/usr/share/bash-completion/completions \
 			 -Dzshcompletiondir=$PREFIX/usr/share/zsh/site-functions \
 			 $extra_opts $(pwd -P) $(pwd -P)/build
