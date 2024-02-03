@@ -159,6 +159,12 @@ Readonly my %FILE_NAME_PATTERNS => (
 	]
 );
 
+# And some protected website URLs
+Readonly my %SYSTEMD_URLS => (
+	'fedoraproject.org/projects/systemd' => 1,
+	'freedesktop.org/software/systemd'   => 1
+);
+
 # ================================================================
 # ===        ==> -------- Global variables -------- <==        ===
 # ================================================================
@@ -1624,13 +1630,18 @@ sub check_name_reverts {
 			#       systemd does not have something like that.
 			$replace_text =~ m,/run/systemd, and next;
 
-			# 3) To be a dropin-replacement, we also need to not change any org[./]freedesktop[./]systemd strings
+			# 3) Several systemd website urls must not be changed, too
+			for my $pat ( keys %SYSTEMD_URLS ) {
+				$replace_text =~ m/$pat/ and next;
+			}
+
+			# 4) To be a dropin-replacement, we also need to not change any org[./]freedesktop[./]systemd strings
 			$replace_text =~ m,/?org[./]freedesktop[./]systemd, and next;
 
-			# 4) Do not replace referrals to systemd[1]
+			# 5) Do not replace referrals to systemd[1]
 			$replace_text =~ m,systemd\[1\], and next;
 
-			# 5) References to systemd-homed and other tools not shipped by elogind
+			# 6) References to systemd-homed and other tools not shipped by elogind
 			#    must not be changed either, or users might think elogind has its
 			#    own replacements.
 			my $is_wrong_replace = ( ( $replace_text =~ m,systemd[-_](home|import|journal|network|oom|passwor|udev)d, ) ||
