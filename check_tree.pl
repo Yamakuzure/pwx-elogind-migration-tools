@@ -71,6 +71,7 @@
 # 1.4.1    2023-12-28  sed, EdenWorX   Do not revert a name change if the reversal moves the line into a mask.
 #                                        Also check for reversals where the removal is anywhere before the addition. This fixes
 #                                        multiline-comments to magically multiply when patches are applied by migrate_tree.pl..
+# 1.4.2    2024-02-03  sed, EdenWorX   Do not migrate NEWS and TODO. They are elogind files now
 #
 # ========================
 # === Little TODO list ===
@@ -91,7 +92,7 @@ use Try::Tiny;
 # ================================================================
 # ===        ==> ------ Help Text and Version ----- <==        ===
 # ================================================================
-Readonly my $VERSION => "1.4.1"; ## Please keep this current!
+Readonly my $VERSION => "1.4.2"; ## Please keep this current!
 Readonly my $VERSMIN => "-" x length( $VERSION );
 Readonly my $PROGDIR => dirname( $0 );
 Readonly my $PROGNAME => basename( $0 );
@@ -140,10 +141,15 @@ Readonly my %FILE_NAME_PATTERNS => (
 		'\.m4$',
 		'\.pl$',
 		'\.po$',
+		'\.pot$',
 		'\.py$',
 		'\.sh$',
 		'\.sym$',
+		'bash/busctl',
 		'bash/loginctl',
+		'pam.d/other',
+		'pam.d/system-auth',
+		'zsh/_busctl',
 		'zsh/_loginctl'
 	],
 	"xml"   => [
@@ -1627,14 +1633,14 @@ sub check_name_reverts {
 			# 5) References to systemd-homed and other tools not shipped by elogind
 			#    must not be changed either, or users might think elogind has its
 			#    own replacements.
-			my $is_wrong_replace = ( ( $replace_text =~ m,systemd-(home|import|journal|network|oom|passwor|udev)d, ) ||
-			                         ( $replace_text =~ m,systemd-(analyze|creds|cryptsetup|firstboot|home|nspawn|repart|syscfg|sysusers|tmpfiles|devel/), ) )
+			my $is_wrong_replace = ( ( $replace_text =~ m,systemd[-_](home|import|journal|network|oom|passwor|udev)d, ) ||
+			                         ( $replace_text =~ m,systemd[-_](analyze|creds|cryptsetup|firstboot|home|nspawn|repart|syscfg|sysusers|tmpfiles|devel/), ) )
 			                       ? 1 : 0;
 
 			# We have to differentiate between simple systemd, longer systemd-logind and man page volume numbers
 			my $our_text_long  = $replace_text;
 			my $our_text_short = $our_text_long;
-			$our_text_long =~ s/systemd-logind/elogind/g;
+			$our_text_long =~ s/systemd[-_]logind/elogind/g;
 			$our_text_short =~ s/systemd/elogind/g;
 			$our_text_long eq $replace_text and $our_text_long =~ s/systemd-stable/elogind/g; # Alternative if systemd-logind does not match
 			my $our_text_man_page = $our_text_short;
@@ -2018,7 +2024,7 @@ sub generate_file_list {
 	}
 
 	# There are a few root files we need to check, too
-	for my $xFile ( "configure", "Makefile", "meson.build", "meson_options.txt", "NEWS", "TODO" ) {
+	for my $xFile ( "configure", "Makefile", "meson.build", "meson_options.txt" ) {
 		if ( -f "$xFile" ) {
 			find( \&wanted, "$xFile" );
 		}
