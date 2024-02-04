@@ -5,6 +5,7 @@
 ../systemd-stable   v246-stable c357447eaf src-c357447eaf tgt-13e892808
 ../systemd-stable   v252-stable 68d11465e4 src-a8396fd1c7 tgt-185853355
 ../systemd-stable   v252.9      48e0395535 src-027f407e7e tgt-a578732c6
+../systemd-stable   v255.3      6926712938 src-8cf1da1e91 tgt-339a8dc44
 ../systemd-upstream v250        90c8234e0c src-9c8279cdd5 tgt-cde821c8e
 ../systemd-upstream v251        54cd2d6869 src-e93cff8c9c tgt-5bc466291
 ../systemd-upstream v252        a0a2dd64d9 src-449f26a447 tgt-f75d34374
