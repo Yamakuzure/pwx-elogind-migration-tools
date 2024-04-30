@@ -1,16 +1,7 @@
 # Automatically generated commit information
 # Only edit if you know what these do!
 
-../systemd-stable   v243-stable b754ff8b63 src-b754ff8b63 tgt-24b989e13
-../systemd-stable   v246-stable c357447eaf src-c357447eaf tgt-13e892808
-../systemd-stable   v252-stable 0f3ad617e6 src-2e65c3233a tgt-9fb36bf84
-../systemd-stable   v252.9      48e0395535 src-027f407e7e tgt-a578732c6
-../systemd-stable   v255-stable 38d632aad5 src-4601f9fc8d tgt-77c25fa6f
-../systemd-stable   v255.3      6926712938 src-8cf1da1e91 tgt-339a8dc44
-../systemd-stable   v255.4      387a14a7b6 src-4003dd6754 tgt-083e98544
-../systemd-upstream v250        90c8234e0c src-9c8279cdd5 tgt-cde821c8e
-../systemd-upstream v251        54cd2d6869 src-e93cff8c9c tgt-5bc466291
+../systemd-stable   v252-stable ba44fe92cc src-615f0bc304 tgt-17119594d
+../systemd-stable   v255-stable 47c90f516f src-8f4dab0490 tgt-60d1e0f39
 ../systemd-upstream v252        a0a2dd64d9 src-449f26a447 tgt-f75d34374
-../systemd-upstream v253        30fd9a2dab src-eb0f8fc415 tgt-d57e3ada7
-../systemd-upstream v254        905a56d5c4 src-34818a93c6 tgt-63c4c48b0
 ../systemd-upstream v255        a14b75e218 src-0966fe6734 tgt-3f7258f22
