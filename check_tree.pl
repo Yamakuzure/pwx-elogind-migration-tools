@@ -998,7 +998,7 @@ sub check_empty_masks {
 					substr( $hHunk->{lines}[$i], 0, 1 )       = "-";
 
 					# Add a note that we converted this
-					splice( @{ $hHunk->{lines} }, $i + 1, 0, ( "+/// elogind empty mask removed ($mask_message)" ) );
+					splice( @{ $hHunk->{lines} }, $i + 1, 0, ( '+' . ( $hFile{is_sh} ? '# ' : '' ) . "/// elogind empty mask removed ($mask_message)" ) );
 
 					$hHunk->{count} += 1;
 				} ## end if ( $i == ( $mask_block_start...))
