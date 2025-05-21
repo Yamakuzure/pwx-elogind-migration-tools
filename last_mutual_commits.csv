@@ -1,7 +1,7 @@
 # Automatically generated commit information
 # Only edit if you know what these do!
 
-../systemd-stable   v252-stable 1b145d94ef src-e7871e7bd8 tgt-589071932
+../systemd-stable   v252-stable 79c337ef54 src-48484b32bb tgt-5c1c516a3
 ../systemd-stable   v255-stable 4cd9921bc6 src-fb92304041 tgt-d04262229
 ../systemd-upstream v252        a0a2dd64d9 src-449f26a447 tgt-f75d34374
 ../systemd-upstream v255        a14b75e218 src-0966fe6734 tgt-3f7258f22
