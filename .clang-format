@@ -1,0 +1,229 @@
+# Please use clang-format version 20 or later
+
+Standard: Latest
+DisableFormat: false
+
+ColumnLimit: 168                    # Modern displays really do not need low-low limits anymore. Even TTYs have 120+ columns
+LineEnding:  LF                     # Needs clang-format version 16
+IndentWidth: 8
+TabWidth: 8
+UseTab: AlignWithSpaces
+
+AccessModifierOffset: -8
+ConstructorInitializerIndentWidth: 8
+ContinuationIndentWidth: 8
+
+AlignAfterOpenBracket: BlockIndent
+AlignArrayOfStructures: Left
+AlignConsecutiveAssignments:
+  Enabled: true
+  AcrossEmptyLines: true
+  AcrossComments: false
+  AlignCompound: true
+  PadOperators: true
+AlignConsecutiveBitFields: AcrossEmptyLines
+AlignConsecutiveDeclarations: AcrossEmptyLines
+AlignConsecutiveMacros: AcrossEmptyLines
+AlignEscapedNewlines: Left
+AlignOperands: AlignAfterOperator
+AlignTrailingComments:              # Needs clang-format version 16
+  Kind:           Always
+  OverEmptyLines: 2
+
+AllowAllArgumentsOnNextLine: false
+AllowAllParametersOfDeclarationOnNextLine: false
+AllowShortBlocksOnASingleLine: Empty
+AllowShortCaseExpressionOnASingleLine: true      # Needs clang-format version 19
+AllowShortCaseLabelsOnASingleLine: true
+AllowShortCompoundRequirementOnASingleLine: true # Needs clang-format version 18
+AlignConsecutiveShortCaseStatements:             # Needs clang-format version 17
+  Enabled: true
+  AcrossEmptyLines: true
+  AcrossComments: true
+  AlignCaseColons: true
+AllowShortEnumsOnASingleLine: true
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortLambdasOnASingleLine: Inline
+AllowShortLoopsOnASingleLine: true
+AllowShortNamespacesOnASingleLine: true     # Needs clang-format version 20
+
+AlwaysBreakAfterReturnType: None
+AlwaysBreakBeforeMultilineStrings: false
+AlwaysBreakTemplateDeclarations: MultiLine
+
+BinPackArguments: false
+BinPackParameters: false
+
+BitFieldColonSpacing: After
+
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterCaseLabel: false
+  AfterClass: false
+  AfterControlStatement: Never
+  AfterEnum: false
+  AfterFunction: false
+  AfterNamespace: false
+  AfterObjCDeclaration: false
+  AfterStruct: false
+  AfterUnion: false
+  AfterExternBlock: false
+  BeforeCatch: false
+  BeforeElse: false
+  BeforeLambdaBody: false
+  BeforeWhile: false
+  IndentBraces: false
+  SplitEmptyFunction: false
+  SplitEmptyRecord: false
+  SplitEmptyNamespace: false
+  BracedInitializerIndentWidth:   2             # Needs clang-format version 17
+  BreakAfterAttributes:           Leave         # Needs clang-format version 16
+  BreakArrays:                    false         # Needs clang-format version 16 (Currently only for JSON)
+BreakAdjacentStringLiterals: true               # Needs clang-format version 18
+BreakAfterReturnType: ExceptShortType           # Needs clang-format version 19
+BreakBeforeBinaryOperators: NonAssignment
+BreakBeforeConceptDeclarations: Allowed
+BreakBeforeInlineASMColon:      OnlyMultiline   # Needs clang-format version 16
+BreakBeforeTernaryOperators: true
+BreakBinaryOperations: RespectPrecedence        # Needs clang-format version 20
+BreakConstructorInitializers: BeforeComma
+BreakFunctionDefinitionParameters: false        # Needs clang-format version 19
+BreakInheritanceList: BeforeComma
+BreakStringLiterals: true
+BreakTemplateDeclarations: MultiLine            # Needs clang-format version 19
+
+CompactNamespaces: false
+Cpp11BracedListStyle: false
+DerivePointerAlignment: true # Let's respect the authors preference
+EmptyLineAfterAccessModifier: Never
+EmptyLineBeforeAccessModifier: Always
+FixNamespaceComments: true
+
+IncludeBlocks: Regroup
+IncludeCategories:
+  - Regex: '"*.h"'
+    Priority: 3
+  - Regex: '^(("|<)havilib/)'
+    Priority: 4
+    CaseSensitive: true
+  - Regex: '^([<](jbig|jpe?g|pdf|png|tiff?))'
+    Priority: 5
+    CaseSensitive: false
+  - Regex: '^(("|<)(gtest|gmock|isl|json)/)'
+    Priority: 6
+    CaseSensitive: true
+  - Regex: '<[[:alnum:].]+>'
+    Priority: 7
+  - Regex: '<.+>'
+    Priority: 8
+  - Regex: '.*'
+    Priority: 2
+    SortPriority: 0
+SortIncludes: CaseSensitive
+
+IndentAccessModifiers: false
+IndentCaseBlocks: true
+IndentCaseLabels: true
+IndentExportBlock: true       # Needs clang-format version 20
+IndentExternBlock: NoIndent
+IndentGotoLabels: false
+IndentPPDirectives: AfterHash
+PPIndentWidth: 2
+IndentRequiresClause:       true
+IndentWrappedFunctionNames: true
+
+InsertBraces:
+  InsertNewlineAtEOF: true    # Needs clang-format version 16
+  IntegerLiteralSeparator:    # Needs clang-format version 16
+    Binary:           4       # Needs clang-format version 16
+    BinaryMinDigits:  8       # Needs clang-format version 16
+    Decimal:          3       # Needs clang-format version 16
+    DecimalMinDigits: 4       # Needs clang-format version 16
+    Hex:             -1       # Needs clang-format version 16
+
+KeepEmptyLines:               # Needs clang-format version 19
+  AtEndOfFile: true
+  AtStartOfBlock: false
+  AtStartOfFile: false
+
+LambdaBodyIndentation: Signature
+MaxEmptyLinesToKeep: 2        # Set to 2 so implementations can be kept apart with better visibility
+NamespaceIndentation: Inner   # If you have to nest namespaces, re-think your design.
+
+# AllowAllConstructorInitializersOnNextLine: true       # Deprecated in clang-format 15, See PackConstructorInitializers!
+# ConstructorInitializerAllOnOneLineOrOnePerLine: true  # Deprecated in clang-format 15, See PackConstructorInitializers!
+PackConstructorInitializers: CurrentLine                # Needs clang-format version 14
+
+PenaltyBreakAssignment: 10
+PenaltyBreakBeforeFirstCallParameter: 30
+PenaltyBreakComment: 10
+PenaltyBreakFirstLessLess: 0
+PenaltyBreakOpenParenthesis: 10
+PenaltyBreakString: 10
+PenaltyBreakTemplateDeclaration: 20
+PenaltyExcessCharacter: 100
+PenaltyIndentedWhitespace: 40
+PenaltyReturnTypeOnItsOwnLine: 60
+
+PointerAlignment: Left
+QualifierAlignment: Right                   # Needs clang-format version 14
+ReferenceAlignment: Right
+ReflowComments: true
+RemoveBracesLLVM: false                     # Needs clang-format version 14
+RemoveEmptyLinesInUnwrappedLines: true      # Needs clang-format version 20
+RemoveSemicolon: true                       # Needs clang-format version 16
+RequiresClausePosition: WithFollowing       # Needs clang-format version 15
+RequiresExpressionIndentation: OuterScope   # Needs clang-format version 16
+SeparateDefinitionBlocks: Always            # Needs clang-format version 14
+ShortNamespaceLines: 8
+SortJavaStaticImport: Before
+SortUsingDeclarations: LexicographicNumeric # Needs clang-format version 17
+
+SpaceAfterCStyleCast: false
+SpaceAfterLogicalNot: false
+SpaceAfterTemplateKeyword: false
+
+SpaceAroundPointerQualifiers: Before
+
+SpaceBeforeAssignmentOperators: true
+SpaceBeforeCaseColon: false
+SpaceBeforeCpp11BracedList: false
+SpaceBeforeCtorInitializerColon: true
+SpaceBeforeInheritanceColon: true
+SpaceBeforeJsonColon:              false    # Needs clang-format version 17
+SpaceBeforeParens: Custom
+SpaceBeforeParensOptions:
+  AfterControlStatements: true
+  AfterForeachMacros: false
+  AfterFunctionDeclarationName: false
+  AfterFunctionDefinitionName: false
+  AfterIfMacros: false
+  AfterOverloadedOperator: true
+  AfterRequiresInClause: true
+  AfterRequiresInExpression: true
+  BeforeNonEmptyParentheses: false
+SpaceBeforeRangeBasedForLoopColon: true
+SpaceBeforeSquareBrackets: false
+
+SpaceInEmptyBlock: false
+SpaceInEmptyParentheses: false
+
+SpacesBeforeTrailingComments: 1
+SpacesInAngles: Always
+SpacesInCStyleCastParentheses: false
+SpacesInConditionalStatement: true
+SpacesInContainerLiterals: true
+SpacesInLineCommentPrefix:
+  Minimum: 1
+  Maximum: -1
+SpacesInParens: Custom                      # Needs clang-format version 17
+SpacesInParensOptions:                      # Needs clang-format version 17
+  ExceptDoubleParentheses: false
+  InConditionalStatements: true
+  InCStyleCasts: false
+  InEmptyParentheses: false
+  Other: true
+SpacesInSquareBrackets: true
+WrapNamespaceBodyWithEmptyLines: Always     # Needs clang-format version 20
+

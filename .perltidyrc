@@ -1,0 +1,12 @@
+-enc=none
+-l=168
+-t
+-csc
+-ce
+-nbl
+-nola
+-nolc
+-msc=2
+-iscl
+-otr
+-cab=1
