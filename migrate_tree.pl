@@ -21,6 +21,7 @@
 # 0.4.3    2023-10-25  sed, EdenWorX   If merge commits were skipped, substract them from the total commit count.
 # 0.4.4    2023-12-29  sed, EdenWorX   If a merge does not work, try to patch directly. If this also fails, give
 #                                        detailed instructions to the user about how to continue.
+# 0.4.5    2025-05-23  sed, EdenWorX   Do not try to apply mutual commits again.
 #
 # ========================
 # === Little TODO list ===
@@ -38,7 +39,7 @@ use Try::Tiny;
 # ================================================================
 # ===        ==> ------ Help Text and Version ----- <==        ===
 # ================================================================
-Readonly my $VERSION => "0.4.4"; ## Please keep this current!
+Readonly my $VERSION => "0.4.5"; ## Please keep this current!
 Readonly my $VERSMIN => "-" x length( $VERSION );
 Readonly my $PROGDIR => dirname( $0 );
 Readonly my $PROGNAME => basename( $0 );
@@ -70,6 +71,7 @@ OPTIONS:
                        the script looks into "$COMMIT_FILE"
                        and uses the commit noted for <refid>. Incompatible
                        with --advance.
+                       Note: The mutual commit is not applied again.
   -h|--help            Show this help and exit.
   -o|--output <path> : Path to where to write the patches. The default is to
                        write into "$PROGDIR/patches".
@@ -362,7 +364,7 @@ sub apply_patch {
 			for my $line ( @lRev ) {
 				chomp $line;
 
-				if ( defined( $hCommits{$line} ) ) {
+				if ( defined( $hCommits{$line} ) && ( $mutual ne $hCommits{$line} ) ) {
 					# The commit is relevant for us
 					my $next_id = $hRefIDs{$line};
 					defined( $next_id ) and ( 0 == $lPatches[$next_id]{"applied"} ) or next;
@@ -413,6 +415,7 @@ sub build_hCommits {
 
 	for my $line ( @lRev ) {
 		chomp $line;
+		( $line eq $mutual_commit ) and next; ## Don't apply what has been applied already
 		defined( $hCommits{$line} )
 		or ++$commit_count and $hCommits{$line} = 0;
 		++$hCommits{$line};
@@ -431,6 +434,7 @@ sub build_lCommits {
 
 	for my $line ( @lRev ) {
 		chomp $line;
+		( $line eq $mutual_commit ) and next; ## Don't apply what has been applied already
 		defined( $hCommits{$line} )
 		and show_prg( "Noting down $line" )
 		and push @lCommits, "$line";
