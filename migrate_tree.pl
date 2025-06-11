@@ -61,7 +61,7 @@ BEGIN {
 } ## end BEGIN
 
 Readonly my $VERSION     => '0.4.5';                                                      ## Please keep this current!
-Readonly my $VERSMIN     => $DASH x length($VERSION);
+Readonly my $VERSMIN     => $DASH x ( length $VERSION );
 Readonly my $WORKDIR     => getcwd();
 Readonly my $CHECK_TREE  => abs_path( $PROGDIR . '/check_tree.pl' );
 Readonly my $COMMIT_FILE => abs_path( $PROGDIR . '/last_mutual_commits.csv' );
@@ -179,23 +179,23 @@ my %program_options = (
 );
 GetOptions(%program_options) or $show_help = -2;
 $output_path = abs_path($output_path);
-if ( !$show_help && !length($wanted_refid) ) {
+if ( !$show_help && !( length $wanted_refid ) ) {
 	print "ERROR: Please provide a path to upstream and a refid!\n\nUsage: $USAGE_SHORT\n";
 	$main_result = 0;
 }
 
 # If both --advance and --commit were used, we can not tell what the
 # user really wants. So better be safe here, or we might screw the tree!
-if ( $do_advance && length($mutual_commit) ) {
+if ( $do_advance && ( length $mutual_commit ) ) {
 	print "ERROR: You have used both --advance and --commit.\n";
 	print "       Which one is the one you really want?\n\n";
 	print "Usage: $USAGE_SHORT\n";
 	$main_result = 0;
-} ## end if ( $do_advance && length...)
+} ## end if ( $do_advance && ( ...))
 
 # Show help if wanted or provoked
 ( 0 != $show_help ) and print "$USAGE_LONG" and exit( !$main_result );
-( 0 == $main_result ) and exists(42);
+( 0 == $main_result ) and exit 42;
 
 # Further preparations
 get_last_mutual() and generate_file_list()        or exit 1;
@@ -215,7 +215,7 @@ for my $file_part (@source_files) {
 	build_hCommits()        or next;
 }
 show_prg($EMPTY);
-printf( " %d commits found\n", $commit_count );
+printf " %d commits found\n", $commit_count;
 
 # -----------------------------------------------------------------
 # --- 2) Get a list of all commits and build @lCommits, checking --
@@ -238,7 +238,7 @@ build_lPatches() or exit 1;
 # ---    check_tree.pl to achieve the latter.                   ---
 # -----------------------------------------------------------------
 for my $i ( 0 .. ( $commit_count - 1 ) ) {
-	my $fmt    = sprintf( '%04d-*.patch', $i + 1 );
+	my $fmt    = sprintf '%04d-*.patch', $i + 1;
 	my @lFiles = glob qq("${output_path}/${fmt}");
 
 	# Be sure this is solid!
@@ -253,15 +253,16 @@ for my $i ( 0 .. ( $commit_count - 1 ) ) {
 
 	my $file = basename( $lFiles[0] );
 	my $id   = $hPatches{$file};
-	defined($id)                         or print "\nERROR: $lFiles[0] not listed in hPatches!\n" and return 0;
-	defined( $lPatches[$id]{'applied'} ) or print "\nERROR: $lFiles[0] not listed in lPatches!\n" and return 0;
+	( defined $id )                       or print "\nERROR: $lFiles[0] not listed in hPatches!\n" and return 0;
+	( defined $lPatches[$id]{'applied'} ) or print "\nERROR: $lFiles[0] not listed in lPatches!\n" and return 0;
 
 	# If the patch was already applied (for some error recoverage) then skip it.
 	( 1 == $lPatches[$id]{'applied'} ) and show_prg("Skipping $file - already applied") and next;
 
 	# Now rework the patch
 	# ---------------------------------------------------------
-	show_prg( sprintf( 'Reworking %s', basename( $lFiles[0] ) ) );
+	my $prgMsg = sprintf 'Reworking %s', basename( $lFiles[0] );
+	show_prg($prgMsg);
 	my $r = rework_patch( $lFiles[0] );
 	$r or exit 1;     ## Error detected
 	$r < 0 and next;  ## Empty patch
@@ -271,7 +272,8 @@ for my $i ( 0 .. ( $commit_count - 1 ) ) {
 	# ---    Otherwise we'll screw up if a newly created file   ---
 	# ---    gets patched later.                                ---
 	# -------------------------------------------------------------
-	show_prg( sprintf( 'Applying  %s', basename( $lFiles[0] ) ) );
+	$prgMsg = sprintf 'Applying  %s', basename( $lFiles[0] );
+	show_prg($prgMsg);
 	$r = apply_patch( $lFiles[0] );
 
 	if ( 0 == $r ) {
@@ -279,7 +281,7 @@ for my $i ( 0 .. ( $commit_count - 1 ) ) {
 	}
 
 	# The patch file is no longer needed. Keeping it would lead to confusion.
-	unlink( $lFiles[0] );
+	unlink $lFiles[0] or croak("Unlinking $lFiles[0] FAILED: $!\n");
 } ## end for my $i ( 0 .. ( $commit_count...))
 show_prg($EMPTY);
 
@@ -293,7 +295,7 @@ show_prg($EMPTY);
 
 END {
 	set_last_mutual();
-	length($previous_refid) and checkout_tree( $upstream_path, $previous_refid, 0 );
+	( length $previous_refid ) and checkout_tree( $upstream_path, $previous_refid, 0 );
 }
 
 # ================================================================
@@ -321,19 +323,19 @@ sub apply_patch {
 	# ----------------------------------
 	my $file = basename($pFile);
 	my $id   = $hPatches{$file};
-	defined($id)                         or print "\nERROR: $file not listed in hPatches!\n" and return 0;
-	defined( $lPatches[$id]{'applied'} ) or print "\nERROR: $file not listed in lPatches!\n" and return 0;
+	( defined $id )                       or print "\nERROR: $file not listed in hPatches!\n" and return 0;
+	( defined $lPatches[$id]{'applied'} ) or print "\nERROR: $file not listed in lPatches!\n" and return 0;
 
 	# If the patch was already applied, do not try it again.
 	( 1 == $lPatches[$id]{'applied'} ) and return 1;
 
 	# --- 1) Read the patch, we have to use it directly via STDIN ---
 	# ---------------------------------------------------------------
-	if ( open( my $fIn, '<', $pFile ) ) {
+	if ( open my $fIn, '<', $pFile ) {
 		my @lLines = <$fIn>;
-		close($fIn) or croak("Closing $pFile FAILED: $!\n");
-		chomp(@lLines);
-		$patch_lines = join( "\n", @lLines ) . "\n";
+		close $fIn or croak("Closing $pFile FAILED: $!\n");
+		chomp @lLines;
+		$patch_lines = ( join "\n", @lLines ) . "\n";
 	} else {
 		print "\nERROR [apply]: $pFile could not be opened for reading!\n$!\n";
 		return 0;
@@ -352,21 +354,23 @@ sub apply_patch {
 		);
 		$result = 1;
 	} catch {
-		show_prg( sprintf( "Applying %s with 'git am' failed!", $file ) );
+		my $prgMsg = sprintf "Applying %s with 'git am' failed!", $file;
+		show_prg($prgMsg);
 	};
 
 	if ( 0 == $result ) {
 
 		# --- 3) Try to apply the patch directly                      ---
 		# ---------------------------------------------------------------
-		show_prg( sprintf( "Applying %s directly\n", $file ) );
+		my $prgMsg = sprintf "Applying %s directly\n", $file;
+		show_prg($prgMsg);
 		my @patch = ( '/usr/bin/patch', '-p', '1', '-i', $pFile );
-		if ( system(@patch) ) {
+		if ( system @patch ) {
 
 			# We have to fix this by hand... great...
-			printf( "\nApplying %s directly FAILED [%d]\n", $file, ( $? & 127 ) );
-			print("Fix above errors, add all files to git, issue 'git am --continue' and\n");
-			printf( "Set last mutual commit to '%s'\n", shorten_refid( $upstream_path, $hSrcCommits{$pFile} ) );
+			printf "\nApplying %s directly FAILED [%d]\n", $file, ( $? & 127 );
+			print "Fix above errors, add all files to git, issue 'git am --continue' and\n";
+			printf "Set last mutual commit to '%s'\n", shorten_refid( $upstream_path, $hSrcCommits{$pFile} );
 			exit 1;
 		} else {
 
@@ -381,9 +385,10 @@ sub apply_patch {
 
 				# Let's try with a direct patch, git apply can not apply fuzzy
 				$git->am( { 'abort' => 1 } );
-				show_prg( sprintf( "Applying  %s FAILED\n", $file ) );
+				$prgMsg = sprintf "Applying  %s FAILED\n", $file;
+				show_prg($prgMsg);
 			};
-		} ## end else [ if ( system(@patch) ) ]
+		} ## end else [ if ( system @patch ) ]
 	} ## end if ( 0 == $result )
 
 	# --- 4) If this did not work, try to apply missing patches, then this one. ---
@@ -400,7 +405,7 @@ sub apply_patch {
 		my @lRev   = ();
 		my $done   = 0;                                                     ## Don't return 1 if this stays being zero or we'll get an endless loop if nothing appliable is found!
 
-		if ( defined($mutual) ) {
+		if ( ( defined $mutual ) ) {
 			try {
 				my $git_ex = Git::Wrapper->new($upstream_path);
 				@lRev = $git_ex->rev_list( { 'reverse' => 1, 'no-merges' => 1, 'full-history' => 1, 'dense' => 1, 'topo-order' => 1 }, "${mutual}...${refid}" );
@@ -416,16 +421,16 @@ sub apply_patch {
 			for my $line (@lRev) {
 				chomp $line;
 
-				if ( defined( $hCommits{$line} ) && ( $mutual ne $hCommits{$line} ) ) {
+				if ( ( defined $hCommits{$line} ) && ( $mutual ne $hCommits{$line} ) ) {
 
 					# The commit is relevant for us
 					my $next_id = $hRefIDs{$line};
-					defined($next_id) and ( 0 == $lPatches[$next_id]{'applied'} ) or next;
+					( defined $next_id ) and ( 0 == $lPatches[$next_id]{'applied'} ) or next;
 
 					foreach my $next_patch ( @{ $lPatches[$next_id]{'paths'} } ) {
 						( -f "$output_path/$next_patch" ) and ( $file ne $next_patch ) and $done += apply_patch("$output_path/$next_patch");
 					}
-				} ## end if ( defined( $hCommits...))
+				} ## end if ( ( defined $hCommits...))
 			} ## end for my $line (@lRev)
 		} else {
 			print "No known last mutual commit, breaking off!\n";
@@ -444,13 +449,13 @@ sub apply_patch {
 	# --- 5) Get the new commit id, so we can update %hMutuals ---
 	# ---------------------------------------------------------------
 	$hMutuals{$upstream_path}{$wanted_refid}{tgt} = shorten_refid( $WORKDIR, 'HEAD' );
-	length( $hMutuals{$upstream_path}{$wanted_refid}{tgt} ) or return 0;  # Give up and exit
+	( length $hMutuals{$upstream_path}{$wanted_refid}{tgt} ) or return 0;  # Give up and exit
 
 	# The commit of the just applied patch file becomes the last mutual commit.
 	$hMutuals{$upstream_path}{$wanted_refid}{mutual_full} = $hSrcCommits{$pFile};
 	$hMutuals{$upstream_path}{$wanted_refid}{mutual} =
 	  shorten_refid( $upstream_path, $hSrcCommits{$pFile} );
-	length( $hMutuals{$upstream_path}{$wanted_refid}{mutual} ) or return 0;  # Give up and exit
+	( length $hMutuals{$upstream_path}{$wanted_refid}{mutual} ) or return 0;  # Give up and exit
 
 	# --- 6) "Tick off" the patch in our patch list ---
 	# ------------------------------------------------------------------
@@ -469,7 +474,7 @@ sub build_hCommits {
 	for my $line (@lRev) {
 		chomp $line;
 		( $line eq $mutual_commit ) and next;  ## Don't apply what has been applied already
-		defined( $hCommits{$line} )
+		( defined $hCommits{$line} )
 		  or ++$commit_count and $hCommits{$line} = 0;
 		++$hCommits{$line};
 	} ## end for my $line (@lRev)
@@ -488,7 +493,7 @@ sub build_lCommits {
 	for my $line (@lRev) {
 		chomp $line;
 		( $line eq $mutual_commit ) and next;  ## Don't apply what has been applied already
-		defined( $hCommits{$line} )
+		( defined $hCommits{$line} )
 		  and show_prg("Noting down $line")
 		  and push @lCommits, "$line";
 	} ## end for my $line (@lRev)
@@ -503,10 +508,10 @@ sub build_lCommits {
 sub build_hFile {
 	my ($tgt) = @_;
 
-	defined($tgt) and length($tgt) or print("ERROR\n") and croak('build_hfile: tgt is empty ???');
+	( defined $tgt ) and ( length $tgt ) or ( print "ERROR\n" ) and croak('build_hfile: tgt is empty ???');
 
 	# We only prefixed './' to unify things. Now it is no longer needed:
-	$tgt =~ s,^[.]/,,ms;
+	$tgt =~ s/^[.]\///ms;
 
 	# Check the target file
 	my $src = "$tgt";
@@ -544,7 +549,8 @@ sub build_lPatches {
 	for my $refid (@lCommits) {
 		@lRev = $git->rev_list( { '1' => 1, oneline => 1 }, $refid );
 
-		show_prg( sprintf( 'Building %03d: %s', ++$cnt, substr( $lRev[0], 0, 49 ) ) );
+		my $prgMsg = sprintf 'Building %03d: %s', ++$cnt, ( substr $lRev[0], 0, 49 );
+		show_prg($prgMsg);
 
 		try {
 			@lPath = $git->format_patch(
@@ -570,18 +576,18 @@ sub build_lPatches {
 		# Write down the paths relevant for this:
 		while ( my $path = shift @lPath ) {
 			my $file = basename($path);
-			defined( $hPatches{$file} ) and print "\nERROR: $file already exists in hPatches!\n" and exit 1;
+			( defined $hPatches{$file} ) and print "\nERROR: $file already exists in hPatches!\n" and exit 1;
 			$hPatches{$file} = $cnt;
-			if ( defined( $lPatches[$cnt]{paths} ) ) {
-				push( @{ $lPatches[$cnt]{paths} }, $file );
+			if ( ( defined $lPatches[$cnt]{paths} ) ) {
+				push @{ $lPatches[$cnt]{paths} }, $file;
 			} else {
 				$lPatches[$cnt] = {
 					'applied' => 0,
 					'paths'   => [$file],
 					'refid'   => $refid
 				};
-			} ## end else [ if ( defined( $lPatches...))]
-			defined( $hRefIDs{$refid} ) or $hRefIDs{$refid} = $cnt;
+			} ## end else [ if ( ( defined $lPatches...))]
+			( defined $hRefIDs{$refid} ) or $hRefIDs{$refid} = $cnt;
 		} ## end while ( my $path = shift ...)
 	} ## end for my $refid (@lCommits)
 
@@ -592,7 +598,7 @@ sub build_lPatches {
 
 		( $merge_commits >= 0 ) or print "ERROR: More commits found than listed? ($cnt > $commit_count)\n" and exit 1;
 
-		print("$cnt / $commit_count patches built, $merge_commits merge commits skipped.\n");
+		print "$cnt / $commit_count patches built, $merge_commits merge commits skipped.\n";
 		$commit_count -= $merge_commits;
 	} ## end if ( $cnt > 0 )
 
@@ -612,7 +618,7 @@ sub check_tree {
 		my $tgt_dir  = dirname($file);
 		$tgt_file =~ s/systemd/elogind/msg;
 
-		defined( $hDirectories{$tgt_dir} )
+		( defined $hDirectories{$tgt_dir} )
 		  or $tgt_dir =~ s/systemd/elogind/msg;
 
 		my $tgt = "$tgt_dir/$tgt_file";
@@ -671,18 +677,18 @@ sub checkout_tree {
 	my ( $path, $commit, $do_store ) = @_;
 
 	# It is completely in order to not wanting to checkout a specific commit.
-	defined($commit) and length($commit) or return 1;
+	( defined $commit ) and ( length $commit ) or return 1;
 
 	my $git        = Git::Wrapper->new($path);
 	my $new_commit = $EMPTY;
 	my $old_commit = shorten_refid( $path, 'HEAD' );
 
 	# The current commit must be valid:
-	length($old_commit) or return 0;
+	( length $old_commit ) or return 0;
 
 	# Get the shortened commit hash of $commit
 	$new_commit = shorten_refid( $path, $commit );
-	length($new_commit) or return 0;
+	( length $new_commit ) or return 0;
 
 	# Now check it out, unless we are already there:
 	if ( $old_commit ne $new_commit ) {
@@ -717,7 +723,8 @@ sub generate_file_list {
 
 	# Do some cleanup first. Just to be sure.
 	print 'Cleaning up...';
-	system( 'rm', ( '-rf', 'build*' ) );
+	my @cleanup = ( 'rm', '-rf', 'build*' );
+	system @cleanup or croak( 'Command "' . ( join $SPACE, @cleanup ) . "\" FAILED: $!\n" );
 	my $res = `find -iname '*.orig' -or -iname '*.bak' -or -iname '*.rej' -or -iname '*~' -or -iname '*.gc??' | xargs rm -f`;
 	print " done [$res]\n";
 
@@ -740,15 +747,15 @@ sub generate_file_list {
 
 	# Just to be sure...
 	scalar @source_files
-	  or print("ERROR: No source files found? Where the hell are we?\n")
+	  or ( print "ERROR: No source files found? Where the hell are we?\n" )
 	  and return 0;
 
 	# Eventually we can add each directory to %hDirectories
 	for my $xFile (@source_files) {
 		my $xDir = dirname($xFile);
-		$xDir =~ s,^[.]/,,ms;
-		if ( length($xDir) > 1 ) {
-			defined( $hDirectories{$xDir} ) or $hDirectories{$xDir} = 1;
+		$xDir =~ s/^[.]\///ms;
+		if ( ( length $xDir ) > 1 ) {
+			( defined $hDirectories{$xDir} ) or $hDirectories{$xDir} = 1;
 		}
 	} ## end for my $xFile (@source_files)
 
@@ -766,7 +773,7 @@ sub get_last_mutual {
 		if ( open my $fIn, '<', $COMMIT_FILE ) {
 			my @lLines = <$fIn>;
 			close $fIn or croak("Closing $COMMIT_FILE FAILED: $!\n");
-			chomp(@lLines);
+			chomp @lLines;
 
 			for my $line (@lLines) {
 
@@ -796,7 +803,7 @@ sub get_last_mutual {
 				} ## end if ( $line =~ m/^\s*(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s*$/msx)
 			} ## end for my $line (@lLines)
 		} else {
-			print("ERROR: $COMMIT_FILE can not be read!\n$!\n");
+			print "ERROR: $COMMIT_FILE can not be read!\n$!\n";
 			return 0;
 		}
 
@@ -808,21 +815,21 @@ sub get_last_mutual {
 	$commits_read = 1;
 
 	# If this is already set, we are fine.
-	if ( length($mutual_commit) ) {
+	if ( ( length $mutual_commit ) ) {
 		$hMutuals{$upstream_path}{$wanted_refid}{mutual} = shorten_refid( $upstream_path, $mutual_commit );
-		length( $hMutuals{$upstream_path}{$wanted_refid}{mutual} ) or return 0;
+		( length $hMutuals{$upstream_path}{$wanted_refid}{mutual} ) or return 0;
 	}
 
 	# Now check against --advance and then set $mutual_commit accordingly.
-	if ( defined( $hMutuals{$upstream_path}{$wanted_refid} ) ) {
+	if ( ( defined $hMutuals{$upstream_path}{$wanted_refid} ) ) {
 		if ( $do_advance > 0 ) {
-			defined( $hMutuals{$upstream_path}{$wanted_refid}{src} )
+			( defined $hMutuals{$upstream_path}{$wanted_refid}{src} )
 			  and $hMutuals{$upstream_path}{$wanted_refid}{mutual} = $hMutuals{$upstream_path}{$wanted_refid}{src}
 			  or print "ERROR: --advance set, but no source hash found!\n" and return 0;
 		}
 		$mutual_commit = $hMutuals{$upstream_path}{$wanted_refid}{mutual};
 		return 1;
-	} ## end if ( defined( $hMutuals...))
+	} ## end if ( ( defined $hMutuals...))
 
 	print "ERROR: There is no last mutual commit known for refid \"$wanted_refid\"!\n";
 
@@ -846,10 +853,10 @@ sub rework_patch {
 	my ($pFile) = @_;
 	my @lLines = ();
 
-	if ( open( my $fIn, '<', $pFile ) ) {
+	if ( open my $fIn, '<', $pFile ) {
 		@lLines = <$fIn>;
-		close($fIn) or croak("Closing $pFile FAILED: $!\n");
-		chomp(@lLines);
+		close $fIn or croak("Closing $pFile FAILED: $!\n");
+		chomp @lLines;
 	} else {
 		print "\nERROR [rework]: $pFile could not be opened for reading!\n$!\n";
 		return 0;
@@ -880,21 +887,21 @@ sub rework_patch {
 	} ## end while ( $lCnt-- > 0 )
 
 	# There is something wrong if we have no commit hash now
-	if ( 0 == length($commit) ) {
+	if ( 0 == ( length $commit ) ) {
 		print "\nERROR: No 'From <hash>' line found!\n";
 		return 0;
 	}
 
 	# There is something wrong if the next part is not a file summary line.
 	# ----------------------------------------------------------------------
-	if ( !defined( $lLines[0] ) || !( $lLines[0] =~ m/^\s+(\S+)\s+[|]\s+\d+/msx ) ) {
+	if ( !( defined $lLines[0] ) || !( $lLines[0] =~ m/^\s+(\S+)\s+[|]\s+\d+/msx ) ) {
 		print "\nERROR: No file summary block found!\n";
 		print "The line currently looked at is:\n";
-		print $PIPE . ( defined( $lLines[0] ) ? $lLines[0] : 'UNDEF' ) . "|\n";
+		print $PIPE . ( ( defined $lLines[0] ) ? $lLines[0] : 'UNDEF' ) . "|\n";
 		print "We still have $lCnt lines to go.\n";
 		print "\nlOut so far:\n" . join( "\n", @lOut ) . "\n---------- END\n";
 		return 0;
-	} ## end if ( !defined( $lLines...))
+	} ## end if ( !( defined $lLines...))
 
 	my %hFixedPatches = ();
 	while ( $lCnt-- > 0 ) {
@@ -905,12 +912,12 @@ sub rework_patch {
 		my $tgt   = $EMPTY;        ## Target in downstream
 
 		# This ends on the first empty line.
-		$line =~ m/^\s*$/ms and push( @lOut, $EMPTY ) and last;
+		$line =~ m/^\s*$/ms and ( push @lOut, $EMPTY ) and last;
 
 		# This is either a line modification information, or a
 		# creation line of a new file. These look like this...
 		#   src/shared/meson.build                      |   1 +
-		$line =~ m/^\s+(\S+)\s+[|].*/ms and $src = $1;
+		$line =~ m/^\s+(\S+)\s+[|].*/msx and $src = $1;
 
 		# ...or that:
 		#   create mode 100644 src/network/netdev/wireguard.c
@@ -920,7 +927,7 @@ sub rework_patch {
 		}
 
 		# Otherwise it is the modification summary line
-		length($src) or push( @lOut, $line ) and next;
+		( length $src ) or ( push @lOut, $line ) and next;
 
 		$tgt = $src;
 		$tgt =~ s/systemd/elogind/msg;
@@ -929,20 +936,20 @@ sub rework_patch {
 		# file then. This might happen if we added a missing file
 		# manually beforehand.
 
-		if ( defined( $hFiles{$tgt} ) ) {
+		if ( ( defined $hFiles{$tgt} ) ) {
 			$real  = $tgt;
 			$isNew = 0;
-		} elsif ( defined( $hFiles{$src} ) ) {
+		} elsif ( ( defined $hFiles{$src} ) ) {
 			$real  = $src;
 			$isNew = 0;
 		} elsif ( $isNew > 0 ) {
-			defined( $hDirectories{ dirname($tgt) } ) and $real = $tgt
-			  or defined( $hDirectories{ dirname($src) } )
+			( defined $hDirectories{ dirname($tgt) } ) and $real = $tgt
+			  or ( defined $hDirectories{ dirname($src) } )
 			  and $real = $src;
 		}
 
 		# We neither need diffs on invalid files, nor new files in invalid directories.
-		length($real) or next;
+		( length $real ) or next;
 
 		# Remember that the found real target is relevant for this patch
 		$hPatchTgts{$pFile}{$real} = 1;
@@ -954,7 +961,7 @@ sub rework_patch {
 		$pNew eq 'none' and next;
 
 		# However, an empty $pNew indicates an error. (check_tree() has it reported already.)
-		length($pNew) or return 0;
+		( length $pNew ) or return 0;
 
 		# This is in order
 		$hFixedPatches{$pNew} = 1;
@@ -965,7 +972,7 @@ sub rework_patch {
 	}  ## End of scanning lines
 
 	if ( 0 == scalar keys %hFixedPatches ) {
-		unlink $pFile;  ## Empty patch...
+		unlink $pFile or croak("Unlinking $pFile FAILED: $!\n");  ## Empty patch...
 		return -1;
 	}
 
@@ -976,10 +983,10 @@ sub rework_patch {
 
 		if ( open my $fIn, '<', $pNew ) {
 			my @lNew = <$fIn>;
-			close($fIn) or croak("Closing $pNew FAILED: $!\n");
-			chomp(@lNew);
+			close $fIn or croak("Closing $pNew FAILED: $!\n");
+			chomp @lNew;
 			push @lOut, @lNew;
-			unlink $pNew;
+			unlink $pNew or croak("Unlinking $pNew FAILED: $!\n");
 		} elsif ( -f $pNew ) {
 			print "\nERROR [rework]: Can't open $pNew for reading!\n$!\n";
 			return 0;
@@ -994,9 +1001,9 @@ sub rework_patch {
 
 	# Eventually overwrite $pFile with @lOut
 	# ----------------------------------------------------------
-	if ( open( my $fOut, '>', $pFile ) ) {
-		print $fOut join( "\n", @lOut ) . "\n";
-		close($fOut) or croak("Closing $pFile FAILED: $!\n");
+	if ( open my $fOut, '>', $pFile ) {
+		print {$fOut} join( "\n", @lOut ) . "\n";
+		close $fOut or croak("Closing $pFile FAILED: $!\n");
 	} else {
 		print "\nERROR: Can not open $pFile for writing!\n$!\n";
 		return 0;
@@ -1020,36 +1027,36 @@ sub set_last_mutual {
 	# ---------------------------------------------------------------
 	# (And build a shortcut while at it so we do ...
 	for my $path ( sort keys %hMutuals ) {
-		length($path) > $pLen and $pLen = length($path);
+		( length $path ) > $pLen and $pLen = ( length $path );
 		for my $refid ( sort keys %{ $hMutuals{$path} } ) {
 			my $hM = $hMutuals{$path}{$refid};  # Shortcut!
-			length($refid) > $rLen          and $rLen = length($refid);
-			length( $hM->{mutual} ) > $mLen and $mLen = length( $hM->{mutual} );
-			defined( $hM->{src} )           and ( length( $hM->{src} ) > 4 ) and $hM->{src} = 'src-' . $hM->{src}
+			( length $refid ) > $rLen        and $rLen = ( length $refid );
+			( length $hM->{mutual} ) > $mLen and $mLen = ( length $hM->{mutual} );
+			( defined $hM->{src} )           and ( ( length $hM->{src} ) > 4 ) and $hM->{src} = 'src-' . $hM->{src}
 			  or $hM->{src} = 'x';
-			length( $hM->{src} ) > $sLen and $sLen = length( $hM->{src} );
-			defined( $hM->{tgt} ) and ( length( $hM->{tgt} ) > 4 ) and $hM->{tgt} = 'tgt-' . $hM->{tgt}
+			( length $hM->{src} ) > $sLen and $sLen = ( length $hM->{src} );
+			( defined $hM->{tgt} ) and ( ( length $hM->{tgt} ) > 4 ) and $hM->{tgt} = 'tgt-' . $hM->{tgt}
 			  or $hM->{tgt} = 'x';
 		} ## end for my $refid ( sort keys...)
 	} ## end for my $path ( sort keys...)
 
 	# Now we can build the fmt
-	my $out_fmt = sprintf( "%%-%ds %%-%ds %%-%ds %%-%ds %%s\n", $pLen, $rLen, $mLen, $sLen );
+	my $out_fmt = sprintf "%%-%ds %%-%ds %%-%ds %%-%ds %%s\n", $pLen, $rLen, $mLen, $sLen;
 
 	# Second we build the out text
 	# ---------------------------------------------------------------
 	for my $path ( sort keys %hMutuals ) {
 		for my $refid ( sort keys %{ $hMutuals{$path} } ) {
 			my $hM = $hMutuals{$path}{$refid};  # Shortcut!
-			$out_text .= sprintf( $out_fmt, $path, $refid, $hM->{mutual}, $hM->{src}, $hM->{tgt} );
+			$out_text .= sprintf $out_fmt, $path, $refid, $hM->{mutual}, $hM->{src}, $hM->{tgt};
 		}
 	} ## end for my $path ( sort keys...)
 
 	# Third, write a new $COMMIT_FILE
 	# ---------------------------------------------------------------
-	if ( open( my $fOut, '>', $COMMIT_FILE ) ) {
-		print $fOut $out_text;
-		close($fOut) or croak("Closing $COMMIT_FILE FAILED: $!\n");
+	if ( open my $fOut, '>', $COMMIT_FILE ) {
+		print {$fOut} $out_text;
+		close $fOut or croak("Closing $COMMIT_FILE FAILED: $!\n");
 	} else {
 		print "ERROR: Can not open $COMMIT_FILE for writing!\n$!\n";
 		print "The content would have been:\n" . ( $DASH x 24 ) . "\n$out_text" . ( $DASH x 24 ) . "\n";
@@ -1065,8 +1072,8 @@ sub set_last_mutual {
 sub shorten_refid {
 	my ( $p, $r ) = @_;
 
-	defined($p) and length($p) or croak('shorten_refid() called with undef path!');
-	defined($r) and length($r) or croak('shorten_refid() called with undef refid!');
+	( defined $p ) and ( length $p ) or croak('shorten_refid() called with undef path!');
+	( defined $r ) and ( length $r ) or croak('shorten_refid() called with undef refid!');
 
 	#@type Git::Wrapper
 	my $git    = Git::Wrapper->new($p);
@@ -1089,13 +1096,12 @@ sub shorten_refid {
 # Helper to show the argument as a non permanent progress line.
 sub show_prg {
 	my ($msg) = @_;
-	my $len = length($prg_line);
-
+	my $len = length $prg_line;
 	$len and print "\r" . ( $SPACE x $len ) . "\r";
 
 	$prg_line = $msg;
 
-	if ( length($prg_line) > 0 ) {
+	if ( ( length $prg_line ) > 0 ) {
 		local $| = 1;
 		print $msg;
 	}
@@ -1108,7 +1114,7 @@ sub wanted {
 	my $f = $File::Find::name;
 
 	( $f   =~ m/[.]pwx$/ms )    or  ## .pwx files must not be considered, they are strictly temporary
-	  ( $f =~ m,man/rules/,ms ) or  ## the man page generation rules are generated and must not be touched
+	  ( $f =~ m{man/rules/}ms ) or  ## the man page generation rules are generated and must not be touched
 	  return add_source_file($f);
 
 	return 1;
