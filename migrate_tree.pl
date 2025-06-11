@@ -60,12 +60,12 @@ BEGIN {
 
 } ## end BEGIN
 
-Readonly my $VERSION     => '0.4.5';                                                ## Please keep this current!
+Readonly my $VERSION     => '0.4.5';                                                      ## Please keep this current!
 Readonly my $VERSMIN     => $DASH x length($VERSION);
 Readonly my $WORKDIR     => getcwd();
 Readonly my $CHECK_TREE  => abs_path( $PROGDIR . '/check_tree.pl' );
 Readonly my $COMMIT_FILE => abs_path( $PROGDIR . '/last_mutual_commits.csv' );
-Readonly my $USAGE_SHORT => "$PROGNAME <--help|[OPTIONS] <upstream path> <refid>>";
+Readonly my $USAGE_SHORT => "$PROGNAME <--help|[OPTIONS] <-u upstream path> <-r refid>>";
 Readonly my $USAGE_LONG => $EMPTY
   . "elogind git tree migration V$VERSION\n"
   . "----------------------------$VERSMIN\n" . "\n"
@@ -78,18 +78,20 @@ Readonly my $USAGE_LONG => $EMPTY
   . "USAGE:\n"
   . "  $USAGE_SHORT\n" . "\n"
   . "OPTIONS:\n"
-  . "     --advance       : Use the last upstream commit that has been written\n"
-  . "                       into \"$COMMIT_FILE\" as the last\n"
-  . "                       mutual commit to use. This is useful for continued\n"
-  . "                       migration of branches. Incompatible with -c|--commit.\n"
-  . "  -c|--commit <hash> : The mutual commit to use. If this option is not used,\n"
-  . "                       the script looks into \"$COMMIT_FILE\"\n"
-  . "                       and uses the commit noted for <refid>. Incompatible\n"
-  . "                       with --advance.\n"
-  . "                       Note: The mutual commit is not applied again.\n"
-  . "  -h|--help            Show this help and exit.\n"
-  . "  -o|--output <path> : Path to where to write the patches. The default is to\n"
-  . "                       write into \"$PROGDIR/patches\".\n" . "\n"
+  . "  -u|--upstream <path>: Path to the upstream to migrate.\n"
+  . "  -r|--refid <refid>  : reference id to check out first in upstream.\n"
+  . "     --advance        : Use the last upstream commit that has been written\n"
+  . "                        into \"$COMMIT_FILE\" as the last\n"
+  . "                        mutual commit to use. This is useful for continued\n"
+  . "                        migration of branches. Incompatible with -c|--commit.\n"
+  . "  -c|--commit <hash>  : The mutual commit to use. If this option is not used,\n"
+  . "                        the script looks into \"$COMMIT_FILE\"\n"
+  . "                        and uses the commit noted for <refid>. Incompatible\n"
+  . "                        with --advance.\n"
+  . "                        Note: The mutual commit is not applied again.\n"
+  . "  -h|--help           : Show this help and exit.\n"
+  . "  -o|--output <path>  : Path to where to write the patches. The default is to\n"
+  . "                        write into \"$PROGDIR/patches\".\n" . "\n"
   . "Notes:\n"
   . "  - The upstream tree is reset and put back into the current state after the\n"
   . "    script finishes.\n"
