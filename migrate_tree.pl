@@ -237,53 +237,7 @@ build_lPatches() or exit 1;
 # ---    contain only diffs that are valid for us. We'll use    ---
 # ---    check_tree.pl to achieve the latter.                   ---
 # -----------------------------------------------------------------
-for my $i ( 0 .. ( $commit_count - 1 ) ) {
-	my $fmt    = sprintf '%04d-*.patch', $i + 1;
-	my @lFiles = glob qq("${output_path}/${fmt}");
-
-	# Be sure this is solid!
-	# ----------------------------------------------------------
-	if ( scalar @lFiles > 1 ) {
-		print "\nERROR: $fmt results in more than one patch!\n";
-		exit 1;
-	} elsif ( 1 > scalar @lFiles ) {
-		print "\nERROR: No patches found for $fmt!\n";
-		exit 1;
-	}
-
-	my $file = basename( $lFiles[0] );
-	my $id   = $hPatches{$file};
-	( defined $id )                       or print "\nERROR: $lFiles[0] not listed in hPatches!\n" and return 0;
-	( defined $lPatches[$id]{'applied'} ) or print "\nERROR: $lFiles[0] not listed in lPatches!\n" and return 0;
-
-	# If the patch was already applied (for some error recoverage) then skip it.
-	( 1 == $lPatches[$id]{'applied'} ) and show_prg("Skipping $file - already applied") and next;
-
-	# Now rework the patch
-	# ---------------------------------------------------------
-	my $prgMsg = sprintf 'Reworking %s', basename( $lFiles[0] );
-	show_prg($prgMsg);
-	my $r = rework_patch( $lFiles[0] );
-	$r or exit 1;     ## Error detected
-	$r < 0 and next;  ## Empty patch
-
-	# -------------------------------------------------------------
-	# --- 5) Reworked patches must be applied directly.         ---
-	# ---    Otherwise we'll screw up if a newly created file   ---
-	# ---    gets patched later.                                ---
-	# -------------------------------------------------------------
-	$prgMsg = sprintf 'Applying  %s', basename( $lFiles[0] );
-	show_prg($prgMsg);
-	$r = apply_patch( $lFiles[0] );
-
-	if ( 0 == $r ) {
-		exit 1;
-	}
-
-	# The patch file is no longer needed. Keeping it would lead to confusion.
-	unlink $lFiles[0] or croak("Unlinking $lFiles[0] FAILED: $!\n");
-} ## end for my $i ( 0 .. ( $commit_count...))
-show_prg($EMPTY);
+rewrite_and_apply_patches() or exit 1;
 
 # ===========================
 # === END OF MAIN PROGRAM ===
@@ -1041,6 +995,61 @@ sub rework_patch {
 
 	return 1;
 } ## end sub rework_patch
+
+# --------------------------------------------
+# -- Rewrite and then apply all patches    ---
+# --------------------------------------------
+sub rewrite_and_apply_patches {
+	for my $i ( 0 .. ( $commit_count - 1 ) ) {
+		my $fmt    = sprintf '%04d-*.patch', $i + 1;
+		my @lFiles = glob qq("${output_path}/${fmt}");
+
+		# Be sure this is solid!
+		# ----------------------------------------------------------
+		if ( scalar @lFiles > 1 ) {
+			print "\nERROR: $fmt results in more than one patch!\n";
+			return 0;
+		} elsif ( 1 > scalar @lFiles ) {
+			print "\nERROR: No patches found for $fmt!\n";
+			return 0;
+		}
+
+		my $file = basename( $lFiles[0] );
+		my $id   = $hPatches{$file};
+		( defined $id )                       or print "\nERROR: $lFiles[0] not listed in hPatches!\n" and return 0;
+		( defined $lPatches[$id]{'applied'} ) or print "\nERROR: $lFiles[0] not listed in lPatches!\n" and return 0;
+
+		# If the patch was already applied (for some error recovering) then skip it.
+		( 1 == $lPatches[$id]{'applied'} ) and show_prg("Skipping $file - already applied") and next;
+
+		# Now rework the patch
+		# ---------------------------------------------------------
+		my $prgMsg = sprintf 'Reworking %s', basename( $lFiles[0] );
+		show_prg($prgMsg);
+		my $r = rework_patch( $lFiles[0] );
+		$r or return 0;   ## Error detected
+		$r < 0 and next;  ## Empty patch
+
+		# -------------------------------------------------------------
+		# --- 5) Reworked patches must be applied directly.         ---
+		# ---    Otherwise we'll screw up if a newly created file   ---
+		# ---    gets patched later.                                ---
+		# -------------------------------------------------------------
+		$prgMsg = sprintf 'Applying  %s', basename( $lFiles[0] );
+		show_prg($prgMsg);
+		$r = apply_patch( $lFiles[0] );
+
+		if ( 0 == $r ) {
+			return 0;
+		}
+
+		# The patch file is no longer needed. Keeping it would lead to confusion.
+		unlink $lFiles[0] or croak("Unlinking $lFiles[0] FAILED: $!\n");
+	} ## end for my $i ( 0 .. ( $commit_count...))
+	show_prg($EMPTY);
+
+	return 1;
+} ## end sub rewrite_and_apply_patches
 
 # --------------------------------------------
 # --- Write back %hMutuals to $COMMIT_FILE ---
