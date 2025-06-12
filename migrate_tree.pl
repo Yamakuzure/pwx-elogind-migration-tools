@@ -715,6 +715,30 @@ sub checkout_tree {
 	return 1;
 } ## end sub checkout_tree
 
+# --- utility function remove the header but extract the commit hash
+sub extract_header_and_commit {
+	my ($lines_ref)  = @_;
+	my @output_lines = ();
+	my $commit_hash  = $EMPTY;
+
+	while ( @{$lines_ref} ) {
+		my $line = shift @{$lines_ref};
+
+		if ( $line =~ m/^\s+(\S+)\s+[|]\s+\d+/msx ) {
+			unshift @{$lines_ref}, $line;
+			last;
+		}
+
+		if ( $line =~ m/^From\s+(\b[0-9a-fA-F]{40}\b)/msx ) {
+			$commit_hash = $1;
+		}
+
+		push @output_lines, $line;
+	} ## end while ( @{$lines_ref} )
+
+	return ( $commit_hash, @output_lines );
+} ## end sub extract_header_and_commit
+
 # -----------------------------------------------------------------------
 # --- Finds all relevant files and store them in @wanted_files        ---
 # --- Returns 1 on success, 0 otherwise.                              ---
@@ -761,6 +785,81 @@ sub generate_file_list {
 
 	return 1;
 } ## end sub generate_file_list
+
+# --- utility function to build a fixed patch hash
+sub generate_patch_hash {
+	my ( $hPatch_p, $pFile, $refid, $lInp_p, $lOut_p ) = @_;
+	my $lCnt = scalar @{$lInp_p};
+
+	while ( $lCnt-- > 0 ) {
+		my $isNew = 0;                          ## 1 if we hit a creation summary line
+		my $line  = shift @{$lInp_p} // $EMPTY;
+		my $real  = $EMPTY;                     ## The real file to work with
+		my $src   = $EMPTY;                     ## Source in upstream
+		my $tgt   = $EMPTY;                     ## Target in downstream
+
+		# This ends on the first empty line.
+		$line =~ m/^\s*$/ms and ( push @{$lOut_p}, $EMPTY ) and last;
+
+		# This is either a line modification information, or a
+		# creation line of a new file. These look like this...
+		#   src/shared/meson.build                      |   1 +
+		$line =~ m/^\s+(\S+)\s+[|].*/msx and $src = $1;
+
+		# ...or that:
+		#   create mode 100644 src/network/netdev/wireguard.c
+		if ( $line =~ m/^\s+create\s+mode\s+\d+\s+(\S+)\s*$/msx ) {
+			$src   = $1;
+			$isNew = 1;
+		}
+
+		# Otherwise it is the modification summary line
+		( length $src ) or ( push @{$lOut_p}, $line ) and next;
+
+		$tgt = $src;
+		$tgt =~ s/systemd/elogind/msg;
+
+		# Let's see whether the source/target exists. Can't be a new
+		# file then. This might happen if we added a missing file
+		# manually beforehand.
+
+		if ( ( defined $hFiles{$tgt} ) ) {
+			$real  = $tgt;
+			$isNew = 0;
+		} elsif ( ( defined $hFiles{$src} ) ) {
+			$real  = $src;
+			$isNew = 0;
+		} elsif ( $isNew > 0 ) {
+			( defined $hDirectories{ dirname($tgt) } ) and $real = $tgt
+			  or ( defined $hDirectories{ dirname($src) } )
+			  and $real = $src;
+		}
+
+		# We neither need diffs on invalid files, nor new files in invalid directories.
+		( length $real ) or next;
+
+		# Remember that the found real target is relevant for this patch
+		$hPatchTgts{$pFile}{$real} = 1;
+
+		# Now use $real to get the patch needed, if it is set.
+		my $pNew = check_tree( $refid, $real, $isNew );
+
+		# If no patch was generated, the file is either "same" or "clean".
+		$pNew eq 'none' and next;
+
+		# However, an empty $pNew indicates an error. (check_tree() has it reported already.)
+		( length $pNew ) or return 0;
+
+		# This is in order
+		$hPatch_p->{$pNew} = 1;
+
+		# If we are here, transfer the file line. It is useful.
+		$line =~ s/$src/$real/ms;
+		push @{$lOut_p}, $line;
+	}  ## End of scanning lines
+
+	return 1;
+} ## end sub generate_patch_hash
 
 # ------------------------------------------------------------------------------
 # --- Find or read the last mutual refid between this and the upstream tree. ---
@@ -845,138 +944,45 @@ sub handle_sig {
 	exit 1;
 }
 
+# --- Utility function, return list with chomped file lines
+sub read_file_lines {
+	my ($file_path) = @_;
+	open my $fh, '<', $file_path or croak("Could not open file '$file_path' for reading: $!\n");
+	my @lines = <$fh>;
+	close $fh or croak("Failed to close file '$file_path': $!\n");
+	chomp @lines;
+	return @lines;
+} ## end sub read_file_lines
+
 # --------------------------------------------------------------
 # --- Use check_tree.pl to generate valid diffs on all valid ---
 # --- files within the patch with the given number.          ---
 # --------------------------------------------------------------
 sub rework_patch {
 	my ($pFile) = @_;
-	my @lLines = ();
-
-	if ( open my $fIn, '<', $pFile ) {
-		@lLines = <$fIn>;
-		close $fIn or croak("Closing $pFile FAILED: $!\n");
-		chomp @lLines;
-	} else {
-		print "\nERROR [rework]: $pFile could not be opened for reading!\n$!\n";
-		return 0;
-	}
-
-	# Copy the header, ended by either '---' or 'diff '
-	# ----------------------------------------------------------
-	my @lOut   = ();
-	my $lCnt   = scalar @lLines;
-	my $commit = $EMPTY;
-
-	while ( $lCnt-- > 0 ) {
-
-		# Can not be done in while(), or empty lines would break the loop.
-		my $line = shift @lLines;
-
-		# We break this once we have found a file summary line
-		if ( $line =~ m/^\s+(\S+)\s+[|]\s+\d+/msx ) {
-			unshift @lLines, $line;  ## Still needed
-			++$lCnt;                 ## Yeah, put it up again!
-			last;
-		}
-
-		# Before transfering the line, see if this is the commit info
-		$line =~ m/^From\s+(\b[0-9a-fA-F]{40}\b)/msx and $commit = $1;
-
-		push @lOut, $line;
-	} ## end while ( $lCnt-- > 0 )
+	my @lInput = read_file_lines($pFile);
+	my ( $commit_hash, @lOutput ) = extract_header_and_commit( \@lInput );
+	my $lCnt          = scalar @lOutput;
+	my %hFixedPatches = ();
 
 	# There is something wrong if we have no commit hash now
-	if ( 0 == ( length $commit ) ) {
+	if ( 0 == ( length $commit_hash ) ) {
 		print "\nERROR: No 'From <hash>' line found!\n";
 		return 0;
 	}
 
-	# There is something wrong if the next part is not a file summary line.
-	# ----------------------------------------------------------------------
-	if ( !( defined $lLines[0] ) || !( $lLines[0] =~ m/^\s+(\S+)\s+[|]\s+\d+/msx ) ) {
-		print "\nERROR: No file summary block found!\n";
-		print "The line currently looked at is:\n";
-		print $PIPE . ( ( defined $lLines[0] ) ? $lLines[0] : 'UNDEF' ) . "|\n";
-		print "We still have $lCnt lines to go.\n";
-		print "\nlOut so far:\n" . join( "\n", @lOut ) . "\n---------- END\n";
-		return 0;
-	} ## end if ( !( defined $lLines...))
+	# If the file summary line is not valid, break off here.
+	validate_file_summary_line( $lInput[0], \@lOutput, $lCnt ) or return 0;
 
-	my %hFixedPatches = ();
-	while ( $lCnt-- > 0 ) {
-		my $isNew = 0;             ## 1 if we hit a creation summary line
-		my $line  = shift @lLines;
-		my $real  = $EMPTY;        ## The real file to work with
-		my $src   = $EMPTY;        ## Source in upstream
-		my $tgt   = $EMPTY;        ## Target in downstream
-
-		# This ends on the first empty line.
-		$line =~ m/^\s*$/ms and ( push @lOut, $EMPTY ) and last;
-
-		# This is either a line modification information, or a
-		# creation line of a new file. These look like this...
-		#   src/shared/meson.build                      |   1 +
-		$line =~ m/^\s+(\S+)\s+[|].*/msx and $src = $1;
-
-		# ...or that:
-		#   create mode 100644 src/network/netdev/wireguard.c
-		if ( $line =~ m/^\s+create\s+mode\s+\d+\s+(\S+)\s*$/msx ) {
-			$src   = $1;
-			$isNew = 1;
-		}
-
-		# Otherwise it is the modification summary line
-		( length $src ) or ( push @lOut, $line ) and next;
-
-		$tgt = $src;
-		$tgt =~ s/systemd/elogind/msg;
-
-		# Let's see whether the source/target exists. Can't be a new
-		# file then. This might happen if we added a missing file
-		# manually beforehand.
-
-		if ( ( defined $hFiles{$tgt} ) ) {
-			$real  = $tgt;
-			$isNew = 0;
-		} elsif ( ( defined $hFiles{$src} ) ) {
-			$real  = $src;
-			$isNew = 0;
-		} elsif ( $isNew > 0 ) {
-			( defined $hDirectories{ dirname($tgt) } ) and $real = $tgt
-			  or ( defined $hDirectories{ dirname($src) } )
-			  and $real = $src;
-		}
-
-		# We neither need diffs on invalid files, nor new files in invalid directories.
-		( length $real ) or next;
-
-		# Remember that the found real target is relevant for this patch
-		$hPatchTgts{$pFile}{$real} = 1;
-
-		# Now use $real to get the patch needed, if it is set.
-		my $pNew = check_tree( $commit, $real, $isNew );
-
-		# If no patch was generated, the file is either "same" or "clean".
-		$pNew eq 'none' and next;
-
-		# However, an empty $pNew indicates an error. (check_tree() has it reported already.)
-		( length $pNew ) or return 0;
-
-		# This is in order
-		$hFixedPatches{$pNew} = 1;
-
-		# If we are here, transfer the file line. It is useful.
-		$line =~ s/$src/$real/ms;
-		push @lOut, $line;
-	}  ## End of scanning lines
+	# Generate the fixed patches hash
+	generate_patch_hash( \%hFixedPatches, $pFile, $commit_hash, \@lInput, \@lOutput ) or return 0;
 
 	if ( 0 == scalar keys %hFixedPatches ) {
 		unlink $pFile or croak("Unlinking $pFile FAILED: $!\n");  ## Empty patch...
 		return -1;
 	}
 
-	# Load all generated patches and add them to lOut
+	# Load all generated patches and add them to lOutput
 	# ----------------------------------------------------------
 	for my $pNew ( keys %hFixedPatches ) {
 		$hFixedPatches{$pNew} or next;  ## Already handled
@@ -985,7 +991,7 @@ sub rework_patch {
 			my @lNew = <$fIn>;
 			close $fIn or croak("Closing $pNew FAILED: $!\n");
 			chomp @lNew;
-			push @lOut, @lNew;
+			push @lOutput, @lNew;
 			unlink $pNew or croak("Unlinking $pNew FAILED: $!\n");
 		} elsif ( -f $pNew ) {
 			print "\nERROR [rework]: Can't open $pNew for reading!\n$!\n";
@@ -997,12 +1003,12 @@ sub rework_patch {
 
 	# Store the patch commit for later reference
 	# ----------------------------------------------------------
-	$hSrcCommits{$pFile} = $commit;
+	$hSrcCommits{$pFile} = $commit_hash;
 
-	# Eventually overwrite $pFile with @lOut
+	# Eventually overwrite $pFile with @lOutput
 	# ----------------------------------------------------------
 	if ( open my $fOut, '>', $pFile ) {
-		print {$fOut} join( "\n", @lOut ) . "\n";
+		print {$fOut} join( "\n", @lOutput ) . "\n";
 		close $fOut or croak("Closing $pFile FAILED: $!\n");
 	} else {
 		print "\nERROR: Can not open $pFile for writing!\n$!\n";
@@ -1108,6 +1114,24 @@ sub show_prg {
 
 	return 1;
 } ## end sub show_prg
+
+# --- utility function to check one file summary line
+sub validate_file_summary_line {
+	my ( $summary_line, $header_lines_ref, $line_count ) = @_;
+
+	# There is something wrong if the next part is not a file summary line.
+	# ----------------------------------------------------------------------
+	if ( !( defined $summary_line ) || !( $summary_line =~ m/^\s+(\S+)\s+[|]\s+\d+/msx ) ) {
+		print "\nERROR: No file summary block found!\n";
+		print "The line currently looked at is:\n";
+		print $PIPE . ( ( defined $summary_line ) ? $summary_line : 'UNDEF' ) . "|\n";
+		print "We still have $line_count lines to go.\n";
+		print "\nlOut so far:\n" . join( "\n", @{$header_lines_ref} ) . "\n---------- END\n";
+		return 0;
+	} ## end if ( !( defined $summary_line...))
+
+	return 1;
+} ## end sub validate_file_summary_line
 
 # Callback function for File::Find
 sub wanted {
