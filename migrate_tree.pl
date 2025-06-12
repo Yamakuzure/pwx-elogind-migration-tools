@@ -60,7 +60,7 @@ BEGIN {
 
 } ## end BEGIN
 
-Readonly my $VERSION     => '0.4.5';                                                      ## Please keep this current!
+Readonly our $VERSION    => '0.5.0';                                                      ## Please keep this current!
 Readonly my $VERSMIN     => $DASH x ( length $VERSION );
 Readonly my $WORKDIR     => getcwd();
 Readonly my $CHECK_TREE  => abs_path( $PROGDIR . '/check_tree.pl' );
@@ -310,156 +310,170 @@ sub add_source_file {
 	return 1;
 } ## end sub add_source_file
 
+# --- Utility function to attempt to apply a git patch directly
+sub apply_direct_patch {
+	my (
+		#@type Git::Wrapper
+		$git_wrapper,
+		$patch_file, $patch_filename
+	) = @_;
+	show_prg( sprintf "Applying %s directly\n", $patch_filename );
+	my @patch_command = ( '/usr/bin/patch', '-p', '1', '-i', $patch_file );
+
+	if ( system @patch_command ) {
+		printf "\nApplying %s directly FAILED [%d]\n", $patch_filename, ( $? & 127 );
+		print "Fix above errors, add all files to git, issue 'git am --continue' and\n";
+		printf "Set last mutual commit to '%s'\n", shorten_refid( $upstream_path, $hSrcCommits{$patch_file} );
+		exit 1;
+	} ## end if ( system @patch_command)
+
+	for my $target ( keys %{ $hPatchTgts{$patch_file} } ) {
+		$git_wrapper->add($target);
+	}
+
+	try {
+		$git_wrapper->am( { 'continue' => 1 } );
+		return 1;
+	} catch {
+		show_prg('Applying patch directly with git apply failed!');
+	};
+	return 0;
+} ## end sub apply_direct_patch
+
+# --- Utility Function to apply one patch using 'git am'
+sub apply_git_am {
+	my (
+		#@type Git::Wrapper
+		$git_wrapper,
+		$patch_filename, $patch_content
+	) = @_;
+	try {
+		$git_wrapper->am(
+			{
+				'3'    => 1,
+				-STDIN => $patch_content
+			}
+		);
+		return 1;
+	} catch {
+		show_prg( sprintf "Applying %s with 'git am' failed!", $patch_filename );
+	};
+	return 0;
+} ## end sub apply_git_am
+
+# --- Utility function to apply possibly missing patches to enable a failed one to succeed
+sub apply_missing_patches {
+	my ( $patch_file, $patch_id ) = @_;
+	my $patch_filename = basename($patch_file);
+
+	print "Trying to identify missing commits ...\n";
+
+	my $prv_rid = $previous_refid;
+
+	( $prv_rid ne $wanted_refid ) and checkout_tree( $upstream_path, $wanted_refid, 1 );
+
+	my $refid  = $lPatches[$patch_id]{'refid'};
+	my $mutual = $hMutuals{$upstream_path}{$wanted_refid}{mutual_full};
+	my @lRev   = ();
+	my $done   = 0;                                                     ## Don't return 1 if this stays being zero or we'll get an endless loop if nothing applicable is found!
+
+	if ( ( defined $mutual ) ) {
+		try {
+			my $git_ex = Git::Wrapper->new($upstream_path);
+			@lRev = $git_ex->rev_list( { 'reverse' => 1, 'no-merges' => 1, 'full-history' => 1, 'dense' => 1, 'topo-order' => 1 }, "${mutual}...${refid}" );
+		} catch {
+			print "ERROR: Couldn't fetch commits\n";
+			print 'Exit Code : ' . $_->status . "\n";
+			print 'Message   : ' . $_->error . "\n";
+			return 0;
+		};
+
+		print 'It looks like we were missing ' . ( scalar @lRev ) . " commits. Trying to apply the relevant ones...\n";
+
+		for my $line (@lRev) {
+			chomp $line;
+
+			if ( ( defined $hCommits{$line} ) && ( $mutual ne $hCommits{$line} ) ) {
+
+				# The commit is relevant for us
+				my $next_id = $hRefIDs{$line};
+				( defined $next_id ) and ( 0 == $lPatches[$next_id]{'applied'} ) or next;
+
+				foreach my $next_patch ( @{ $lPatches[$next_id]{'paths'} } ) {
+					( -f "$output_path/$next_patch" ) and ( $patch_filename ne $next_patch ) and $done += apply_patch("$output_path/$next_patch");
+				}
+			} ## end if ( ( defined $hCommits...))
+		} ## end for my $line (@lRev)
+	} else {
+		print "No known last mutual commit, breaking off!\n";
+	}
+
+	# Revert to where we were
+	( $prv_rid ne $previous_refid ) and checkout_tree( $upstream_path, $prv_rid, 1 );
+
+	# Now, if $done is greater than 1, we can try the failed commit again
+	print "Applied $done commits.\n";
+	( $done > 0 ) and return apply_patch($patch_file);
+
+	# Otherwise nothing was done
+	return 0;
+} ## end sub apply_missing_patches
+
 # --------------------------------------------------------------
 # --- Apply a reworked patch                                 ---
 # --------------------------------------------------------------
 sub apply_patch {
-	my ($pFile)     = @_;
-	my $git         = Git::Wrapper->new($WORKDIR);
-	my @lGitRes     = ();
-	my $patch_lines = $EMPTY;
+	my ($patch_file) = @_;
 
-	# --- Ensure everything is solid ---
-	# ----------------------------------
-	my $file = basename($pFile);
-	my $id   = $hPatches{$file};
-	( defined $id )                       or print "\nERROR: $file not listed in hPatches!\n" and return 0;
-	( defined $lPatches[$id]{'applied'} ) or print "\nERROR: $file not listed in lPatches!\n" and return 0;
+	#@type Git::Wrapper;
+	my $git_wrapper = Git::Wrapper->new($WORKDIR);
+
+	# Ensure everything is solid
+	# -------------------------------------------------------------------------------------------
+	my $patch_filename = basename($patch_file);
+	my $patch_id       = $hPatches{$patch_filename};
+	( defined $patch_id )                       or print "\nERROR: $patch_filename not listed in hPatches!\n" and return 0;
+	( defined $lPatches[$patch_id]{'applied'} ) or print "\nERROR: $patch_filename not listed in lPatches!\n" and return 0;
 
 	# If the patch was already applied, do not try it again.
-	( 1 == $lPatches[$id]{'applied'} ) and return 1;
+	# -------------------------------------------------------------------------------------------
+	( 1 == $lPatches[$patch_id]{'applied'} ) and return 1;
 
-	# --- 1) Read the patch, we have to use it directly via STDIN ---
-	# ---------------------------------------------------------------
-	if ( open my $fIn, '<', $pFile ) {
-		my @lLines = <$fIn>;
-		close $fIn or croak("Closing $pFile FAILED: $!\n");
-		chomp @lLines;
-		$patch_lines = ( join "\n", @lLines ) . "\n";
-	} else {
-		print "\nERROR [apply]: $pFile could not be opened for reading!\n$!\n";
-		return 0;
-	}
+	# Put the patch into one textblock string
+	# -------------------------------------------------------------------------------------------
+	my $patch_content = read_patch_file($patch_file);
+	defined $patch_content or return 0;
 
-	# --- 2) Try to apply the patch as is                         ---
-	# ---------------------------------------------------------------
-	my $result = 0;
+	# Try to apply the patch as is
+	# -------------------------------------------------------------------------------------------
+	my $result = apply_git_am( $git_wrapper, $patch_filename, $patch_content );
+	( 1 == $result ) and return 1;
 
-	try {
-		@lGitRes = $git->am(
-			{
-				'3'    => 1,
-				-STDIN => $patch_lines
-			}
-		);
-		$result = 1;
-	} catch {
-		my $prgMsg = sprintf "Applying %s with 'git am' failed!", $file;
-		show_prg($prgMsg);
-	};
+	# If that failed, try to apply the patch directly
+	# -------------------------------------------------------------------------------------------
+	$result = apply_direct_patch( $git_wrapper, $patch_file, $patch_filename );
+	( 1 == $result ) and return 1;
 
-	if ( 0 == $result ) {
+	# If this did not work, try to apply missing patches, then this one.
+	# -------------------------------------------------------------------------------------------
+	$result = apply_missing_patches( $patch_file, $patch_id );
+	( $result > 0 ) or return $result;  ## Give up and exit if everything failed
 
-		# --- 3) Try to apply the patch directly                      ---
-		# ---------------------------------------------------------------
-		my $prgMsg = sprintf "Applying %s directly\n", $file;
-		show_prg($prgMsg);
-		my @patch = ( '/usr/bin/patch', '-p', '1', '-i', $pFile );
-		if ( system @patch ) {
-
-			# We have to fix this by hand... great...
-			printf "\nApplying %s directly FAILED [%d]\n", $file, ( $? & 127 );
-			print "Fix above errors, add all files to git, issue 'git am --continue' and\n";
-			printf "Set last mutual commit to '%s'\n", shorten_refid( $upstream_path, $hSrcCommits{$pFile} );
-			exit 1;
-		} else {
-
-			# We have to add all relevant target files before "am" can continue
-			for my $tgt ( keys %{ $hPatchTgts{$pFile} } ) {
-				$git->add($tgt);
-			}
-			try {
-				$git->am( { 'continue' => 1 } );
-				$result = 1;
-			} catch {
-
-				# Let's try with a direct patch, git apply can not apply fuzzy
-				$git->am( { 'abort' => 1 } );
-				$prgMsg = sprintf "Applying  %s FAILED\n", $file;
-				show_prg($prgMsg);
-			};
-		} ## end else [ if ( system @patch ) ]
-	} ## end if ( 0 == $result )
-
-	# --- 4) If this did not work, try to apply missing patches, then this one. ---
-	# -----------------------------------------------------------------------------
-	if ( 0 == $result ) {
-		print "Trying to identify missing commits ...\n";
-
-		my $prv_rid = $previous_refid;
-
-		( $prv_rid ne $wanted_refid ) and checkout_tree( $upstream_path, $wanted_refid, 1 );
-
-		my $refid  = $lPatches[$id]{'refid'};
-		my $mutual = $hMutuals{$upstream_path}{$wanted_refid}{mutual_full};
-		my @lRev   = ();
-		my $done   = 0;                                                     ## Don't return 1 if this stays being zero or we'll get an endless loop if nothing appliable is found!
-
-		if ( ( defined $mutual ) ) {
-			try {
-				my $git_ex = Git::Wrapper->new($upstream_path);
-				@lRev = $git_ex->rev_list( { 'reverse' => 1, 'no-merges' => 1, 'full-history' => 1, 'dense' => 1, 'topo-order' => 1 }, "${mutual}...${refid}" );
-			} catch {
-				print "ERROR: Couldn't fetch commits\n";
-				print 'Exit Code : ' . $_->status . "\n";
-				print 'Message   : ' . $_->error . "\n";
-				return 0;
-			};
-
-			print 'It looks like we were missing ' . ( scalar @lRev ) . " commits. Trying to apply the relevant ones...\n";
-
-			for my $line (@lRev) {
-				chomp $line;
-
-				if ( ( defined $hCommits{$line} ) && ( $mutual ne $hCommits{$line} ) ) {
-
-					# The commit is relevant for us
-					my $next_id = $hRefIDs{$line};
-					( defined $next_id ) and ( 0 == $lPatches[$next_id]{'applied'} ) or next;
-
-					foreach my $next_patch ( @{ $lPatches[$next_id]{'paths'} } ) {
-						( -f "$output_path/$next_patch" ) and ( $file ne $next_patch ) and $done += apply_patch("$output_path/$next_patch");
-					}
-				} ## end if ( ( defined $hCommits...))
-			} ## end for my $line (@lRev)
-		} else {
-			print "No known last mutual commit, breaking off!\n";
-		}
-
-		# Revert to where we were
-		( $prv_rid ne $previous_refid ) and checkout_tree( $upstream_path, $prv_rid, 1 );
-
-		# Now, if $done is greater than 1, we can try the failed commit again
-		print "Applied $done commits.\n";
-		( $done > 0 ) and $result = apply_patch($pFile);
-	} ## end if ( 0 == $result )
-
-	( $result > 0 ) or return $result;  ## Give up and exit if everything fails
-
-	# --- 5) Get the new commit id, so we can update %hMutuals ---
-	# ---------------------------------------------------------------
+	# Get the new commit id, so we can update %hMutuals
+	# -------------------------------------------------------------------------------------------
 	$hMutuals{$upstream_path}{$wanted_refid}{tgt} = shorten_refid( $WORKDIR, 'HEAD' );
 	( length $hMutuals{$upstream_path}{$wanted_refid}{tgt} ) or return 0;  # Give up and exit
 
 	# The commit of the just applied patch file becomes the last mutual commit.
-	$hMutuals{$upstream_path}{$wanted_refid}{mutual_full} = $hSrcCommits{$pFile};
+	# -------------------------------------------------------------------------------------------
+	$hMutuals{$upstream_path}{$wanted_refid}{mutual_full} = $hSrcCommits{$patch_file};
 	$hMutuals{$upstream_path}{$wanted_refid}{mutual} =
-	  shorten_refid( $upstream_path, $hSrcCommits{$pFile} );
+	  shorten_refid( $upstream_path, $hSrcCommits{$patch_file} );
 	( length $hMutuals{$upstream_path}{$wanted_refid}{mutual} ) or return 0;  # Give up and exit
 
-	# --- 6) "Tick off" the patch in our patch list ---
-	# ------------------------------------------------------------------
-	( $result > 0 ) and $lPatches[$id]{'applied'} = 1;
+	# "Tick off" the patch in our patch list
+	# -------------------------------------------------------------------------------------------
+	( $result > 0 ) and $lPatches[$patch_id]{'applied'} = 1;
 
 	return $result;
 } ## end sub apply_patch
@@ -748,7 +762,7 @@ sub generate_file_list {
 	# Do some cleanup first. Just to be sure.
 	print 'Cleaning up...';
 	my @cleanup = ( 'rm', '-rf', 'build*' );
-	system @cleanup or croak( 'Command "' . ( join $SPACE, @cleanup ) . "\" FAILED: $!\n" );
+	if ( system @cleanup ) { croak( 'Command "' . ( join $SPACE, @cleanup ) . "\" FAILED: $!\n" ); }
 	my $res = `find -iname '*.orig' -or -iname '*.bak' -or -iname '*.rej' -or -iname '*~' -or -iname '*.gc??' | xargs rm -f`;
 	print " done [$res]\n";
 
@@ -953,6 +967,16 @@ sub read_file_lines {
 	chomp @lines;
 	return @lines;
 } ## end sub read_file_lines
+
+# --- Utility function to leach a patch file into a text string
+sub read_patch_file {
+	my ($patch_file) = @_;
+	open my $fIn, '<', $patch_file or croak("\nERROR [apply]: $patch_file could not be opened for reading!\n$!\n");
+	my @lines = <$fIn>;
+	close $fIn or croak("Closing $patch_file FAILED: $!\n");
+	chomp @lines;
+	return join( "\n", @lines ) . "\n";
+} ## end sub read_patch_file
 
 # --------------------------------------------------------------
 # --- Use check_tree.pl to generate valid diffs on all valid ---
