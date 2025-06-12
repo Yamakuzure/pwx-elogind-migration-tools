@@ -259,7 +259,8 @@ END {
 sub add_source_file {
 	my ($f) = @_;
 
-	( -e $f ) and ( -f $f ) and push @source_files, $f;
+	( $f =~ m/^[.]\//ms ) or $f = "./$f";
+	push @source_files, $f;
 
 	return 1;
 } ## end sub add_source_file
@@ -271,13 +272,15 @@ sub apply_direct_patch {
 		$git_wrapper,
 		$patch_file, $patch_filename
 	) = @_;
+	my @patch_command = ( '/usr/bin/patch', '-p', '1', '-t', '-N', '-i', $patch_file );
+	my $result        = 0;
+
 	show_prg( sprintf "Applying %s directly\n", $patch_filename );
-	my @patch_command = ( '/usr/bin/patch', '-p', '1', '-i', $patch_file );
 
 	if ( system @patch_command ) {
-		printf "\nApplying %s directly FAILED [%d]\n", $patch_filename, ( $? & 127 );
+		printf "Applying %s directly FAILED [%d]\n", $patch_filename, ( $? >> 8 );
 		print "Fix above errors, add all files to git, issue 'git am --continue' and\n";
-		printf "Set last mutual commit to '%s'\n", shorten_refid( $upstream_path, $hSrcCommits{$patch_file} );
+		printf "set last mutual commit to -c '%s'\n", shorten_refid( $upstream_path, $hSrcCommits{$patch_file} );
 		exit 1;
 	} ## end if ( system @patch_command)
 
@@ -287,11 +290,12 @@ sub apply_direct_patch {
 
 	try {
 		$git_wrapper->am( { 'continue' => 1 } );
-		return 1;
+		$result = 1;
 	} catch {
-		show_prg('Applying patch directly with git apply failed!');
+		print 'Applying patch directly with git apply failed!';
 	};
-	return 0;
+
+	return $result;
 } ## end sub apply_direct_patch
 
 # --- Utility Function to apply one patch using 'git am'
@@ -301,18 +305,25 @@ sub apply_git_am {
 		$git_wrapper,
 		$patch_filename, $patch_content
 	) = @_;
+	my @lGitOut = ();
+	my $result  = 0;
 	try {
-		$git_wrapper->am(
+		@lGitOut = $git_wrapper->am(
 			{
 				'3'    => 1,
 				-STDIN => $patch_content
 			}
 		);
-		return 1;
+		$result = 1;
 	} catch {
-		show_prg( sprintf "Applying %s with 'git am' failed!", $patch_filename );
+		printf "\nApplying %s with 'git am' failed!\n", $patch_filename;
 	};
-	return 0;
+
+	if ( ( 0 == $result ) && ( scalar @lGitOut > 0 ) ) {
+		print "Git messages follow:\n\t" . ( join "\n\t", @lGitOut ) . "\n";
+	}
+
+	return $result;
 } ## end sub apply_git_am
 
 # --- Utility function to apply possibly missing patches to enable a failed one to succeed
@@ -332,15 +343,18 @@ sub apply_missing_patches {
 	my $done   = 0;                                                     ## Don't return 1 if this stays being zero or we'll get an endless loop if nothing applicable is found!
 
 	if ( ( defined $mutual ) ) {
+		my $result = 0;
 		try {
 			my $git_ex = Git::Wrapper->new($upstream_path);
-			@lRev = $git_ex->rev_list( { 'reverse' => 1, 'no-merges' => 1, 'full-history' => 1, 'dense' => 1, 'topo-order' => 1 }, "${mutual}...${refid}" );
+			@lRev   = $git_ex->rev_list( { 'reverse' => 1, 'no-merges' => 1, 'full-history' => 1, 'dense' => 1, 'topo-order' => 1 }, "${mutual}...${refid}" );
+			$result = 1;
 		} catch {
 			print "ERROR: Couldn't fetch commits\n";
 			print 'Exit Code : ' . $_->status . "\n";
 			print 'Message   : ' . $_->error . "\n";
-			return 0;
 		};
+
+		( 1 == $result ) or return 0;
 
 		print 'It looks like we were missing ' . ( scalar @lRev ) . " commits. Trying to apply the relevant ones...\n";
 
@@ -365,7 +379,7 @@ sub apply_missing_patches {
 	# Revert to where we were
 	( $prv_rid ne $previous_refid ) and checkout_tree( $upstream_path, $prv_rid, 1 );
 
-	# Now, if $done is greater than 1, we can try the failed commit again
+	# Now, if $done is greater than 0, we can try the failed commit again
 	print "Applied $done commits.\n";
 	( $done > 0 ) and return apply_patch($patch_file);
 
@@ -732,7 +746,7 @@ sub generate_file_list {
 	# There are also root files we need to check. Thanks to the usage of
 	# check_tree.pl to generate the later commit diffs, these can be safely
 	# added to our file list as well.
-	for my $xFile ( '.gitignore', '.mailmap', 'configure', 'configure.ac', 'Makefile', 'Makefile.am', 'meson.build', 'meson_options.txt', 'NEWS', 'TODO' ) {
+	for my $xFile ( '.gitignore', '.mailmap', 'configure', 'meson.build', 'meson.version', 'meson_options.txt', 'TODO' ) {
 		-f "$xFile" and push @source_files, "./$xFile";
 	}
 	print ' done - ' . ( scalar @source_files ) . " files found\n";
