@@ -337,26 +337,26 @@ for my $file_part (@source_files) {
 		# === 4) Check for __STDC_VERSION guard removals ==================
 		check_stdc_version() and hunk_is_useful() and prune_hunk() or next;
 
-		# === 4) Check for debug constructs ===============================
+		# === 5) Check for debug constructs ===============================
 		check_debug() and hunk_is_useful() and prune_hunk() or next;
 
-		# === 5) Check for useful blank line additions ====================
+		# === 6) Check for useful blank line additions ====================
 		check_blanks() and hunk_is_useful() and prune_hunk() or next;
 
-		# === 6) Check for 'elogind' => 'systemd' reverts =================
+		# === 7) Check for 'elogind' => 'systemd' reverts =================
 		%hProtected = ();
 		check_name_reverts() and hunk_is_useful() and prune_hunk() or next;
 
-		# === 7) Check for elogind_*() function removals ==================
+		# === 8) Check for elogind_*() function removals ==================
 		check_func_removes() and hunk_is_useful() and prune_hunk() or next;
 
-		# === 8) Check for elogind extra comments and information =========
+		# === 9) Check for elogind extra comments and information =========
 		check_comments() and hunk_is_useful() and prune_hunk() or next;
 
-		# === 9) Check for any useless changes that do nothing ============
+		# === 10) Check for any useless changes that do nothing ============
 		check_useless() and hunk_is_useful() and prune_hunk() or next;
 
-		# === 10) Check for empty masks that guard nothing any more =======
+		# === 11) Check for empty masks that guard nothing any more =======
 		check_empty_masks() and hunk_is_useful() and prune_hunk() or next;
 
 		#  ===> IMPORTANT: From here on no more pruning, lines must *NOT* change any more! <===
