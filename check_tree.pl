@@ -1401,7 +1401,7 @@ sub check_masks {
 					$i++;                             ## We have to advance i, or the next iteration puts as back here.
 				} ## end if ( $$line =~ m,^ , )
 
-				# Case 1 ; The addition: move the offending line back above the else/insert
+				# Case 2 ; The addition: move the offending line back above the else/insert
 				# -----------------------------------------------------------------------
 				else {
 					splice( @{ $hHunk->{lines} }, $i, 1 );  ## Order matters here.
@@ -1581,7 +1581,6 @@ sub check_name_reverts {
 		my $line = \$hHunk->{lines}[$i];  ## Shortcut
 		defined($$line)
 		  or return hunk_failed( "check_name_reverts: Line " . ( $i + 1 ) . "/$hHunk->{count} is undef?" );
-
 		# The increment/decrement variant can cause negative values:
 		$in_mask_block < 0 and $in_mask_block = 0;
 		$in_else_block < 0 and $in_else_block = 0;
@@ -1600,7 +1599,6 @@ sub check_name_reverts {
 		# Note down removals
 		# ---------------------------------
 		if ( $$line =~ m/^[${DASH}${SPACE}][${HASH}\/*${SPACE}]*\s*(.*(?:elogind|systemd).*)\s*[*\/${SPACE}]*$/msx ) {
-
 			# Note it down for later:
 			$hRemovals{$1} = { line => $i, masked => $is_masked_now, spliceme => 0 };
 			next;
@@ -1608,9 +1606,8 @@ sub check_name_reverts {
 
 		# Check Additions
 		# ---------------------------------
-		if ( $$line =~ m/^[${PLUS}][\#\/* ]*\s*(.*systemd.*)\s*[*\/ ]*$/msx ) {
+		if ( $$line =~ m/^[${PLUS}][\#\/* ]*\s*(.*(?:elogind|systemd).*)\s*[*\/ ]*$/msx ) {
 			my $replace_text = $1;
-			my $original_txt = $replace_text;
 
 			# There is some specialities:
 			# =============================================================
@@ -1620,7 +1617,6 @@ sub check_name_reverts {
 			  and ( !( $replace_text =~ m,/issues, ) )
 			  and next;
 			$replace_text =~ m,systemd\.io, and next;
-
 			# 2) /run/systemd/ must not be changed, as other applications
 			#    rely on that naming.
 			# Note: The /run/elogind.pid file is not touched by that, as
@@ -1631,20 +1627,18 @@ sub check_name_reverts {
 			for my $pat ( keys %SYSTEMD_URLS ) {
 				$replace_text =~ m/$pat/ and next;
 			}
-
 			# 4) To be a dropin-replacement, we also need to not change any org[./]freedesktop[./]systemd strings
 			$replace_text =~ m,/?org[./]freedesktop[./]systemd, and next;
-
 			# 5) Do not replace referrals to systemd[1]
 			$replace_text =~ m,systemd\[1\], and next;
-
 			# 6) References to systemd-homed and other tools not shipped by elogind
 			#    must not be changed either, or users might think elogind has its
 			#    own replacements.
 			#    Also the gettext domain is always "systemd", and varlink works via io.systemd domain.
 			my $is_wrong_replace =
 			  (      ( $replace_text =~ m/systemd[-_](home|import|journal|network|oom|passwor|udev)d/ms )
-				  || ( $replace_text =~ m/systemd[-_](analyze|creds|cryptsetup|firstboot|home|nspawn|repart|syscfg|sysusers|tmpfiles|devel\/)/ms )
+				  || ( $replace_text =~ m/systemd[-_](analyze|creds|cryptsetup|export|firstboot|fsck|home)/ms )
+				  || ( $replace_text =~ m/systemd[-_](import-fs|nspawn|repart|syscfg|sysusers|tmpfiles|devel\/)/ms )
 				  || ( $replace_text =~ m/gettext-domain="systemd/ms )
 				  || ( $replace_text =~ m/io[.]systemd/ms ) ) ? 1 : 0;
 
@@ -1690,7 +1684,6 @@ sub check_name_reverts {
 
 			if ( 1 == $is_wrong_replace ) {
 				( 0 < ( length $o_txt ) ) and $hProtected{$$line} = 1 and next;
-
 				# However, if the patch wants to _add_ a reference to a tool we do not ship, splice it away
 				$hRemovals{$replace_text}{spliceme} = $i;
 
@@ -1836,7 +1829,7 @@ sub check_stdc_version {
 
 		# If we have a deletion and a fitting addition in the next line,
 		# revert the first and remove the second.
-		if ( ( $line_del_num > -1 ) && ( ( $line_del_num + 1 ) == $line_rep_num ) && ( $line_rep_str =~ /^[${PLUS}][${HASH}](\s*)if\s+(\S.*)$/msxx ) ) {
+		if ( ( $line_del_num > -1 ) && ( ( $line_del_num + 1 ) == $line_rep_num ) && ( $line_rep_str =~ /^[${PLUS}][${HASH}](\s*)if\s+(\S.*)$/msx ) ) {
 			my $alt_line = "-#${1}if defined(__STDC_VERSION__) && $2";
 			if ( $alt_line eq $line_del_str ) {
 
@@ -2639,13 +2632,12 @@ sub protect_config() {
 	$hHunk->{useful} or die("check_masks: Nothing done but hHunk is useless?");
 
 	my $is_sleep_block = 0;
-
 	for ( my $i = 0 ; $i < $hHunk->{count} ; ++$i ) {
 		my $line = \$hHunk->{lines}[$i];  ## Shortcut
 
 		# Kill addition of lines we do not need
 		# ---------------------------------------
-		if ( $$line =~ m/^[${PLUS}]${HASH}?(?:NAutoVTs|ReserveVT)/msx ) {
+		if ( $$line =~ m/^[${PLUS}][${HASH}]?(?:NAutoVTs|ReserveVT)/msx ) {
 			splice( @{ $hHunk->{lines} }, $i--, 1 );
 			--$hHunk->{count};
 			next;
@@ -2845,7 +2837,7 @@ sub unprepare_shell {
 		$is_block
 		  and ( !$is_else )
 		  and '@@' ne substr( $line, 0, 2 )
-		  and ( !( $line =~ m/^[- ]+${HASH}(?:if|else|endif)/msx ) )
+		  and ( !( $line =~ m/^[- ]+[${HASH}](?:if|else|endif)/msx ) )
 		  and substr( $line, 1, 0 ) = "# ";
 
 		# Make sure not to demand to add empty comment lines with trailing spaces
