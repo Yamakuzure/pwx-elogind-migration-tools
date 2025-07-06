@@ -259,6 +259,7 @@ sub check_useless;       ## Check for useless updates that do nothing.
 sub checkout_upstream;   ## Checkout the given refid on $upstream_path
 sub clean_hFile;         ## Completely clean up the current %hFile data structure.
 sub diff_hFile;          ## Generates the diff and builds $hFile{hunks} if needed.
+
 # sub generate_file_list;  ## Find all relevant files and store them in @wanted_files
 sub get_hunk_head;       ## Generate the "@@ -xx,n +yy,m @@" hunk header line out of $hHunk.
 sub hunk_failed;         ## Generates a new @lFails entry and terminates the progress line.
@@ -268,6 +269,7 @@ sub is_insert_start;     ## Return 1 if the argument consists of any insertion s
 sub is_mask_else;        ## Return 1 if the argument consists of any mask else
 sub is_mask_end;         ## Return 1 if the argument consists of any mask end
 sub is_mask_start;       ## Return 1 if the argument consists of any mask start
+
 # sub parse_args;          ## Parse ARGV for the options we support
 sub prepare_shell;       ## Prepare shell (and meson) files for our processing
 sub prepare_xml;         ## Prepare XML files for our processing (Unmask double dashes in comments)
@@ -277,6 +279,7 @@ sub read_includes;       ## map include changes
 sub splice_includes;     ## Splice all includes that were marked for splicing
 sub unprepare_shell;     ## Unprepare shell (and meson) files after our processing
 sub unprepare_xml;       ## Unprepare XML files after our processing (Mask double dashes in comments)
+
 # sub wanted;              ## Callback function for File::Find
 
 # ================================================================
@@ -1581,6 +1584,7 @@ sub check_name_reverts {
 		my $line = \$hHunk->{lines}[$i];  ## Shortcut
 		defined($$line)
 		  or return hunk_failed( "check_name_reverts: Line " . ( $i + 1 ) . "/$hHunk->{count} is undef?" );
+
 		# The increment/decrement variant can cause negative values:
 		$in_mask_block < 0 and $in_mask_block = 0;
 		$in_else_block < 0 and $in_else_block = 0;
@@ -1599,6 +1603,7 @@ sub check_name_reverts {
 		# Note down removals
 		# ---------------------------------
 		if ( $$line =~ m/^[${DASH}${SPACE}][${HASH}\/*${SPACE}]*\s*(.*(?:elogind|systemd).*)\s*[*\/${SPACE}]*$/msx ) {
+
 			# Note it down for later:
 			$hRemovals{$1} = { line => $i, masked => $is_masked_now, spliceme => 0 };
 			next;
@@ -1609,14 +1614,31 @@ sub check_name_reverts {
 		if ( $$line =~ m/^[${PLUS}][\#\/* ]*\s*(.*(?:elogind|systemd).*)\s*[*\/ ]*$/msx ) {
 			my $replace_text = $1;
 
+			# Check the previous maximum removal line_no and text to quickly compare with it
+			my $max_line = -1;
+			my $max_text = $EMPTY;
+			for my $txt ( keys %hRemovals ) {
+				if ( ( defined $hRemovals{$txt}{line} ) && ( $hRemovals{$txt}{line} > $max_line ) ) {
+					$max_line = $hRemovals{$txt}{line};
+					$max_text = $txt;
+				}
+			} ## end for my $txt ( keys %hRemovals)
+
 			# There is some specialities:
 			# =============================================================
 			# 1) References to the systemd github or .io site must not be changed,
 			#    unless it is a reference to the issues tracker.
-			$replace_text =~ m,github\.com/systemd,
-			  and ( !( $replace_text =~ m,/issues, ) )
-			  and next;
-			$replace_text =~ m,systemd\.io, and next;
+			if (   ( ( $replace_text =~ m/github[${DOT}]com[${SLASH}]systemd/ms ) && !( $replace_text =~ m/[${SLASH}]issues/ms ) )
+				|| ( $replace_text =~ m/systemd[${DOT}]io/ms ) )
+			{
+				# If a removal exists that was a link to the elogind github main page, then do not switch back. We had our reasons!
+				if ( ( $max_line > -1 ) && ( ( $max_line + 1 ) == $i ) && ( $max_text =~ /github[${DOT}]com[${SLASH}]elogind[${SLASH}]elogind/ms ) ) {
+					substr( $hHunk->{lines}[$max_line], 0, 1 ) = " ";
+					$hRemovals{$replace_text}{spliceme} = $i;  ## Splice the replacement
+				}
+				next;
+			} ## end if ( ( ( $replace_text...)))
+
 			# 2) /run/systemd/ must not be changed, as other applications
 			#    rely on that naming.
 			# Note: The /run/elogind.pid file is not touched by that, as
@@ -1627,10 +1649,13 @@ sub check_name_reverts {
 			for my $pat ( keys %SYSTEMD_URLS ) {
 				$replace_text =~ m/$pat/ and next;
 			}
+
 			# 4) To be a dropin-replacement, we also need to not change any org[./]freedesktop[./]systemd strings
 			$replace_text =~ m,/?org[./]freedesktop[./]systemd, and next;
+
 			# 5) Do not replace referrals to systemd[1]
 			$replace_text =~ m,systemd\[1\], and next;
+
 			# 6) References to systemd-homed and other tools not shipped by elogind
 			#    must not be changed either, or users might think elogind has its
 			#    own replacements.
@@ -1642,12 +1667,14 @@ sub check_name_reverts {
 				  || ( $replace_text =~ m/gettext-domain="systemd/ms )
 				  || ( $replace_text =~ m/io[.]systemd/ms ) ) ? 1 : 0;
 
-			# We have to differentiate between simple systemd, longer systemd-logind and man page volume numbers
+			# We have to differentiate between simple systemd, longer systemd-logind, login/systemctl and man page volume numbers
 			my $our_text_long  = $replace_text;
 			my $our_text_short = $our_text_long;
-			$our_text_long                                     =~ s/systemd[-_]logind/elogind/msgx;
-			$our_text_short                                    =~ s/systemd/elogind/msgx;
-			$our_text_long eq $replace_text and $our_text_long =~ s/systemd-stable/elogind/msgx;    # Alternative if systemd-logind does not match
+			$our_text_long  =~ s/systemd[-_]logind/elogind/msgx;
+			$our_text_short =~ s/systemd/elogind/msgx;
+			$our_text_long eq $replace_text and $our_text_long =~ s/systemd-stable/elogind/msgx;  # Alternative if systemd-logind does not match
+			$our_text_long eq $replace_text and $our_text_long =~ s/systemctl/loginctl/msgx;      # Alternative if systemd-stable does not match
+			$our_text_long eq $replace_text and $our_text_long =~ s/SYSTEMCTL/LOGINCTL/msgx;      # Alternative if systemctl does not match
 			my $our_text_man_page = $our_text_short;
 			$our_text_man_page =~ s,<manvolnum>1</manvolnum>,<manvolnum>8</manvolnum>,msgx;
 
@@ -1661,19 +1688,9 @@ sub check_name_reverts {
 
 			# If we have not find a direct replacement, there might be an additional change to the content.
 			# Lets look at the removals beofre this line
-			if ( 0 == ( length $o_txt ) ) {
-				my $max_line = -1;
-				my $max_text = $EMPTY;
-				for my $txt ( keys %hRemovals ) {
-					if ( (defined $hRemovals{$txt}{line}) && ( $hRemovals{$txt}{line} > $max_line ) ) {
-						$max_line = $hRemovals{$txt}{line};
-						$max_text = $txt;
-					}
-				} ## end for my $txt ( keys %hRemovals)
-				if ( ( $max_line > -1 ) && ( ( $max_line + 1 ) == $i ) ) {
-					$o_txt = $max_text;
-				}
-			} ## end if ( 0 == ( length $o_txt...))
+			if ( 0 == ( length $o_txt ) && ( $max_line > -1 ) && ( ( $max_line + 1 ) == $i ) ) {
+				$o_txt = $max_text;
+			}
 
 			# If we had this text removed, $o_txt is now the removed version of this addition
 
@@ -1684,6 +1701,7 @@ sub check_name_reverts {
 
 			if ( 1 == $is_wrong_replace ) {
 				( 0 < ( length $o_txt ) ) and $hProtected{$$line} = 1 and next;
+
 				# However, if the patch wants to _add_ a reference to a tool we do not ship, splice it away
 				$hRemovals{$replace_text}{spliceme} = $i;
 
@@ -1704,7 +1722,6 @@ sub check_name_reverts {
 			{
 				substr( $hHunk->{lines}[ $hRemovals{$o_txt}{line} ], 0, 1 ) = " ";
 				$hRemovals{$o_txt}{spliceme} = $i;  ## Splice the addition
-				                                    # printf("Undo %d and splice %d\n", $hRemovals{$o_txt}{line}, $i);
 				next;
 			} ## end if ( ( 0 < length($o_txt...)))
 
@@ -1745,7 +1762,7 @@ sub check_name_reverts {
 			$$line =~ s/(?:systemd|elogind)${DASH}(sleep${DOT}conf)/$1/msgx;
 
 			# printf("Final line: '%s'\n", $$line);
-		} ## end if ( $$line =~ m/^[${PLUS}][\#\/* ]*\s*(.*systemd.*)\s*[*\/ ]*$/msx)
+		} ## end if ( $$line =~ m/^[${PLUS}][\#\/* ]*\s*(.*(?:elogind|systemd).*)\s*[*\/ ]*$/msx)
 	} ## end for ( my $i = 0 ; $i < ...)
 
 	# Splice the lines that were noted for splicing
