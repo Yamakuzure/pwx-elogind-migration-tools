@@ -107,10 +107,8 @@ my $ret_global = 0;
 # ================================================================
 # ===        ==> ------ Help Text and Version ----- <==        ===
 # ================================================================
-Readonly my $VERSMIN  => "-" x length($VERSION);
-Readonly my $PROGDIR  => dirname($0);
-Readonly my $PROGNAME => basename($0);
-Readonly my $WORKDIR  => getcwd();
+Readonly my $PROGDIR => dirname($0);
+Readonly my $WORKDIR => getcwd();
 
 # ================================================================
 # ===        ==> ------ Constants and Helpers ----- <==        ===
@@ -119,7 +117,6 @@ Readonly my $DASH  => q{-};
 Readonly my $DOT   => q{.};
 Readonly my $EMPTY => q{};
 Readonly my $HASH  => q{#};
-Readonly my $PIPE  => q{|};
 Readonly my $PLUS  => q{+};
 Readonly my $SLASH => q{/};
 Readonly my $SPACE => q{ };
@@ -182,7 +179,6 @@ my $in_else_block   = 0;   ## Set to 1 if we switched from mask/unmask to 'else'
 my $in_glibc_block  = 0;   ## Set to 1 if we enter a __GLIBC__ block
 my $in_mask_block   = 0;   ## Set to 1 if we entered an elogind mask block
 my $in_insert_block = 0;   ## Set to 1 if we entered an elogind addition block
-my $main_result     = 1;   ## Used for parse_args() only, as simple $result is local everywhere.
 my @only_here       = ();  ## List of files that do not exist in $upstream_path.
 my $previous_commit = "";  ## Store current upstream state, so we can revert afterwards.
 my $show_help       = 0;
@@ -2411,6 +2407,7 @@ sub hunk_failed {
 sub hunk_is_useful() {
 
 	# Early exits:
+	( $death_note > 0 ) and return 0;
 	defined($hHunk)  or return 0;
 	$hHunk->{useful} or return 0;
 
@@ -2453,8 +2450,8 @@ sub is_insert_start {
 
 	defined($line) and length($line) or return 0;
 
-	if (   ( $line =~ m/^[- ]?#if\s+1.+elogind/ )
-		|| ( $line =~ m/<!--\s+1.+elogind.+-->\s*$/ ) )
+	if (   ( $line =~ m/^[- ]?[${HASH}]if\s+1.+elogind/msx )
+		|| ( $line =~ m/<!--\s+1.+elogind.+-->\s*$/msx ) )
 	{
 		return 1;
 	}
@@ -2470,12 +2467,12 @@ sub is_mask_else {
 
 	defined($line) and length($line) or return 0;
 
-	if (   ( $line =~ m,^[- ]?#else\s+[/]+\s+0, )
-		|| ( $line =~ m,else\s+[/]+\s+0\s+-->\s*$, )
-		|| ( $line =~ m,\*\s+else\s+[/]+\s+0\s+\*\*/\s*$, ) )
+	if (   ( $line =~ m/^[- ]?[${HASH}]else\s+[\/]+\s+0/msx )
+		|| ( $line =~ m/else\s+[\/]+\s+0\s+-->\s*$/msx )
+		|| ( $line =~ m/\*\s+else\s+[\/]+\s+0\s+\*\*\/\s*$/msx ) )
 	{
 		return 1;
-	} ## end if ( ( $line =~ m,^[- ]?#else\s+[/]+\s+0,...))
+	} ## end if ( ( $line =~ m/^[- ]?[${HASH}]else\s+[\/]+\s+0/msx...))
 
 	return 0;
 } ## end sub is_mask_else
