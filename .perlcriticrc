@@ -53,3 +53,6 @@ max_arguments = 6
 
 # I am very sorry, but this policy is totally bonkers!
 [-ValuesAndExpressions::ProhibitMagicNumbers]
+
+[RegularExpressions::ProhibitComplexRegexes]
+max_characters = 80
