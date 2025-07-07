@@ -316,6 +316,8 @@ $show_help > 0 and pod2usage( { -exitval => 0, -verbose => 2, -noperldoc => 1 } 
 # ================================================================
 
 do_prechecks() or pod2usage( { -exitval => 3, -verbose => 2, -noperldoc => 1 } );
+set_log_file( basename($upstream_path) );
+log_status("Program Start");
 if ( ( length $wanted_commit ) > 0 ) {
 	checkout_upstream($wanted_commit)  ## Note: Does nothing if $wanted_commit is already checked out.
 	  or exit 1;
@@ -460,8 +462,8 @@ for my $file_part (@source_files) {
 		} ## end for my $line ( @{ $hFile...})
 		close($fOut);
 	} else {
-		printf( "ERROR: %s could not be opened for writing!\n%s\n", $hFile{patch}, $! );
-		die("Please fix this first!");
+		log_error( "ERROR: %s could not be opened for writing!\n%s\n", $hFile{patch}, $! );
+		confess("Please fix this first!");
 	}
 }  ## End of main loop
 
@@ -479,12 +481,12 @@ END {
 	# -------------------------------------------------------------------------
 	if ( scalar @only_here ) {
 		my $count = scalar @only_here;
-		my $fmt   = sprintf( "%%d %d: %%s\n", length("$count") );
+		my $fmt   = sprintf( "%%d %d: %%s", length("$count") );
 
-		printf( "\n%d file%s only found in $WORKDIR:\n", $count, $count > 1 ? "s" : "" );
+		log_info( "\n%d file%s only found in $WORKDIR:", $count, $count > 1 ? "s" : "" );
 
 		for ( my $i = 0 ; $i < $count ; ++$i ) {
-			printf( $fmt, $i + 1, $only_here[$i] );
+			log_info( $fmt, $i + 1, $only_here[$i] );
 		}
 	} ## end if ( scalar @only_here)
 
@@ -494,26 +496,28 @@ END {
 	if ( scalar @lFails ) {
 		my $count = scalar @lFails;
 
-		printf( "\n%d file%s %s at least one fishy hunk:\n", $count, $count > 1 ? "s" : "", $count > 1 ? "have" : "has" );
+		log_warning( "\n%d file%s %s at least one fishy hunk:", $count, $count > 1 ? "s" : "", $count > 1 ? "have" : "has" );
 
 		for ( my $i = 0 ; $i < $count ; ++$i ) {
-			print "=== $lFails[$i]{part} ===\n";
-			print " => $lFails[$i]{msg} <=\n";
-			print "---------------------------\n";
-			print " {count}        : \"" . $lFails[$i]{info}{count} . "\"\n";
-			print " {idx}          : \"" . $lFails[$i]{info}{idx} . "\"\n";
-			print " {masked_end}   : \"" . $lFails[$i]{info}{masked_end} . "\"\n";
-			print " {masked_start} : \"" . $lFails[$i]{info}{masked_start} . "\"\n";
-			print " {offset}       : \"" . $lFails[$i]{info}{offset} . "\"\n";
-			print " {src_start}    : \"" . $lFails[$i]{info}{src_start} . "\"\n";
-			print " {tgt_start}    : \"" . $lFails[$i]{info}{tgt_start} . "\"\n";
-			print " {useful}       : \"" . $lFails[$i]{info}{useful} . "\"\n";
-			print "---------------------------\n";
-			print "$_\n" foreach ( @{ $lFails[$i]{hunk} } );
+			log_warning("=== $lFails[$i]{part} ===");
+			log_warning(" => $lFails[$i]{msg} <=");
+			log_warning("---------------------------");
+			log_warning( " {count}        : \"" . $lFails[$i]{info}{count} . "\"" );
+			log_warning( " {idx}          : \"" . $lFails[$i]{info}{idx} . "\"" );
+			log_warning( " {masked_end}   : \"" . $lFails[$i]{info}{masked_end} . "\"" );
+			log_warning( " {masked_start} : \"" . $lFails[$i]{info}{masked_start} . "\"" );
+			log_warning( " {offset}       : \"" . $lFails[$i]{info}{offset} . "\"" );
+			log_warning( " {src_start}    : \"" . $lFails[$i]{info}{src_start} . "\"" );
+			log_warning( " {tgt_start}    : \"" . $lFails[$i]{info}{tgt_start} . "\"" );
+			log_warning( " {useful}       : \"" . $lFails[$i]{info}{useful} . "\"" );
+			log_warning("---------------------------");
+			log_warning("$_\n") foreach ( @{ $lFails[$i]{hunk} } );
 		} ## end for ( my $i = 0 ; $i < ...)
 	} ## end if ( scalar @lFails )
 
 	$do_stay or length($previous_commit) and checkout_upstream($previous_commit);
+
+	log_status("Program End");
 } ## end END
 
 # ================================================================
@@ -528,7 +532,7 @@ END {
 sub build_hFile {
 	my ($part) = @_;
 
-	defined($part) and length($part) or print("ERROR\n") and die("build_hfile: part is empty ???");
+	defined($part) and length($part) or log_error("ERROR") and confess("build_hfile: part is empty ???");
 
 	# Is this a new file?
 	my $isNew = defined( $hToCreate{$part} ) ? 1 : 0;
@@ -614,7 +618,7 @@ sub build_hHunk {
 		return 1;
 	} ## end if ( $head =~ m/^${mark} -(\d+),\d+ \+(\d+),\d+ ${mark}/)
 
-	print "Illegal hunk no $hFile{count}\n(Head: \"$head\")\nIgnoring...";
+	log_error( "Illegal hunk no %d\n(Head: \"%s\")\nIgnoring...", $hFile{count}, $head );
 	$hFile{count}--;
 
 	return 0;
@@ -1725,8 +1729,8 @@ sub check_name_reverts {
 			}
 
 			# If we had this text removed, $o_txt is now the removed version of this addition
+			log_debug( "Got o_txt %d: \"%s\"", $i, $o_txt );
 
-			# printf("Got o_txt %d: \"%s\"\n", $i, $o_txt);
 			# --- Case A) If we accidentally renamed a systemd-only tool to elogind-<foo>,  ---
 			# ---         although we do not ship it, do not deny the reversal.             ---
 			# ---------------------------------------------------------------------------------
@@ -1762,25 +1766,23 @@ sub check_name_reverts {
 			# -----------------------------------------------------------------------------
 			if ( 0 == $is_masked_now ) {
 				if ( $our_text_short ne $our_text_man_page ) {
-
-					# printf( "\nReplacing (man)\n\t'%s' with\n\t'%s'\n\t\t\t", $replace_text, $our_text_man_page );
+					log_debug( "Replacing (man)\n\t'%s' with\n\t'%s'", $replace_text, $our_text_man_page );
 					$$line =~ s,systemd,elogind,g;
 					$$line =~ s,<manvolnum>1</manvolnum>,<manvolnum>8</manvolnum>,msgx;
 				} elsif ( $replace_text ne $our_text_long ) {
-
-					# printf( "\nReplacing (long)\n\t'%s' with\n\t'%s'\n\t\t\t", $replace_text, $our_text_long );
+					log_debug( "Replacing (long)\n\t'%s' with\n\t'%s'", $replace_text, $our_text_long );
 					$replace_text =~ m/systemd-stable/ and $$line =~ s,systemd-stable,elogind,g
 					  or $$line =~ s,systemd-logind,elogind,g;
 				} elsif ( $replace_text ne $our_text_short ) {
-
-					# printf( "\nReplacing (short)\n\t'%s' with\n\t'%s'\n\t\t\t", $replace_text, $our_text_short );
+					log_debug( "Replacing (short)\n\t'%s' with\n\t'%s'", $replace_text, $our_text_short );
 					$$line =~ s,systemd,elogind,g;
 				} else {
-					print "\nERROR: This does not make sense:\n";
-					printf( "\treplace_text     : '%s'\n", $replace_text );
-					printf( "\tour_text_short   : '%s'\n", $our_text_short );
-					printf( "\tour_text_long    : '%s'\n", $our_text_long );
-					printf( "\tour_text_man_page: '%s'\n", $our_text_man_page );
+					log_error( "This does not make sense:\n"
+						  . "\treplace_text     : '%s'\n"
+						  . "\tour_text_short   : '%s'\n"
+						  . "\tour_text_long    : '%s'\n"
+						  . "\tour_text_man_page: '%s'",
+						$replace_text, $our_text_short, $our_text_long, $our_text_man_page );
 					exit 1;
 				} ## end else [ if ( $our_text_short ne...)]
 			} ## end if ( 0 == $is_masked_now)
@@ -1793,7 +1795,7 @@ sub check_name_reverts {
 			# systemd-sleep.conf is *not* elogind-sleep.conf, but just sleep.conf in elogind
 			$$line =~ s/(?:systemd|elogind)${DASH}(sleep${DOT}conf)/$1/msgx;
 
-			# printf("Final line: '%s'\n", $$line);
+			log_debug( "Final line: '%s'", $$line );
 		} ## end if ( $$line =~ m/^[${PLUS}][\#\/* ]*\s*(.*(?:elogind|systemd).*)\s*[*\/ ]*$/msx)
 	} ## end for ( my $i = 0 ; $i < ...)
 
@@ -1804,7 +1806,7 @@ sub check_name_reverts {
 		$hRemovals{$k}{spliceme} or next;
 		$hSplices{ $hRemovals{$k}{spliceme} } = 1;
 
-		# printf("Splice line %d", $hRemovals{$k}{spliceme});
+		log_debug( "Splice line %d", $hRemovals{$k}{spliceme} );
 	} ## end for my $k ( keys %hRemovals)
 	for my $l ( sort { $b <=> $a } keys %hSplices ) {
 		splice( @{ $hHunk->{lines} }, $l, 1 );
@@ -2053,9 +2055,7 @@ sub checkout_upstream {
 	try {
 		@lOut = $git->rev_parse( { short => 1 }, "HEAD" );
 	} catch {
-		print "ERROR: Couldn't rev-parse $upstream_path HEAD\n";
-		print "Exit Code : " . $_->status . "\n";
-		print "Message   : " . $_->error . "\n";
+		log_error( "Couldn't rev-parse $upstream_path HEAD\nExit Code : %s\nMessage   : %s", $_->status, $_->error );
 		return 0;
 	};
 	$previous_commit = $lOut[0];
@@ -2064,25 +2064,21 @@ sub checkout_upstream {
 	try {
 		@lOut = $git->rev_parse( { short => 1 }, $commit );
 	} catch {
-		print "ERROR: Couldn't rev-parse $upstream_path \"$commit\"\n";
-		print "Exit Code : " . $_->status . "\n";
-		print "Message   : " . $_->error . "\n";
+		log_error( "Couldn't rev-parse %s \"%s\"\nExit Code : %s\nMessage   : %s", $upstream_path, $commit, $_->status, $_->error );
 		return 0;
 	};
 	$new_commit = $lOut[0];
 
 	# Now check it out, unless we are already there:
 	if ( $previous_commit ne $new_commit ) {
-		print "Checking out $new_commit in upstream tree...";
+		show_progress( 0, "Checking out %s in upstream tree...", $new_commit );
 		try {
 			$git->checkout($new_commit);
 		} catch {
-			print "\nERROR: Couldn't checkout \"new_commit\" in $upstream_path\n";
-			print "Exit Code : " . $_->status . "\n";
-			print "Message   : " . $_->error . "\n";
+			log_error( "Couldn't checkout \"%s\" in %s\nExit Code : %s\nMessage   : %s", $new_commit, $upstream_path, $_->status, $_->error );
 			return 0;
 		};
-		print " done\n";
+		show_progress( 1, "Checking out %s in upstream tree... done!", $new_commit );
 	} ## end if ( $previous_commit ...)
 
 	return 1;
@@ -2254,7 +2250,7 @@ sub generate_file_list {
 
 	# Just to be sure...
 	scalar @source_files
-	  or print("ERROR: No source files found? Where the hell are we?\n")
+	  or log_error("No source files found? Where the hell are we?")
 	  and return 0;
 
 	# Get the maximum file length and build $file_fmt
@@ -2356,6 +2352,11 @@ sub get_log_level {
 	return ('=DEBUG=');
 } ## end sub get_log_level
 
+sub get_date_now {
+	my @tLocalTime = localtime;
+	return sprintf '%04d-%02d-%02d', $tLocalTime[5] + 1900, $tLocalTime[4] + 1, $tLocalTime[3];
+}
+
 sub get_time_now {
 	my @tLocalTime = localtime;
 	return sprintf '%04d-%02d-%02d %02d:%02d:%02d', $tLocalTime[5] + 1900, $tLocalTime[4] + 1, $tLocalTime[3], $tLocalTime[2], $tLocalTime[1], $tLocalTime[0];
@@ -2396,7 +2397,7 @@ sub hunk_failed {
 	}
 
 	# And terminate the progress line:
-	print "$msg\n";
+	show_progress( 1, "$file_fmt : %s", $hFile{part}, $msg );
 
 	return 0;
 } ## end sub hunk_failed
@@ -2595,7 +2596,7 @@ sub make_location_fmt {
 # -----------------------------------------------------------------------
 sub prepare_shell {
 	my $in   = $hFile{source};
-	my $out  = $in . ".pwx";
+	my $out  = $in . '.pwx';
 	my @lIn  = ();
 	my @lOut = ();
 
@@ -2604,7 +2605,7 @@ sub prepare_shell {
 		@lIn = <$fIn>;
 		close($fIn);
 	} else {
-		die("$in can not be opened for reading! [$!]");
+		croak("$in can not be opened for reading! [$!]");
 	}
 
 	# Now prepare the output, line by line.
@@ -2618,20 +2619,20 @@ sub prepare_shell {
 
 		if ( is_mask_start($line) ) {
 			if ( $is_block > 0 ) {
-				print "ERROR: $in:$line_no : Mask start in mask!\n";
-				die("Illegal file");
+				log_error( '%s:%d : Mask start in mask!', $in, $line_no );
+				croak('Illegal file');
 			}
 			$is_block = 1;
 		} elsif ( is_mask_else($line) ) {
 			if ( 0 == $is_block ) {
-				print "ERROR: $in:$line_no : Mask else outside mask!\n";
-				die("Illegal file");
+				log_error( '%s:%d : Mask else outside mask!', $in, $line_no );
+				croak('Illegal file');
 			}
 			$is_else = 1;
 		} elsif ( is_mask_end($line) ) {
 			if ( 0 == $is_block ) {
-				print "ERROR: $in:$line_no : Mask end outside mask!\n";
-				die("Illegal file");
+				log_error( '%s:%d : Mask end outside mask!', $in, $line_no );
+				croak('Illegal file');
 			}
 			$is_block = 0;
 			$is_else  = 0;
@@ -2678,7 +2679,7 @@ sub prepare_xml {
 		@lIn = <$fIn>;
 		close($fIn);
 	} else {
-		die("$in can not be opened for reading! [$!]");
+		croak("$in can not be opened for reading! [$!]");
 	}
 
 	# Now prepare the output, line by line.
@@ -2692,20 +2693,20 @@ sub prepare_xml {
 
 		if ( is_mask_start($line) ) {
 			if ( $is_block > 0 ) {
-				print "ERROR: $in:$line_no : Mask start in mask!\n";
-				die("Illegal file");
+				log_error( '%s:%d : Mask start in mask!', $in, $line_no );
+				croak('Illegal file');
 			}
 			$is_block = 1;
 		} elsif ( is_mask_else($line) ) {
 			if ( 0 == $is_block ) {
-				print "ERROR: $in:$line_no : Mask else outside mask!\n";
-				die("Illegal file");
+				log_error( '%s:%d : Mask else outside mask!', $in, $line_no );
+				croak('Illegal file');
 			}
 			$is_else = 1;
 		} elsif ( is_mask_end($line) ) {
 			if ( 0 == $is_block ) {
-				print "ERROR: $in:$line_no : Mask end outside mask!\n";
-				die("Illegal file");
+				log_error( '%s:%d : Mask end outside mask!', $in, $line_no );
+				croak('Illegal file');
 			}
 			$is_block = 0;
 			$is_else  = 0;
@@ -2884,30 +2885,30 @@ sub unprepare_shell {
 
 		if ( is_mask_start($line) ) {
 			if ( $is_block > 0 ) {
-				print "ERROR: $in:$line_no : Mask start in mask!\n";
-				die("Illegal file");
+				log_error( '%s:%d : Mask start in mask!', $in, $line_no );
+				croak('Illegal file');
 			}
 			$is_block = 1;
 		} elsif ( is_mask_else($line) ) {
 			if ( 0 == $is_block ) {
-				print "ERROR: $in:$line_no : Mask else outside mask!\n";
-				die("Illegal file");
+				log_error( '%s:%d : Mask else outside mask!', $in, $line_no );
+				croak('Illegal file');
 			}
 			$is_else = 1;
 		} elsif ( is_mask_end($line) ) {
 			if ( 0 == $is_block ) {
-				print "ERROR: $in:$line_no : Mask end outside mask!\n";
-				die("Illegal file");
+				log_error( '%s:%d : Mask end outside mask!', $in, $line_no );
+				croak('Illegal file');
 			}
 			$is_block = 0;
 			$is_else  = 0;
 		} elsif ( $is_block
 			&& !$is_else
-			&& ( "# #" ne substr( $line, 0, 3 ) )
-			&& ( "  * " ne substr( $line, 0, 4 ) ) )
+			&& ( '# #' ne substr( $line, 0, 3 ) )
+			&& ( '  * ' ne substr( $line, 0, 4 ) ) )
 		{
-			$hFile{source} =~ m/${DOT}sym${DOT}pwx$/msx and $line = "  * " . $line
-			  or $line = "# " . $line;
+			$hFile{source} =~ m/${DOT}sym${DOT}pwx$/msx and $line = '  * ' . $line
+			  or $line = '# ' . $line;
 
 			# Do not create empty comment lines with trailing spaces.
 			$line =~ s/(#)\s+$/$1/;
@@ -2996,20 +2997,20 @@ sub unprepare_xml {
 
 		if ( is_mask_start($line) ) {
 			if ( $is_block > 0 ) {
-				print "ERROR: $in:$line_no : Mask start in mask!\n";
-				die("Illegal file");
+				log_error( '%s:%d : Mask start in mask!', $in, $line_no );
+				croak('Illegal file');
 			}
 			$is_block = 1;
 		} elsif ( is_mask_else($line) ) {
 			if ( 0 == $is_block ) {
-				print "ERROR: $in:$line_no : Mask else outside mask!\n";
-				die("Illegal file");
+				log_error( '%s:%d : Mask else outside mask!', $in, $line_no );
+				croak('Illegal file');
 			}
 			$is_else = 1;
 		} elsif ( is_mask_end($line) ) {
 			if ( 0 == $is_block ) {
-				print "ERROR: $in:$line_no : Mask end outside mask!\n";
-				die("Illegal file");
+				log_error( '%s:%d : Mask end outside mask!', $in, $line_no );
+				croak('Illegal file');
 			}
 			$is_block = 0;
 			$is_else  = 0;
@@ -3119,6 +3120,12 @@ sub read_includes {
 	return 1;
 } ## end sub read_includes
 
+sub set_log_file {
+	my ($name) = @_;
+	$logfile = sprintf '%s-%s.log', $name, get_date_now();
+	return 1;
+}
+
 sub show_progress {
 	my ( $log_as_status, $fmt, @args ) = @_;
 	my $progress_str = sprintf $fmt, @args;
@@ -3181,7 +3188,7 @@ sub splice_includes {
 			my $lId = $hIncs{$inc}{insert}{lineid};
 
 			# Sanity checks:
-			$hId > -1 or print "splice_includes : Inc $inc has Hunk Id -1!\n" and next;
+			$hId > -1 or log_warning( 'splice_includes : Inc %s has Hunk Id -1!', $inc ) and next;
 			if ( -1 == $lId ) {
 				$hHunk = $hFile{hunks}[$hId];
 				hunk_failed("splice_includes: $inc has line id -1!");
