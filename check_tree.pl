@@ -325,8 +325,14 @@ generate_file_list() or exit 1;        ## Note: @wanted_files is heeded.
 # ================================================================
 
 for my $file_part (@source_files) {
+
+	# Pre-exit, check for a signal.
+	( $death_note > 0 ) and next;  ## No display, we already have the cancellation msg out!
+
+	# Otherise begin with a progress show
 	show_progress( 0, "$file_fmt: ", $file_part );
 
+	# Early exits
 	build_hFile($file_part) or show_progress( 1, "$file_fmt: only here", $file_part ) and next;
 	diff_hFile()            or show_progress( 1, "$file_fmt: same",      $file_part ) and next;
 
@@ -343,6 +349,10 @@ for my $file_part (@source_files) {
 	# --- Go through all hunks and check them against our various rules ---
 	# ---------------------------------------------------------------------
 	for ( my $pos = 0 ; $pos < $hFile{count} ; ++$pos ) {
+
+		# Break off if a signal was caught
+		( $death_note > 0 ) and ( $pos = $hFile{count} ) and next;
+
 		$hHunk = $hFile{hunks}[$pos];  ## Global shortcut
 
 		# === Special 1) protect src/login/logind.conf.in =================
@@ -390,6 +400,9 @@ for my $file_part (@source_files) {
 		read_includes();  ## Never fails, doesn't change anything.
 
 	}  ## End of first hunk loop
+
+	# Break off if a signal was caught
+	( $death_note > 0 ) and show_progress( 1, "$file_fmt : cancelled", $file_part ) and next;
 
 	# ---------------------------------------------------------------------
 	# --- Make sure saved include data is sane                          ---
@@ -439,8 +452,8 @@ for my $file_part (@source_files) {
 	# If we have at least 1 useful hunk, create the output and tell the user what we've got.
 	$have_hunk
 	  and build_output()  # (Always returns 1)
-	  and show_progress( 1, "$file_fmt : %d Hunk%s", $file_part, $have_hunk, $have_hunk > 1 ? "s" : "" )
-	  or show_progress( 1, "$file_fmt : clean", $file_part );
+	  and show_progress( 1, "$file_fmt: %d Hunk%s", $file_part, $have_hunk, $have_hunk > 1 ? "s" : "" )
+	  or show_progress( 1, "$file_fmt: clean", $file_part );
 
 	# Shell and xml files must be unprepared. See unprepare_[shell,xml]()
 	$hFile{pwxfile} and ( unprepare_shell() or unprepare_xml() );
