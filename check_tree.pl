@@ -93,7 +93,7 @@ use Try::Tiny;
 #
 # ------------------------
 ## Please keep this current!
-Readonly our $VERSION     => "1.4.2";
+Readonly our $VERSION => "1.4.2";
 
 # ---------------------------------------------------------
 # Shared Variables
@@ -107,10 +107,10 @@ my $ret_global = 0;
 # ================================================================
 # ===        ==> ------ Help Text and Version ----- <==        ===
 # ================================================================
-Readonly my $VERSMIN     => "-" x length($VERSION);
-Readonly my $PROGDIR     => dirname($0);
-Readonly my $PROGNAME    => basename($0);
-Readonly my $WORKDIR     => getcwd();
+Readonly my $VERSMIN  => "-" x length($VERSION);
+Readonly my $PROGDIR  => dirname($0);
+Readonly my $PROGNAME => basename($0);
+Readonly my $WORKDIR  => getcwd();
 
 # ================================================================
 # ===        ==> ------ Constants and Helpers ----- <==        ===
@@ -307,7 +307,7 @@ my %program_options = (
 	'upstream|u=s' => \$upstream_path
 );
 GetOptions(%program_options) or pod2usage( { -message => $podmsg, -exitval => 2, -verbose => 0 } );
-(0 < (length $upstream_path)) or pod2usage( { -exitval => 1, -verbose => 0, -noperldoc => 1 } );
+( 0 < ( length $upstream_path ) ) or pod2usage( { -exitval => 1, -verbose => 0, -noperldoc => 1 } );
 $show_help > 1 and pod2usage( { -exitval => 0, -verbose => 2, -noperldoc => 0 } );
 $show_help > 0 and pod2usage( { -exitval => 0, -verbose => 2, -noperldoc => 1 } );
 
@@ -315,11 +315,11 @@ $show_help > 0 and pod2usage( { -exitval => 0, -verbose => 2, -noperldoc => 1 } 
 # ===        ==> --------    Prechecks     -------- <==        ===
 # ================================================================
 
-length($wanted_commit)
-  and (
+do_prechecks() or pod2usage( { -exitval => 3, -verbose => 2, -noperldoc => 1 } );
+if ( ( length $wanted_commit ) > 0 ) {
 	checkout_upstream($wanted_commit)  ## Note: Does nothing if $wanted_commit is already checked out.
-	or exit 1
-  );
+	  or exit 1;
+}
 generate_file_list() or exit 1;        ## Note: @wanted_files is heeded.
 
 # ================================================================
@@ -1259,7 +1259,7 @@ sub check_logger {
 	my ($logger) = @_;
 	if ( defined $logger ) {
 		$logger =~ m/^log_(info|warning|error|status|debug)$/xms
-		or confess("logMsg() called from wrong sub $logger");
+		  or confess("logMsg() called from wrong sub $logger");
 	}
 	return 1;
 } ## end sub check_logger
@@ -1640,7 +1640,7 @@ sub check_name_reverts {
 			# Note it down for later:
 			$hRemovals{$1} = { line => $i, masked => $is_masked_now, spliceme => 0 };
 			next;
-		}
+		} ## end if ( $$line =~ m/^[${DASH}${SPACE}][${HASH}\/*${SPACE}]*\s*(.*(?:elogind|systemd).*)\s*[*\/${SPACE}]*$/msx)
 
 		# Check Additions
 		# ---------------------------------
@@ -2169,6 +2169,34 @@ sub diff_hFile {
 	return 1;
 } ## end sub diff_hFile
 
+sub do_prechecks {
+	my $result = 1;
+
+	# If --create was given, @wanted_files must not be empty
+	if ( $result && !$show_help && $do_create && ( 0 == scalar @wanted_files ) ) {
+		print "ERROR: --create must not be used on the full tree!\n";
+		print "       Add at least one file using the --file option.\n";
+		$result = 0;
+	}
+
+	# If --stay was given, $wanted_commit must not be empty
+	if ( $result && !$show_help && $do_stay && ( 0 == length($wanted_commit) ) ) {
+		print "ERROR: --stay makes only sense with the -c|--commit option!\n";
+		$result = 0;
+	}
+
+	# If any of the wanted files do not exist, error out unless --create was used.
+	if ( $result && !$show_help && defined( $wanted_files[0] ) ) {
+		foreach my $f (@wanted_files) {
+			-f $f
+			  or $do_create and $hToCreate{$f} = 1
+			  or print "ERROR: $f does not exist!\n" and $result = 0;
+		}
+	} ## end if ( $result && !$show_help...)
+
+	return $result;
+} ## end sub do_prechecks
+
 sub format_caller {
 	my ($caller) = @_;
 	$caller =~ s/^.*::([^:]+)$/$1/xms;
@@ -2316,11 +2344,11 @@ sub get_location {
 sub get_log_level {
 	my ($level) = @_;
 
-	( $LOG_INFO == $level )    and return ('--Info--')
-	or ( $LOG_WARNING == $level ) and return ('Warning!')
-	or ( $LOG_ERROR == $level )   and return ('ERROR !!')
-	or ( $LOG_STATUS == $level )  and return ('-status-')
-	or return ('_DEBUG!_');
+	     ( $LOG_INFO == $level )    and return ('--Info--')
+	  or ( $LOG_WARNING == $level ) and return ('Warning!')
+	  or ( $LOG_ERROR == $level )   and return ('ERROR !!')
+	  or ( $LOG_STATUS == $level )  and return ('-status-')
+	  or return ('_DEBUG!_');
 
 	return ('=DEBUG=');
 } ## end sub get_log_level
@@ -2461,7 +2489,7 @@ sub is_mask_end {
 		|| ( $line =~ m,\*\s+//\s+0\s+\*\*/\s*$,msx ) )
 	{
 		return 1;
-	} ## end if ( ( $line =~ m,^[- ]?#endif\s*/(?:[*/]+)\s*(?:0),...))
+	} ## end if ( ( $line =~ m,^[- ]?[${HASH}]endif\s*/(?:[*/]+)\s*(?:0),msx...))
 
 	return 0;
 } ## end sub is_mask_end
@@ -2483,7 +2511,7 @@ sub is_mask_start {
 	  )
 	{
 		return 1;
-	} ## end if ( ( $line =~ m/^[- ]?#if\s+0.+elogind/...))
+	} ## end if ( ( $line =~ m/^[- ]?[${HASH}]if\s+0.+elogind/msx...))
 
 	return 0;
 } ## end sub is_mask_start
@@ -2517,7 +2545,6 @@ sub logMsg {
 	return 1;
 } ## end sub logMsg
 
-
 sub log_info {
 	my ( $fmt, @args ) = @_;
 	return logMsg( $LOG_INFO, $fmt, @args );
@@ -2547,7 +2574,7 @@ sub log_debug {
 
 sub make_location_fmt {
 	my ( $lineno, $name_len ) = @_;
-	my $len = $name_len + ( ( $lineno > -1 ) ? 0 : 5 );
+	my $len    = $name_len + ( ( $lineno > -1 ) ? 0 : 5 );
 	my $fmtfmt = ( $lineno > -1 ) ? '%%4d:%%-%ds' : '%%-%ds';
 
 	return sprintf $fmtfmt, $len;
@@ -3056,7 +3083,7 @@ sub read_includes {
 				sysinc => $1 eq "<"
 			};
 			next;
-		}
+		} ## end if ( $$line =~ m/^[${DASH}]\s*\/[\/*]+\s*[${HASH}]include\s+([<"'])([^>"']+)[>"']\s*(?:\*\/)?/msx)
 
 		# Note down inserts of possibly new includes we might want commented out
 		if ( $$line =~ m/^[${PLUS}]\s*[${HASH}]include\s+([<"'])([^>"']+)[>"']/msx ) {
@@ -3068,7 +3095,7 @@ sub read_includes {
 				sysinc   => $1 eq "<"
 			};
 			next;
-		}
+		} ## end if ( $$line =~ m/^[${PLUS}]\s*[${HASH}]include\s+([<"'])([^>"']+)[>"']/msx)
 
 		# Note down removals of includes we explicitly added for elogind
 		if ( $in_elogind_block && ( $$line =~ m/^[${DASH}]\s*[${HASH}]include\s+([<"'])([^>"']+)[>"']/msx ) ) {
@@ -3205,7 +3232,6 @@ sub write_to_log {
 
 	return 1;
 } ## end sub write_to_log
-
 
 __END__
 
