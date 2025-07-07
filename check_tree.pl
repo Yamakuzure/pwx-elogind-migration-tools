@@ -113,6 +113,7 @@ Readonly my $WORKDIR => getcwd();
 # ================================================================
 # ===        ==> ------ Constants and Helpers ----- <==        ===
 # ================================================================
+Readonly my $AT    => q{@};
 Readonly my $DASH  => q{-};
 Readonly my $DOT   => q{.};
 Readonly my $EMPTY => q{};
@@ -295,7 +296,7 @@ sub unprepare_xml;       ## Unprepare XML files after our processing (Mask doubl
 my $podmsg          = "\telogind git tree checker\n";
 my %program_options = (
 	'help|h+'      => \$show_help,
-	'debug|D'      => \$do_debug,
+	'debug'        => \$do_debug,
 	'commit|c=s'   => \$wanted_commit,
 	'create'       => \$do_create,
 	'file|f=s'     => \@wanted_files,
@@ -332,7 +333,7 @@ for my $file_part (@source_files) {
 	# Otherise begin with a progress show
 	show_progress( 0, "$file_fmt: ", $file_part );
 
-	# Early exits
+	# early exits
 	build_hFile($file_part) or show_progress( 1, "$file_fmt: only here", $file_part ) and next;
 	diff_hFile()            or show_progress( 1, "$file_fmt: same",      $file_part ) and next;
 
@@ -342,7 +343,7 @@ for my $file_part (@source_files) {
 	$in_mask_block   = 0;
 	$in_insert_block = 0;
 
-	# Empty the include manipulation hash
+	# empty the include manipulation hash
 	%hIncs = ();
 
 	# ---------------------------------------------------------------------
@@ -353,11 +354,11 @@ for my $file_part (@source_files) {
 		# Break off if a signal was caught
 		( $death_note > 0 ) and ( $pos = $hFile{count} ) and next;
 
-		log_debug("Checking Hunk %d", $pos + 1);
+		log_debug( "Checking Hunk %d", $pos + 1 );
 		$hHunk = $hFile{hunks}[$pos];  ## Global shortcut
 
 		# === Special 1) protect src/login/logind.conf.in =================
-		if ( $hFile{source} =~ m,src/login/logind.conf.in, ) {
+		if ( $hFile{source} =~ m/src\/login\/logind[${DOT}]conf[${DOT}]in/msx ) {
 			protect_config() and hunk_is_useful() and prune_hunk() or next;
 		}
 
@@ -400,7 +401,7 @@ for my $file_part (@source_files) {
 		# === 11) Analyze includes and note their appearance in $hIncs =====
 		read_includes();  ## Never fails, doesn't change anything.
 
-	}  ## End of first hunk loop
+	} ## end for ( my $pos = 0 ; $pos...)
 
 	# Break off if a signal was caught
 	( $death_note > 0 ) and show_progress( 1, "$file_fmt : cancelled", $file_part ) and next;
@@ -430,7 +431,7 @@ for my $file_part (@source_files) {
 		# === 1) Apply what we learned about changed includes =============
 		check_includes() and hunk_is_useful() or next;
 
-	}  ## End of second hunk loop
+	} ## end for ( my $pos = 0 ; $pos...)
 
 	# ---------------------------------------------------------------------
 	# --- Splice all include insertions that are marked for splicing    ---
@@ -467,7 +468,7 @@ for my $file_part (@source_files) {
 		for my $line ( @{ $hFile{output} } ) {
 
 			# Do not assume empty comment lines with trailing spaces in shell files
-			$hFile{pwxfile} and $line =~ s/([+ -]#)\s+$/$1/;
+			$hFile{pwxfile} and $line =~ s/([+ -][${HASH}])\s+$/$1/msgx;
 			print $fOut "$line\n";
 		} ## end for my $line ( @{ $hFile...})
 		close($fOut);
@@ -475,7 +476,7 @@ for my $file_part (@source_files) {
 		log_error( "ERROR: %s could not be opened for writing!\n%s\n", $hFile{patch}, $! );
 		confess("Please fix this first!");
 	}
-}  ## End of main loop
+} ## end for my $file_part (@source_files)
 
 # ===========================
 # === END OF MAIN PROGRAM ===
@@ -601,12 +602,12 @@ sub build_hFile {
 sub build_hHunk {
 	my ( $head, @lHunk ) = @_;
 	my $pos  = $hFile{count}++;
-	my $mark = '@@';
+	my $mark = qq<[${AT}]{2}>;
 
 	# The first line must be the hunk positional and size data.
-	# Example: @@ -136,6 +136,8 @@
+	# example: @@ -136,6 +136,8 @@
 	# That is @@ -<source line>,<source length> +<target line>,<target length> @@
-	if ( $head =~ m/^${mark} -(\d+),\d+ \+(\d+),\d+ ${mark}/ ) {
+	if ( $head =~ m/^${mark}\s+-(\d+),\d+\s+\+(\d+),\d+\s+${mark}/msx ) {
 		%{ $hFile{hunks}[$pos] } = (
 			count        => 0,
 			idx          => $pos,
@@ -626,7 +627,7 @@ sub build_hHunk {
 			$hFile{hunks}[$pos]{count}++;
 		} ## end for my $line (@lHunk)
 		return 1;
-	} ## end if ( $head =~ m/^${mark} -(\d+),\d+ \+(\d+),\d+ ${mark}/)
+	} ## end if ( $head =~ m/^${mark}\s+-(\d+),\d+\s+\+(\d+),\d+\s+${mark}/msx)
 
 	log_error( "Illegal hunk no %d\n(Head: \"%s\")\nIgnoring...", $hFile{count}, $head );
 	$hFile{count}--;
@@ -687,7 +688,7 @@ sub build_output {
 		  );
 		$hFile{pwxfile} and push( @{ $hFile{output} }, "# masked_end " . $hHunk->{masked_end} );
 
-	}  ## End of walking the hunks
+	} ## end for ( my $pos = 0 ; $pos...)
 
 	return 1;
 } ## end sub build_output
@@ -703,9 +704,11 @@ sub build_output {
 # -----------------------------------------------------------------------
 sub check_blanks {
 
-	# Early exits:
+	# early exits:
 	defined($hHunk)  or return 0;
 	$hHunk->{useful} or return 0;
+
+	log_debug("Checking useful blank additions ...");
 
 	for ( my $i = 0 ; $i < $hHunk->{count} ; ++$i ) {
 		my $line = \$hHunk->{lines}[$i];  ## Shortcut
@@ -745,9 +748,11 @@ sub check_blanks {
 # -----------------------------------------------------------------------
 sub check_comments {
 
-	# Early exits:
+	# early exits:
 	defined($hHunk)  or return 0;
 	$hHunk->{useful} or return 0;
+
+	log_debug("Checking comments...");
 
 	my $in_comment_block = 0;
 
@@ -759,25 +764,25 @@ sub check_comments {
 
 		# Check for comment block start
 		# -----------------------------
-		if ( $$line =~ m,^[${DASH}]\s*(/\*+|//+)\s+.*elogind, ) {
+		if ( $$line =~ m/^[${DASH}]\s*(\/\*+|\/\/+)\s+.*elogind/msx ) {
 
 			# Sanity check:
 			$in_comment_block
 			  and return hunk_failed("check_comments: Comment block start found in comment block!");
 
 			# Only start the comment block if this is really a multiline comment
-			( ( $$line =~ m,^[${DASH}]\s*/\*+, ) && !( $$line =~ m,\*/[^/]*$, ) )
+			( ( $$line =~ m/^[${DASH}]\s*\/\*+/msx ) && !( $$line =~ m/\*\/[^\/]*$/msx ) )
 			  and $in_comment_block = 1;
 
 			# Revert the substract *if* this is not in a mask block
 			$in_mask_block and ( 1 > $in_else_block ) or substr( $$line, 0, 1 ) = " ";
 
 			next;
-		} ## end if ( $$line =~ m,^[${DASH}]\s*(/\*+|//+)\s+.*elogind,)
+		} ## end if ( $$line =~ m/^[${DASH}]\s*(\/\*+|\/\/+)\s+.*elogind/msx)
 
 		# Check for comment block end
 		# -----------------------------
-		if ( $in_comment_block && ( $$line =~ m,^[${DASH}].*\*/\s*$, ) ) {
+		if ( $in_comment_block && ( $$line =~ m/^[${DASH}].*\*\/\s*$/msx ) ) {
 			substr( $$line, 0, 1 ) = " ";
 			$in_comment_block = 0;
 			next;
@@ -785,7 +790,7 @@ sub check_comments {
 
 		# Check for comment block line
 		# -----------------------------
-		if ( $in_comment_block && ( $$line =~ m,^[${DASH}], ) ) {
+		if ( $in_comment_block && ( $$line =~ m/^[${DASH}]/msx ) ) {
 
 			# Note: We do not check for anything else, as empty lines must be allowed.
 			substr( $$line, 0, 1 ) = " ";
@@ -808,9 +813,11 @@ sub check_comments {
 # -----------------------------------------------------------------------
 sub check_debug {
 
-	# Early exits:
+	# early exits:
 	defined($hHunk)  or return 0;
 	$hHunk->{useful} or return 0;
+
+	log_debug("Checking debug constructs ...");
 
 	# Count non-elogind block #ifs. This is needed, so normal
 	# #if/#else/#/endif constructs can be put inside both the
@@ -821,43 +828,44 @@ sub check_debug {
 	for ( my $i = 0 ; $i < $hHunk->{count} ; ++$i ) {
 		my $line = \$hHunk->{lines}[$i];  ## Shortcut
 
-		# Entering a debug construct block
+		# entering a debug construct block
 		# ---------------------------------------
-		if ( $$line =~ m/^-#if.+ENABLE_DEBUG_ELOGIND/ ) {
+		if ( $$line =~ m/^-[${HASH}]if.+ENABLE_DEBUG_ELOGIND/msx ) {
 			## Note: Here it is perfectly fine to be in an elogind mask or insert block.
 			substr( $$line, 0, 1 ) = " ";  ## Remove '-'
 			$in_insert_block++;            ## Increase instead of setting this to 1.
 			next;
-		} ## end if ( $$line =~ m/^-#if.+ENABLE_DEBUG_ELOGIND/)
+		} ## end if ( $$line =~ m/^-[${HASH}]if.+ENABLE_DEBUG_ELOGIND/msx)
 
 		# Count regular #if
-		$$line =~ m/^-#if/ and ++$regular_ifs;
+		$$line =~ m/^-[${HASH}]if/msx and ++$regular_ifs;
 
 		# Switching to the release variant.
 		# ---------------------------------------
-		if ( ( $$line =~ m/^-#else/ ) && $in_insert_block && !$regular_ifs ) {
+		if ( ( $$line =~ m/^-[${HASH}]else/msx ) && $in_insert_block && !$regular_ifs ) {
 			substr( $$line, 0, 1 ) = " ";  ## Remove '-'
 			$in_else_block++;              ## Increase instead of setting this to 1.
 			next;
 		}
 
-		# Ending a debug construct block
+		# ending a debug construct block
 		# ---------------------------------------
-		if ( $$line =~ m,^[${DASH}]#endif\s*///?.*ENABLE_DEBUG_, ) {
+		if ( $$line =~ m/^[${DASH}][${HASH}]endif\s*\/\/\/?.*ENABLE_DEBUG_/msx ) {
 			( !$in_insert_block )
 			  and return hunk_failed("check_debug: #endif // ENABLE_DEBUG_* found outside any debug construct");
 			substr( $$line, 0, 1 ) = " ";  ## Remove '-'
 			$in_insert_block--;            ## Decrease instead of setting to 0. This allows such
 			$in_else_block--;              ## blocks to reside in regular elogind mask/insert blocks.
 			next;
-		} ## end if ( $$line =~ m,^[${DASH}]#endif\s*///?.*ENABLE_DEBUG_,)
+		} ## end if ( $$line =~ m/^[${DASH}][${HASH}]endif\s*\/\/\/?.*ENABLE_DEBUG_/msx)
 
-		# End regular #if
-		$$line =~ m/^-#endif/ and --$regular_ifs;
+		# end regular #if
+		# ---------------------------------------
+		$$line =~ m/^-[${HASH}]endif/msx and --$regular_ifs;
 
 		# Check for log_debug_elogind()
 		# ---------------------------------------
-		if ( $$line =~ m/^-.*log_debug_elogind\s*\(/ ) {
+		if ( $$line =~ m/^-.*log_debug_elogind\s*\(/msx ) {
 			substr( $$line, 0, 1 ) = " ";  ## Remove '-'
 			$$line =~ m/\)\s*;/ or ++$is_debug_func;
 			next;
@@ -874,7 +882,7 @@ sub check_debug {
 		# ---------------------------------------------------------
 		$is_debug_func and $$line =~ m/\)\s*;/ and --$is_debug_func;
 
-	}  ## End of looping lines
+	} ## end for ( my $i = 0 ; $i < ...)
 
 	return 1;
 } ## end sub check_debug
@@ -888,12 +896,14 @@ sub check_debug {
 # -----------------------------------------------------------------------
 sub check_func_removes {
 
-	# Early exits:
+	# early exits:
 	defined($hHunk)  or return 1;
 	$hHunk->{useful} or return 1;
 
 	# Not used in pwx files (meson, xml, sym)
 	$hFile{pwxfile} and return 1;
+
+	log_debug("Checking function removals ...");
 
 	# Needed for multi-line calls
 	my $is_func_call = 0;
@@ -906,7 +916,7 @@ sub check_func_removes {
 
 		# Check for elogind_*() call
 		# -------------------------------------------------------------------
-		if ( $$line =~ m/^-.*elogind_\S+\s*\(/ ) {
+		if ( $$line =~ m/^-.*elogind_\S+\s*\(/msx ) {
 			substr( $$line, 0, 1 ) = " ";  ## Remove '-'
 			$$line =~ m/\)\s*;/ or ++$is_func_call;
 			next;
@@ -935,9 +945,11 @@ sub check_func_removes {
 # ------------------------------------------------------------------------
 sub check_empty_masks {
 
-	# Early exits:
+	# early exits:
 	defined($hHunk)  or return 1;
 	$hHunk->{useful} or return 1;
+
+	log_debug("Checking empty mask removals ...");
 
 	# We must not touch the global values!
 	# Note: We search for two successive lines, so this should be easy enough.
@@ -961,7 +973,7 @@ sub check_empty_masks {
 	for ( my $i = 0 ; $i < $hHunk->{count} ; ++$i ) {
 		my $line = \$hHunk->{lines}[$i];  ## Shortcut
 
-		# Entering an elogind mask
+		# entering an elogind mask
 		# ---------------------------------------
 		if ( is_mask_start($$line) ) {
 
@@ -978,7 +990,7 @@ sub check_empty_masks {
 			next;
 		} ## end if ( is_mask_start($$line...))
 
-		# Entering an elogind insert
+		# entering an elogind insert
 		# ---------------------------------------
 		if ( is_insert_start($$line) ) {
 			$local_iib = 1;
@@ -991,7 +1003,7 @@ sub check_empty_masks {
 		} ## end if ( is_insert_start($$line...))
 
 		# Count regular #if
-		$$line =~ m/^-#if/ and ++$regular_ifs;
+		$$line =~ m/^-[${HASH}]if/msx and ++$regular_ifs;
 
 		# Switching from Mask to else.
 		# Note: Inserts have no #else, they make no sense.
@@ -1020,7 +1032,7 @@ sub check_empty_masks {
 			next;
 		} ## end if ( is_mask_else($$line...))
 
-		# Ending a Mask block
+		# ending a Mask block
 		# ---------------------------------------
 		if ( is_mask_end($$line) ) {
 
@@ -1061,7 +1073,7 @@ sub check_empty_masks {
 			next;
 		} ## end if ( is_mask_end($$line...))
 
-		# Ending an insert block
+		# ending an insert block
 		# ---------------------------------------
 		if ( is_insert_end($$line) ) {
 			$local_iib             = 0;
@@ -1073,10 +1085,10 @@ sub check_empty_masks {
 			next;
 		} ## end if ( is_insert_end($$line...))
 
-		# End regular #if
-		$$line =~ m/^-#endif/ and --$regular_ifs;
+		# end regular #if
+		$$line =~ m/^-[${HASH}]endif/msx and --$regular_ifs;
 
-	}  ## End of looping lines
+	} ## end for ( my $i = 0 ; $i < ...)
 
 	return 1;
 } ## end sub check_empty_masks
@@ -1105,9 +1117,11 @@ sub check_empty_masks {
 # -----------------------------------------------------------------------
 sub check_includes {
 
-	# Early exits:
+	# early exits:
 	defined($hHunk)  or return 1;
 	$hHunk->{useful} or return 1;
+
+	log_debug("Checking includes ...");
 
 	# We must know when "needed by elogind blocks" start
 	my $in_elogind_block = 0;
@@ -1121,7 +1135,7 @@ sub check_includes {
 
 		# === Ruleset 1 : Handling of removals of includes we commented out ===
 		# =====================================================================
-		if ( $$line =~ m,^[${DASH}]\s*/[/*]+\s*#include\s+[<"']([^>"']+)[>"']\s*(?:\*/)?, ) {
+		if ( $$line =~ m/^[${DASH}]\s*\/[\/*]+\s*[${HASH}]include\s+[<"']([^>"']+)[>"']\s*(?:\*\/)?/msx ) {
 			$hIncs{$1}{applied} and next;  ## No double handling
 
 			my $inc = $1;
@@ -1148,8 +1162,8 @@ sub check_includes {
 				for ( my $j = $direction ; ( $all_same > 0 ) && ( abs($j) < abs($ins_diff) ) ; $j += $direction ) {
 					$all_same = 0;
 
-					if (   ( $hHunk->{lines}[ $i + $j ] =~ m,^[${DASH}]\s*/[/*]+\s*#include\s+[<"']([^>"']+)[>"']\s*(?:\*/)?, )
-						|| ( $hHunk->{lines}[ $i + $j ] =~ m,^[${PLUS}]\s*#include\s+[<"']([^>"']+)[>"'], ) )
+					if (   ( $hHunk->{lines}[ $i + $j ] =~ m/^[${DASH}]\s*\/[\/*]+\s*[${HASH}]include\s+[<"']([^>"']+)[>"']\s*(?:\*\/)?/msx )
+						|| ( $hHunk->{lines}[ $i + $j ] =~ m/^[${PLUS}]\s*[${HASH}]include\s+[<"']([^>"']+)[>"']/msx ) )
 					{
 
 						      $hIncs{$1}{insert}{hunkid} == $hIncs{$1}{remove}{hunkid}
@@ -1184,11 +1198,11 @@ sub check_includes {
 
 			$hIncs{$inc}{applied} = 1;
 			next;
-		}  ## End of ruleset 1
+		} ## end if ( $$line =~ m/^[${DASH}]\s*\/[\/*]+\s*[${HASH}]include\s+[<"']([^>"']+)[>"']\s*(?:\*\/)?/msx)
 
 		# === Ruleset 2 : Handling of insertions, not handled by 1          ===
 		# =====================================================================
-		if ( $$line =~ m,^[${PLUS}]\s*#include\s+[<"']([^>"']+)[>"'], ) {
+		if ( $$line =~ m/^[${PLUS}]\s*[${HASH}]include\s+[<"']([^>"']+)[>"']/msx ) {
 			$hIncs{$1}{applied} and next;  ## No double handling
 
 			# Pre: Sanity check:
@@ -1199,12 +1213,12 @@ sub check_includes {
 			$hIncs{$1}{applied} = 1;
 
 			next;
-		} ## end if ( $$line =~ m,^[${PLUS}]\s*#include\s+[<"']([^>"']+)[>"'],)
+		} ## end if ( $$line =~ m/^[${PLUS}]\s*[${HASH}]include\s+[<"']([^>"']+)[>"']/msx)
 
 		# === Ruleset 3 : Handling of "needed by elogind" blocks            ===
 		# =====================================================================
 		if ( $in_elogind_block
-			&& ( $$line =~ m,^[${DASH}]\s*#include\s+[<"']([^>"']+)[>"'], ) )
+			&& ( $$line =~ m/^[${DASH}]\s*[${HASH}]include\s+[<"']([^>"']+)[>"']/msx ) )
 		{
 			$hIncs{$1}{applied} and next;  ## No double handling
 
@@ -1221,7 +1235,7 @@ sub check_includes {
 
 		# === Other 1 : Look for "needed by elogind" block starts           ===
 		# =====================================================================
-		if ( $$line =~ m,^[- ]\s*//+.*needed\s+(?:by|for)\s+elogind.*,i ) {
+		if ( $$line =~ m/^[- ]\s*\/\/+.*needed\s+(?:by|for)\s+elogind.*/misx ) {
 			$in_elogind_block = 1;
 
 			# Never remove the block start
@@ -1234,13 +1248,13 @@ sub check_includes {
 			  and substr( $hHunk->{lines}[ $i - 1 ], 0, 1 ) = " ";
 
 			next;
-		} ## end if ( $$line =~ m,^[- ]\s*//+.*needed\s+(?:by|for)\s+elogind.*,i)
+		} ## end if ( $$line =~ m/^[- ]\s*\/\/+.*needed\s+(?:by|for)\s+elogind.*/misx)
 
 		# === Other 2 : elogind include blocks end, when the first line is  ===
 		# ===           found that does not starts with #include            ===
 		# ===
 		# =====================================================================
-		if ( $in_elogind_block && !( $$line =~ m,^.\s*#include$, ) ) {
+		if ( $in_elogind_block && !( $$line =~ m/^.\s*[${HASH}]include$/msx ) ) {
 
 			# diff may want to remove the first empty line after our block.
 			( $$line =~ m,^[${DASH}]\s*$, ) and substr( $$line, 0, 1 ) = " ";
@@ -1258,7 +1272,7 @@ sub check_includes {
 		#       those won't reach here. Actually 'Other 3' would be never
 		#       reached with an #include line.
 
-	}  ## End of looping lines
+	} ## end for ( my $i = 0 ; $i < ...)
 
 	# Before we can leave, we have to neutralize the %undo lines:
 	for my $lId ( keys %undos ) {
@@ -1302,9 +1316,11 @@ sub check_logger {
 # -----------------------------------------------------------------------
 sub check_masks {
 
-	# Early exits:
+	# early exits:
 	defined($hHunk)  or croak("check_masks: hHunk is undef");
 	$hHunk->{useful} or croak("check_masks: Nothing done but hHunk is useless?");
+
+	log_debug("Checking mask flips ...");
 
 	# Count non-elogind block #ifs. This is needed, so normal
 	# #if/#else/#/endif constructs can be put inside elogind mask blocks.
@@ -1329,7 +1345,7 @@ sub check_masks {
 	for ( my $i = 0 ; $i < $hHunk->{count} ; ++$i ) {
 		my $line = \$hHunk->{lines}[$i];  ## Shortcut
 
-		# Entering an elogind mask
+		# entering an elogind mask
 		# ---------------------------------------
 		if ( is_mask_start($$line) ) {
 			$in_mask_block and return hunk_failed("check_masks: Mask start found while being in a mask block!");
@@ -1352,7 +1368,7 @@ sub check_masks {
 			next;
 		} ## end if ( is_mask_start($$line...))
 
-		# Entering an elogind insert
+		# entering an elogind insert
 		# ---------------------------------------
 		if ( is_insert_start($$line) ) {
 			$in_mask_block   and return hunk_failed("check_masks: Insert start found while being in a mask block!");
@@ -1375,7 +1391,7 @@ sub check_masks {
 		} ## end if ( is_insert_start($$line...))
 
 		# Count regular #if
-		$$line =~ m/^-#if/ and ++$regular_ifs;
+		$$line =~ m/^-[${HASH}]if/msx and ++$regular_ifs;
 
 		# Switching from Mask to else.
 		# Note: Inserts have no #else, they make no sense.
@@ -1390,7 +1406,7 @@ sub check_masks {
 			next;
 		} ## end if ( is_mask_else($$line...))
 
-		# Ending a Mask block
+		# ending a Mask block
 		# ---------------------------------------
 		if ( is_mask_end($$line) ) {
 			$in_mask_block or return hunk_failed("check_masks: #endif // 0 found outside any mask block");
@@ -1402,7 +1418,7 @@ sub check_masks {
 			next;
 		} ## end if ( is_mask_end($$line...))
 
-		# Ending an insert block
+		# ending an insert block
 		# ---------------------------------------
 		if ( is_insert_end($$line) ) {
 			$in_insert_block or return hunk_failed("check_masks: #endif // 1 found outside any insert block");
@@ -1413,8 +1429,8 @@ sub check_masks {
 			next;
 		} ## end if ( is_insert_end($$line...))
 
-		# End regular #if
-		$$line =~ m/^-#endif/ and --$regular_ifs;
+		# end regular #if
+		$$line =~ m/^-[${HASH}]endif/msx and --$regular_ifs;
 
 		# Special treatment for all mask-else and insert blocks.
 		# (Well, that's what this function is all about, isn't it?)
@@ -1483,12 +1499,12 @@ sub check_masks {
 				next;
 			} ## end if ( ( $move_to_line >...))
 
-			# End our mask block ending awareness at the first non-insertion line after a mask block.
+			# end our mask block ending awareness at the first non-insertion line after a mask block.
 			# ---------------------------------------------------------------------------------------
 			$mask_end_line = -1;
 			$move_to_line  = -1;
 		} ## end if ( 0 == $in_mask_block)
-	}  ## End of looping lines
+	} ## end for ( my $i = 0 ; $i < ...)
 
 	# Note down how this hunk ends before first pruning
 	$hHunk->{masked_end} = $in_mask_block && !$in_else_block ? 1 : 0;
@@ -1509,9 +1525,11 @@ sub check_masks {
 # -----------------------------------------------------------------------
 sub check_musl {
 
-	# Early exits:
+	# early exits:
 	defined($hHunk)  or return 0;
 	$hHunk->{useful} or return 0;
+
+	log_debug("Checking musl libc protection ...");
 
 	# Count non-elogind block #ifs. This is needed, so normal
 	# #if/#else/#/endif constructs can be put inside both the original
@@ -1541,48 +1559,48 @@ sub check_musl {
 			next;
 		}
 
-		# Entering a __GLIBC__ block as mask
+		# entering a __GLIBC__ block as mask
 		# ---------------------------------------
-		if ( $$line =~ m/^-#if(?:def|\s+defined).+__GLIBC__/ ) {
+		if ( $$line =~ m/^-[${HASH}]if(?:def|\s+defined).+__GLIBC__/msx ) {
 			## Note: Here it is perfectly fine to be in an elogind mask block.
 			substr( $$line, 0, 1 ) = " ";  ## Remove '-'
 			$in_glibc_block = 1;
 			next;
-		} ## end if ( $$line =~ m/^-#if(?:def|\s+defined).+__GLIBC__/)
+		} ## end if ( $$line =~ m/^-[${HASH}]if(?:def|\s+defined).+__GLIBC__/msx)
 
-		# Entering a __GLIBC__ block as insert
+		# entering a __GLIBC__ block as insert
 		# ---------------------------------------
-		if ( $$line =~ m/^-#if(?:ndef|\s+!defined).+__GLIBC__/ ) {
+		if ( $$line =~ m/^-[${HASH}]if(?:ndef|\s+!defined).+__GLIBC__/msx ) {
 			substr( $$line, 0, 1 ) = " ";  ## Remove '-'
 			$in_glibc_block = 1;
 			$in_else_block++;
 			next;
-		} ## end if ( $$line =~ m/^-#if(?:ndef|\s+!defined).+__GLIBC__/)
+		} ## end if ( $$line =~ m/^-[${HASH}]if(?:ndef|\s+!defined).+__GLIBC__/msx)
 
 		# Count regular #if
-		$$line =~ m/^-#if/ and ++$regular_ifs;
+		$$line =~ m/^-[${HASH}]if/msx and ++$regular_ifs;
 
 		# Switching from __GLIBC__ to else
 		# ---------------------------------------
-		if ( $$line =~ m,^[- ]?#else\s+[/]+\s+__GLIBC__, ) {
+		if ( $$line =~ m/^[-${SPACE}]?[${HASH}]else\s+[\/]+\s+__GLIBC__/msx ) {
 			++$in_else_block;
 			substr( $$line, 0, 1 ) = " ";
 			next;
 		}
 
-		# Ending a __GLBC__ block
+		# ending a __GLBC__ block
 		# ---------------------------------------
-		if ( $$line =~ m,^[${DASH}]#endif\s*///?.*__GLIBC__, ) {
+		if ( $$line =~ m/^[${DASH}][${HASH}]endif\s*\/\/\/?.*__GLIBC__/msx ) {
 			( !$in_glibc_block )
 			  and return hunk_failed("check_musl: #endif // __GLIBC__ found outside any __GLIBC__ block");
 			substr( $$line, 0, 1 ) = " ";  ## Remove '-'
 			$in_glibc_block = 0;
 			$in_else_block--;
 			next;
-		} ## end if ( $$line =~ m,^[${DASH}]#endif\s*///?.*__GLIBC__,)
+		} ## end if ( $$line =~ m/^[${DASH}][${HASH}]endif\s*\/\/\/?.*__GLIBC__/msx)
 
-		# End regular #if
-		$$line =~ m/^-#endif/ and --$regular_ifs;
+		# end regular #if
+		$$line =~ m/^-[${HASH}]endif/msx and --$regular_ifs;
 
 		# Remove '-' prefixes in all lines within the musl (#else) blocks
 		# -------------------------------------------------------------------
@@ -1592,7 +1610,7 @@ sub check_musl {
 		{
 			substr( $$line, 0, 1 ) = " ";  ## Remove '-'
 		} ## end if ( ( $$line =~ m,^[${DASH}],...))
-	}  ## End of looping lines
+	} ## end for ( my $i = 0 ; $i < ...)
 
 	# Revert the final mask state remembered above
 	# ------------------------------------------------
@@ -1610,9 +1628,11 @@ sub check_musl {
 # -----------------------------------------------------------------------
 sub check_name_reverts {
 
-	# Early exits:
+	# early exits:
 	defined($hHunk)  or return 0;
 	$hHunk->{useful} or return 0;
+
+	log_debug("Checking name reversals elogind->systemd ...");
 
 	# Note down what is changed, so we can have inline updates
 	my %hRemovals = ();  ## {string}{line}     = line_no
@@ -1657,7 +1677,7 @@ sub check_name_reverts {
 
 		# Check Additions
 		# ---------------------------------
-		if ( $$line =~ m/^[${PLUS}][\#\/* ]*\s*(.*(?:elogind|systemd).*)\s*[*\/ ]*$/msx ) {
+		if ( $$line =~ m/^[${PLUS}][${HASH}]*[\/*${SPACE}]*\s*(.*(?:elogind|systemd).*)\s*[*\/${SPACE}]*$/msx ) {
 			my $replace_text = $1;
 
 			# Check the previous maximum removal line_no and text to quickly compare with it
@@ -1674,11 +1694,11 @@ sub check_name_reverts {
 			# =============================================================
 			# 1) References to the systemd github or .io site must not be changed,
 			#    unless it is a reference to the issues tracker.
-			if (   ( ( $replace_text =~ m/github[${DOT}]com[${SLASH}]systemd/ms ) && !( $replace_text =~ m/[${SLASH}]issues/ms ) )
-				|| ( $replace_text =~ m/systemd[${DOT}]io/ms ) )
+			if (   ( ( $replace_text =~ m/github[${DOT}]com[${SLASH}]systemd/msx ) && !( $replace_text =~ m/[${SLASH}]issues/msx ) )
+				|| ( $replace_text =~ m/systemd[${DOT}]io/msx ) )
 			{
 				# If a removal exists that was a link to the elogind github main page, then do not switch back. We had our reasons!
-				if ( ( $max_line > -1 ) && ( ( $max_line + 1 ) == $i ) && ( $max_text =~ /github[${DOT}]com[${SLASH}]elogind[${SLASH}]elogind/ms ) ) {
+				if ( ( $max_line > -1 ) && ( ( $max_line + 1 ) == $i ) && ( $max_text =~ /github[${DOT}]com[${SLASH}]elogind[${SLASH}]elogind/msx ) ) {
 					substr( $hHunk->{lines}[$max_line], 0, 1 ) = " ";
 					$hRemovals{$replace_text}{spliceme} = $i;  ## Splice the replacement
 				}
@@ -1689,29 +1709,30 @@ sub check_name_reverts {
 			#    rely on that naming.
 			# Note: The /run/elogind.pid file is not touched by that, as
 			#       systemd does not have something like that.
-			$replace_text =~ m,/run/systemd, and next;
+			$replace_text =~ m/\/run\/systemd/msx and next;
 
 			# 3) Several systemd website urls must not be changed, too
 			for my $pat ( keys %SYSTEMD_URLS ) {
-				$replace_text =~ m/$pat/ and next;
+				$replace_text =~ m/$pat/msx and next;
 			}
 
 			# 4) To be a dropin-replacement, we also need to not change any org[./]freedesktop[./]systemd strings
-			$replace_text =~ m,/?org[./]freedesktop[./]systemd, and next;
+			$replace_text =~ m/\/?org[.\/]freedesktop[.\/]systemd/msx and next;
 
 			# 5) Do not replace referrals to systemd[1]
-			$replace_text =~ m,systemd\[1\], and next;
+			$replace_text =~ m/systemd\[1\]/msx and next;
 
 			# 6) References to systemd-homed and other tools not shipped by elogind
 			#    must not be changed either, or users might think elogind has its
 			#    own replacements.
 			#    Also the gettext domain is always "systemd", and varlink works via io.systemd domain.
+			my $systemd_daemons  = qq{home|import|journal|network|oom|passwor|udev};
+			my $systemd_products = qq{analyze|creds|cryptsetup|export|firstboot|fsck|home|import-fs|nspawn|repart|syscfg|sysusers|tmpfiles|devel\/};
 			my $is_wrong_replace =
-			  (      ( $replace_text =~ m/systemd[-_](home|import|journal|network|oom|passwor|udev)d/ms )
-				  || ( $replace_text =~ m/systemd[-_](analyze|creds|cryptsetup|export|firstboot|fsck|home)/ms )
-				  || ( $replace_text =~ m/systemd[-_](import-fs|nspawn|repart|syscfg|sysusers|tmpfiles|devel\/)/ms )
-				  || ( $replace_text =~ m/gettext-domain="systemd/ms )
-				  || ( $replace_text =~ m/io[.]systemd/ms ) ) ? 1 : 0;
+			  (      ( $replace_text =~ m/systemd[-_]($systemd_daemons)d/msx )
+				  || ( $replace_text =~ m/systemd[-_]($systemd_products)/msx )
+				  || ( $replace_text =~ m/gettext-domain="systemd/msx )
+				  || ( $replace_text =~ m/io[.]systemd/msx ) ) ? 1 : 0;
 
 			# We have to differentiate between simple systemd, longer systemd-logind, login/systemctl and man page volume numbers
 			my $our_text_long  = $replace_text;
@@ -1806,7 +1827,7 @@ sub check_name_reverts {
 			$$line =~ s/(?:systemd|elogind)${DASH}(sleep${DOT}conf)/$1/msgx;
 
 			log_debug( "Final line: '%s'", $$line );
-		} ## end if ( $$line =~ m/^[${PLUS}][\#\/* ]*\s*(.*(?:elogind|systemd).*)\s*[*\/ ]*$/msx)
+		} ## end if ( $$line =~ m/^[${PLUS}][${HASH}]*[\/*${SPACE}]*\s*(.*(?:elogind|systemd).*)\s*[*\/${SPACE}]*$/msx)
 	} ## end for ( my $i = 0 ; $i < ...)
 
 	# Splice the lines that were noted for splicing
@@ -1840,9 +1861,11 @@ sub check_name_reverts {
 # -----------------------------------------------------------------------
 sub check_stdc_version {
 
-	# Early exits:
+	# early exits:
 	defined($hHunk)  or return 0;
 	$hHunk->{useful} or return 0;
+
+	log_debug("Checking __STDC_VERSION__ guards...");
 
 	# Remember the final mask state for later reversal
 	# ------------------------------------------------
@@ -1923,12 +1946,14 @@ sub check_stdc_version {
 # -----------------------------------------------------------------------
 sub check_sym_lines {
 
-	# Early exits:
+	# early exits:
 	defined($hHunk)  or return 0;
 	$hHunk->{useful} or return 0;
 
 	# Only .sym files are handled here
 	$hFile{source} =~ m/\.sym\.pwx$/ or return 1;
+
+	log_debug("Checking .sym file sanity...");
 
 	# Note down what is changed, so we can have inline updates
 	my %hAdditions = ();
@@ -1945,14 +1970,14 @@ sub check_sym_lines {
 
 		# Note down removals
 		# ---------------------------------
-		if ( $$line =~ m,^[${DASH}]\s*/\*\s+(\S.+;)\s+\*/\s*$, ) {
+		if ( $$line =~ m/^[${DASH}]\s*\/\*\s+(\S.+;)\s+\*\/\s*$/msx ) {
 			$hRemovals{$1}{line} = $i;
 			next;
 		}
 
 		# Check Additions
 		# ---------------------------------
-		if ( $$line =~ m,^[${PLUS}]\s*([^ /].+;)\s*$, ) {
+		if ( $$line =~ m/^[${PLUS}]\s*([^${SPACE}\/].+;)\s*$/msx ) {
 			$hAdditions{$1}{line}    = $i;
 			$hAdditions{$1}{handled} = 0;
 			$hAddMap{$i}             = $1;
@@ -1991,9 +2016,11 @@ sub check_sym_lines {
 # -----------------------------------------------------------------------
 sub check_useless {
 
-	# Early exits:
+	# early exits:
 	defined($hHunk)  or croak("check_useless: hHunk is undef");
 	$hHunk->{useful} or croak("check_useless: Nothing done but hHunk is useless?");
+
+	log_debug("Checking for useless updates...");
 
 	# Note down removals, and where they start
 	my %hRemovals = ();
@@ -2040,6 +2067,7 @@ sub check_useless {
 
 	# Now go through the splice map and splice from back to front
 	for my $line_no ( sort { $b <=> $a } keys %hSplices ) {
+		log_debug( "  => Splicing Line %d: \"%s\"", $line_no, $hHunk->{lines}[$line_no] );
 		splice( @{ $hHunk->{lines} }, $line_no, 1 );
 		$hHunk->{count}--;
 	}
@@ -2135,7 +2163,8 @@ sub diff_hFile {
 	if ( 0 == $hFile{create} ) {
 
 		# Do they differ at all?
-		`diff -qu "$hFile{source}" "$hFile{target}" 1>/dev/null 2>&1`;
+		my $r;
+		$r = `diff -qu "$hFile{source}" "$hFile{target}" 1>/dev/null 2>&1`;
 		$? or return 0;
 
 		# Shell and meson files must be prepared. See prepare_meson()
@@ -2216,8 +2245,9 @@ sub format_caller {
 sub generate_file_list {
 
 	# Do some cleanup first. Just to be sure.
-	`rm -rf build`;
-	`find -iname '*.orig' -or -iname '*.bak' -or -iname '*.rej' -or -iname '*~' -or -iname '*.gc??' | xargs rm -f`;
+	my $r;
+	$r = qx{'rm', '-rf', 'build*'};
+	$r = qx{find -iname '*.orig' -or -iname '*.bak' -or -iname '*.rej' -or -iname '*~' -or -iname '*.gc??' | xargs rm -f};
 
 	# Build wanted files hash
 	while ( my $want = shift @wanted_files ) {
@@ -2420,22 +2450,32 @@ sub hunk_failed {
 # -----------------------------------------------------------------------
 sub hunk_is_useful() {
 
-	# Early exits:
+	# early exits:
 	( $death_note > 0 ) and return 0;
 	defined($hHunk)  or return 0;
 	$hHunk->{useful} or return 0;
 
+	log_debug("Checking whether the hunk is still useful ...");
+
 	# Go through the lines and see whether we have any changes
-	$hHunk->{useful} = 0;
+	my $is_useful = 0;
 
-	for ( my $i = 0 ; $i < $hHunk->{count} ; ++$i ) {
+	for ( my $i = 0 ; ( 0 == $is_useful ) && ( $i < $hHunk->{count} ) ; ++$i ) {
 		if ( $hHunk->{lines}[$i] =~ m/^[-+]/ ) {
-			$hHunk->{useful} = 1;
-			return 1;
+			$is_useful = 1;
 		}
-	} ## end for ( my $i = 0 ; $i < ...)
+	}
 
-	return 0;
+	$hHunk->{useful} = $is_useful;
+	log_debug( "  => Hunk is %s useful", ( $is_useful > 0 ) ? "still" : "no longer" );
+
+	if ( ( $do_debug > 0 ) && ( $is_useful > 0 ) ) {
+		for ( my $i = 0 ; ( 0 == $is_useful ) && ( $i < $hHunk->{count} ) ; ++$i ) {
+			log_info( "% 3d: %s", $i + 1, $hHunk->{lines}[$i] );
+		}
+	}
+
+	return $is_useful;
 } ## end sub hunk_is_useful
 
 # --------------------------------------------------------------
@@ -2446,12 +2486,12 @@ sub is_insert_end {
 
 	defined($line) and length($line) or return 0;
 
-	if (   ( $line =~ m,^[- ]?#endif\s*/(?:[*/]+)\s*1, )
-		|| ( $line =~ m,//\s+1\s+-->\s*$, )
-		|| ( $line =~ m,\*\s+//\s+1\s+\*\*/\s*$, ) )
+	if (   ( $line =~ m/^[-${SPACE}]?[${HASH}]endif\s*\/(?:[*\/]+)\s*1/msx )
+		|| ( $line =~ m/\/\/\s+1\s+-->\s*$/msx )
+		|| ( $line =~ m/\*\s+\/\/\s+1\s+\*\*\/\s*$/msx ) )
 	{
 		return 1;
-	} ## end if ( ( $line =~ m,^[- ]?#endif\s*/(?:[*/]+)\s*1,...))
+	} ## end if ( ( $line =~ m/^[-${SPACE}]?[${HASH}]endif\s*\/(?:[*\/]+)\s*1/msx...))
 
 	return 0;
 } ## end sub is_insert_end
@@ -2464,7 +2504,7 @@ sub is_insert_start {
 
 	defined($line) and length($line) or return 0;
 
-	if (   ( $line =~ m/^[- ]?[${HASH}]if\s+1.+elogind/msx )
+	if (   ( $line =~ m/^[-${SPACE}]?[${HASH}]if\s+1.+elogind/msx )
 		|| ( $line =~ m/<!--\s+1.+elogind.+-->\s*$/msx ) )
 	{
 		return 1;
@@ -2481,12 +2521,12 @@ sub is_mask_else {
 
 	defined($line) and length($line) or return 0;
 
-	if (   ( $line =~ m/^[- ]?[${HASH}]else\s+[\/]+\s+0/msx )
+	if (   ( $line =~ m/^[-${SPACE}]?[${HASH}]else\s+[\/]+\s+0/msx )
 		|| ( $line =~ m/else\s+[\/]+\s+0\s+-->\s*$/msx )
 		|| ( $line =~ m/\*\s+else\s+[\/]+\s+0\s+\*\*\/\s*$/msx ) )
 	{
 		return 1;
-	} ## end if ( ( $line =~ m/^[- ]?[${HASH}]else\s+[\/]+\s+0/msx...))
+	} ## end if ( ( $line =~ m/^[-${SPACE}]?[${HASH}]else\s+[\/]+\s+0/msx...))
 
 	return 0;
 } ## end sub is_mask_else
@@ -2518,7 +2558,7 @@ sub is_mask_start {
 	defined($line) and length($line) or return 0;
 
 	if (
-		( $line =~ m/^[- ]?[${HASH}]if\s+0.+elogind/msx )
+		( $line =~ m/^[-${SPACE}]?[${HASH}]if\s+0.+elogind/msx )
 		|| ( ( $line =~ m/<!--\s+0.+elogind/msx )
 			&& !( $line =~ m/-->\s*$/msx ) )
 		|| ( ( $line =~ m,/\*\*\s+0.+elogind,msx )
@@ -2526,7 +2566,7 @@ sub is_mask_start {
 	  )
 	{
 		return 1;
-	} ## end if ( ( $line =~ m/^[- ]?[${HASH}]if\s+0.+elogind/msx...))
+	} ## end if ( ( $line =~ m/^[-${SPACE}]?[${HASH}]if\s+0.+elogind/msx...))
 
 	return 0;
 } ## end sub is_mask_start
@@ -2648,8 +2688,8 @@ sub prepare_shell {
 			$is_block = 0;
 			$is_else  = 0;
 		} elsif ( $is_block && !$is_else ) {
-			$line =~ s,^#\s?,,;
-			$line =~ s,^\s\s\*\s?,,;
+			$line =~ s/^[${HASH}]\s?//msgx;
+			$line =~ s/^\s\s\*\s?//msgx;
 		}
 
 		push @lOut, $line;
@@ -2750,7 +2790,7 @@ sub prepare_xml {
 # -----------------------------------------------------------------------
 sub protect_config() {
 
-	# Early exits:
+	# early exits:
 	defined($hHunk)  or croak("check_masks: hHunk is undef");
 	$hHunk->{useful} or croak("check_masks: Nothing done but hHunk is useless?");
 
@@ -2766,7 +2806,7 @@ sub protect_config() {
 			next;
 		}
 
-		# Enter elogind specific [Sleep] block
+		# enter elogind specific [Sleep] block
 		# ------------------------------------------
 		if ( $$line =~ m,^\-\[Sleep\], ) {
 			substr( $$line, 0, 1 ) = " ";  ## Remove '-'
@@ -2787,7 +2827,7 @@ sub protect_config() {
 		# No sleep block
 		$is_sleep_block = 0;
 
-	}  ## End of looping lines
+	} ## end for ( my $i = 0 ; $i < ...)
 
 	return 1;
 } ## end sub protect_config
@@ -2797,9 +2837,11 @@ sub protect_config() {
 # -----------------------------------------------------------------------
 sub prune_hunk() {
 
-	# Early exits:
+	# early exits:
 	defined($hHunk)  or return 0;
 	$hHunk->{useful} or return 0;
+
+	log_debug("Pruning Hunk ...");
 
 	# Go through the lines and see what we've got.
 	my @mask_info = ( $hHunk->{masked_start} );
@@ -2829,11 +2871,12 @@ sub prune_hunk() {
 
 		# Note: The last action still stands, no matter whether it gets pruned
 		#       or not, as it is only relevant for the next hunk.
-	}  ## End of analyzing the hunks lines.
+	} ## end for ( my $i = 0 ; $i < ...)
 
 	# Now let's prune it:
 	if ( $prefix > 3 ) {
 		$prefix -= 3;
+		log_debug( "  => Splicing first %d lines", $prefix );
 		splice( @{ $hHunk->{lines} }, 0, $prefix );
 		$hHunk->{src_start} += $prefix;
 		$hHunk->{count}     -= $prefix;
@@ -2848,9 +2891,10 @@ sub prune_hunk() {
 	} ## end if ( $prefix > 3 )
 	if ( $postfix > 3 ) {
 		$postfix -= 3;
+		log_debug( "  => Splicing last %d lines", $postfix );
 		splice( @{ $hHunk->{lines} }, $hHunk->{count} - $postfix, $postfix );
 		$hHunk->{count} -= $postfix;
-	}
+	} ## end if ( $postfix > 3 )
 
 	return 1;
 } ## end sub prune_hunk
@@ -2922,7 +2966,7 @@ sub unprepare_shell {
 			  or $line = '# ' . $line;
 
 			# Do not create empty comment lines with trailing spaces.
-			$line =~ s/(#)\s+$/$1/;
+			$line =~ s/([${HASH}])\s+$/$1/msgx;
 		} ## end elsif ( $is_block && !$is_else...)
 
 		push @lOut, $line;
@@ -2960,11 +3004,11 @@ sub unprepare_shell {
 		$is_block
 		  and ( !$is_else )
 		  and '@@' ne substr( $line, 0, 2 )
-		  and ( !( $line =~ m/^[- ]+[${HASH}](?:if|else|endif)/msx ) )
+		  and ( !( $line =~ m/^[-${SPACE}]+[${HASH}](?:if|else|endif)/msx ) )
 		  and substr( $line, 1, 0 ) = "# ";
 
 		# Make sure not to demand to add empty comment lines with trailing spaces
-		$line =~ s/^(\+#)\s+$/$1/;
+		$line =~ s/^(\+[${HASH}])\s+$/$1/msgx;
 		push @{ $hFile{output} }, $line;
 	} ## end for my $line (@lIn)
 
@@ -3081,7 +3125,7 @@ sub unprepare_xml {
 # -----------------------------------------------------------------------
 sub read_includes {
 
-	# Early exits:
+	# early exits:
 	defined($hHunk)  or return 1;
 	$hHunk->{useful} or return 1;
 
