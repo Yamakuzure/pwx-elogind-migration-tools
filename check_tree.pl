@@ -353,6 +353,7 @@ for my $file_part (@source_files) {
 		# Break off if a signal was caught
 		( $death_note > 0 ) and ( $pos = $hFile{count} ) and next;
 
+		log_debug("Checking Hunk %d", $pos + 1);
 		$hHunk = $hFile{hunks}[$pos];  ## Global shortcut
 
 		# === Special 1) protect src/login/logind.conf.in =================
@@ -1302,8 +1303,8 @@ sub check_logger {
 sub check_masks {
 
 	# Early exits:
-	defined($hHunk)  or die("check_masks: hHunk is undef");
-	$hHunk->{useful} or die("check_masks: Nothing done but hHunk is useless?");
+	defined($hHunk)  or croak("check_masks: hHunk is undef");
+	$hHunk->{useful} or croak("check_masks: Nothing done but hHunk is useless?");
 
 	# Count non-elogind block #ifs. This is needed, so normal
 	# #if/#else/#/endif constructs can be put inside elogind mask blocks.
@@ -1991,8 +1992,8 @@ sub check_sym_lines {
 sub check_useless {
 
 	# Early exits:
-	defined($hHunk)  or die("check_useless: hHunk is undef");
-	$hHunk->{useful} or die("check_useless: Nothing done but hHunk is useless?");
+	defined($hHunk)  or croak("check_useless: hHunk is undef");
+	$hHunk->{useful} or croak("check_useless: Nothing done but hHunk is useless?");
 
 	# Note down removals, and where they start
 	my %hRemovals = ();
@@ -2661,7 +2662,7 @@ sub prepare_shell {
 		}
 		close($fOut);
 	} else {
-		die("$out can not be opened for writing! [$!]");
+		croak("$out can not be opened for writing! [$!]");
 	}
 
 	# The temporary file is our new source
@@ -2734,7 +2735,7 @@ sub prepare_xml {
 		}
 		close($fOut);
 	} else {
-		die("$out can not be opened for writing! [$!]");
+		croak("$out can not be opened for writing! [$!]");
 	}
 
 	# The temporary file is our new source
@@ -2750,8 +2751,8 @@ sub prepare_xml {
 sub protect_config() {
 
 	# Early exits:
-	defined($hHunk)  or die("check_masks: hHunk is undef");
-	$hHunk->{useful} or die("check_masks: Nothing done but hHunk is useless?");
+	defined($hHunk)  or croak("check_masks: hHunk is undef");
+	$hHunk->{useful} or croak("check_masks: Nothing done but hHunk is useless?");
 
 	my $is_sleep_block = 0;
 	for ( my $i = 0 ; $i < $hHunk->{count} ; ++$i ) {
@@ -2881,7 +2882,7 @@ sub unprepare_shell {
 		@lIn = <$fIn>;
 		close($fIn);
 	} else {
-		die("$in can not be opened for reading! [$!]");
+		croak("$in can not be opened for reading! [$!]");
 	}
 
 	# Now prepare the output, line by line.
@@ -2934,7 +2935,7 @@ sub unprepare_shell {
 		}
 		close($fOut);
 	} else {
-		die("$out can not be opened for writing! [$!]");
+		croak("$out can not be opened for writing! [$!]");
 	}
 
 	# Remove the temporary file
@@ -2993,7 +2994,7 @@ sub unprepare_xml {
 		@lIn = <$fIn>;
 		close($fIn);
 	} else {
-		die("$in can not be opened for reading! [$!]");
+		croak("$in can not be opened for reading! [$!]");
 	}
 
 	# Now prepare the output, line by line.
@@ -3038,7 +3039,7 @@ sub unprepare_xml {
 		}
 		close($fOut);
 	} else {
-		die("$out can not be opened for writing! [$!]");
+		croak("$out can not be opened for writing! [$!]");
 	}
 
 	# Remove the temporary file
