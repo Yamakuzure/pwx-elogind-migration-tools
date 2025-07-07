@@ -327,10 +327,10 @@ generate_file_list() or exit 1;        ## Note: @wanted_files is heeded.
 # ================================================================
 
 for my $file_part (@source_files) {
-	printf( "$file_fmt: ", $file_part );
+	show_progress( 0, "$file_fmt: ", $file_part );
 
-	build_hFile($file_part) or next;
-	diff_hFile()            or next;
+	build_hFile($file_part) or show_progress( 1, "$file_fmt: only here", $file_part ) and next;
+	diff_hFile()            or show_progress( 1, "$file_fmt: same",      $file_part ) and next;
 
 	# Reset global state helpers
 	$in_else_block   = 0;
@@ -441,8 +441,8 @@ for my $file_part (@source_files) {
 	# If we have at least 1 useful hunk, create the output and tell the user what we've got.
 	$have_hunk
 	  and build_output()  # (Always returns 1)
-	  and printf( "%d Hunk%s\n", $have_hunk, $have_hunk > 1 ? "s" : "" )
-	  or print("clean\n");
+	  and show_progress( 1, "$file_fmt : %d Hunk%s", $file_part, $have_hunk, $have_hunk > 1 ? "s" : "" )
+	  or show_progress( 1, "$file_fmt : clean", $file_part );
 
 	# Shell and xml files must be unprepared. See unprepare_[shell,xml]()
 	$hFile{pwxfile} and ( unprepare_shell() or unprepare_xml() );
@@ -545,7 +545,6 @@ sub build_hFile {
 	$tgt =~ s/\.pwx$//;
 	-f $tgt
 	  or push( @only_here, $part )
-	  and print "only here\n"
 	  and return 0;
 
 	# Build the patch name
@@ -2131,7 +2130,7 @@ sub diff_hFile {
 
 		# Do they differ at all?
 		`diff -qu "$hFile{source}" "$hFile{target}" 1>/dev/null 2>&1`;
-		$? or print "same\n" and return 0;
+		$? or return 0;
 
 		# Shell and meson files must be prepared. See prepare_meson()
 		$hFile{is_sh} and $hFile{pwxfile} = 1 and prepare_shell();
@@ -2301,6 +2300,13 @@ sub get_hunk_head {
 } ## end sub get_hunk_head
 
 sub get_location {
+	my ($lvl) = @_;
+
+	# The location is not needed in regular info and status messages, unless debug mode is on
+	if ( ( 0 == $do_debug ) && ( ( $LOG_INFO == $lvl ) || ( $LOG_STATUS == $lvl ) ) ) {
+		return $EMPTY;
+	}
+
 	my $is_regular_log   = 0;
 	my $curr_caller_line = ( caller 1 )[2] // -1;
 	my $curr_caller_name = format_caller( ( caller 2 )[3] // 'main' );
@@ -2311,16 +2317,13 @@ sub get_location {
 
 	my $connect_string   = $EMPTY;
 	my $line_format      = $EMPTY;
-	my $pid_format       = $EMPTY;
 	my $prev_info_format = $EMPTY;
 	my @args             = ();
 
 	if ( 1 == $is_regular_log ) {
-		$pid_format  = '[%5d] ';
 		$line_format = make_location_fmt( $prev_caller_line, ( length $prev_caller_name ) );
 
 		# Curr is the logging function, prev is the function that does the logging
-		push @args, $$;
 		( $prev_caller_line > -1 ) and push @args, $prev_caller_line;
 		push @args, $prev_caller_name;
 
@@ -2336,7 +2339,7 @@ sub get_location {
 		push @args, $prev_caller_name;
 	} ## end else [ if ( 1 == $is_regular_log)]
 
-	my $format_string = $pid_format . $line_format . $connect_string . $prev_info_format;
+	my $format_string = $line_format . $connect_string . $prev_info_format;
 
 	return sprintf $format_string, @args;
 } ## end sub get_location
@@ -2537,7 +2540,7 @@ sub logMsg {
 
 	my $stTime  = get_time_now();
 	my $stLevel = get_log_level($lvl);
-	my $stMsg   = sprintf "%s|%s|%s|$fmt", $stTime, $stLevel, get_location(), @args;
+	my $stMsg   = sprintf "%s|%s|%s|$fmt", $stTime, $stLevel, get_location($lvl), @args;
 
 	( 0 < ( length $logfile ) ) and write_to_log($stMsg);
 	( $LOG_INFO < $lvl ) and write_to_console($stMsg);
@@ -3115,6 +3118,29 @@ sub read_includes {
 
 	return 1;
 } ## end sub read_includes
+
+sub show_progress {
+	my ( $log_as_status, $fmt, @args ) = @_;
+	my $progress_str = sprintf $fmt, @args;
+
+	# Clear a previous progress line
+	( $have_progress_msg > 0 ) and print "\r" . ( $SPACE x length $progress_str ) . "\r";
+
+	if ( 0 < $log_as_status ) {
+
+		# Write into log file
+		$have_progress_msg = 0;  ## ( We already deleted the line above, leaving it at 1 would add a useless empty line. )
+		log_status( '%s', $progress_str );
+	} else {
+
+		# Output on console
+		$have_progress_msg = 1;
+		local $| = 1;
+		print "\r${progress_str}";
+	} ## end else [ if ( 0 < $log_as_status)]
+
+	return 1;
+} ## end sub show_progress
 
 # ---------------------------------------------------------
 # A signal handler that sets global vars according to the
