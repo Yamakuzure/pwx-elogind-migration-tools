@@ -1,4 +1,16 @@
 #!/usr/bin/perl -w
+use strict;
+use warnings FATAL => 'all';
+
+use Carp;
+use Cwd qw( getcwd abs_path );
+use File::Basename;
+use File::Find;
+use Getopt::Long;
+use Git::Wrapper;
+use Pod::Usage;
+use Readonly;
+use Try::Tiny;
 
 # ================================================================
 # ===        ==> --------     HISTORY      -------- <==        ===
@@ -80,15 +92,8 @@
 # ...nothing right now...
 #
 # ------------------------
-use strict;
-use warnings;
-use Carp;
-use Cwd qw( getcwd abs_path );
-use File::Basename;
-use File::Find;
-use Git::Wrapper;
-use Readonly;
-use Try::Tiny;
+## Please keep this current!
+Readonly our $VERSION     => "1.4.2";
 
 # ---------------------------------------------------------
 # Shared Variables
@@ -102,35 +107,10 @@ my $ret_global = 0;
 # ================================================================
 # ===        ==> ------ Help Text and Version ----- <==        ===
 # ================================================================
-Readonly my $VERSION     => "1.4.2";                                                ## Please keep this current!
 Readonly my $VERSMIN     => "-" x length($VERSION);
 Readonly my $PROGDIR     => dirname($0);
 Readonly my $PROGNAME    => basename($0);
 Readonly my $WORKDIR     => getcwd();
-Readonly my $USAGE_SHORT => "$PROGNAME <--help|[OPTIONS] <path to upstream tree>>";
-Readonly my $USAGE_LONG => ""
-  . "elogind git tree checker V$VERSION\n"
-  . "--------------------------$VERSMIN\n" . "\n"
-  . "    Check the current tree, from where this program is called, against an\n"
-  . "    upstream tree for changes, and generate a patchset out of the differences,\n"
-  . "    that does not interfere with elogind development markings.\n" . "\n"
-  . "Usage :\n"
-  . "-------\n"
-  . "  $USAGE_SHORT\n" . "\n"
-  . "  The path to the upstream tree should have the same layout as the place from\n"
-  . "  where this program is called. It is best to call this program from the\n"
-  . "  elogind root path and use a systemd upstream root path for comparison.\n" . "\n"
-  . "Options :\n"
-  . "---------\n"
-  . "    -c|--commit <refid> | Check out <refid> in the upstream tree.\n"
-  . "       --create         | Needs --file. If the file does not exist, create it.\n"
-  . "    -f|--file   <path>  | Do not search recursively, check only <path>.\n"
-  . "                        | For the check of multiple files, you can either\n"
-  . "                        | specify -f multiple times, or concatenate paths with\n"
-  . "                        | a comma, or mix both methods.\n"
-  . "    -h|--help           | Print this help text and exit.\n"
-  . "       --stay           | Needs --commit. Do not reset to the current commit,\n"
-  . "                        | stay with the wanted commit.\n";
 
 # ================================================================
 # ===        ==> ------ Constants and Helpers ----- <==        ===
@@ -313,17 +293,28 @@ sub splice_includes;     ## Splice all includes that were marked for splicing
 sub unprepare_shell;     ## Unprepare shell (and meson) files after our processing
 sub unprepare_xml;       ## Unprepare XML files after our processing (Mask double dashes in comments)
 
-# sub wanted;              ## Callback function for File::Find
+# ================================================================
+# ===     ==> -------    Argument handling     ------- <==     ===
+# ================================================================
+my $podmsg          = "\telogind git tree checker\n";
+my %program_options = (
+	'help|h+'      => \$show_help,
+	'debug|D'      => \$do_debug,
+	'commit|c=s'   => \$wanted_commit,
+	'create'       => \$do_create,
+	'file|f=s'     => \@wanted_files,
+	'stay'         => \$do_stay,
+	'upstream|u=s' => \$upstream_path
+);
+GetOptions(%program_options) or pod2usage( { -message => $podmsg, -exitval => 2, -verbose => 0 } );
+(0 < (length $upstream_path)) or pod2usage( { -exitval => 1, -verbose => 0, -noperldoc => 1 } );
+$show_help > 1 and pod2usage( { -exitval => 0, -verbose => 2, -noperldoc => 0 } );
+$show_help > 0 and pod2usage( { -exitval => 0, -verbose => 2, -noperldoc => 1 } );
 
 # ================================================================
-# ===        ==> --------    Prechecks     -------- <==        ==
+# ===        ==> --------    Prechecks     -------- <==        ===
 # ================================================================
 
-$main_result = parse_args(@ARGV);
-(
-	( !$main_result )  ## Note: Error or --help given, then exit.
-	  or ( $show_help and print "$USAGE_LONG" )
-) and exit( !$main_result );
 length($wanted_commit)
   and (
 	checkout_upstream($wanted_commit)  ## Note: Does nothing if $wanted_commit is already checked out.
@@ -2563,117 +2554,6 @@ sub make_location_fmt {
 } ## end sub make_location_fmt
 
 # -----------------------------------------------------------------------
-# --- parse the given list for arguments.                             ---
-# --- returns 1 on success, 0 otherwise.                              ---
-# --- sets global $show_help to 1 if the long help should be printed. ---
-# -----------------------------------------------------------------------
-sub parse_args {
-	my @args   = @_;
-	my $result = 1;
-
-	for ( my $i = 0 ; $i < @args ; ++$i ) {
-
-		# Check for -c|--commit option
-		# -------------------------------------------------------------------------------
-		if ( $args[$i] =~ m/^-(?:c|-commit)$/ ) {
-			if (   ( ( $i + 1 ) >= @args )
-				|| ( $args[ $i + 1 ] =~ m,^[-/.], ) )
-			{
-				print "ERROR: Option $args[$i] needs a refid as argument!\n\nUsage: $USAGE_SHORT\n";
-				$result = 0;
-				next;
-			} ## end if ( ( ( $i + 1 ) >= @args...))
-			$wanted_commit = $args[ ++$i ];
-		} ## end if ( $args[$i] =~ m/^-(?:c|-commit)$/)
-
-		# Check for --create option
-		# -------------------------------------------------------------------------------
-		elsif ( $args[$i] =~ m/^--create$/ ) {
-			$do_create = 1;
-		}
-
-		# Check for -f|--file option
-		# -------------------------------------------------------------------------------
-		elsif ( $args[$i] =~ m/^-(?:f|-file)$/ ) {
-			if (   ( ( $i + 1 ) >= @args )
-				|| ( $args[ $i + 1 ] =~ m,^[-], ) )
-			{
-				print "ERROR: Option $args[$i] needs a path as argument!\n\nUsage: $USAGE_SHORT\n";
-				$result = 0;
-				next;
-			} ## end if ( ( ( $i + 1 ) >= @args...))
-			push @wanted_files, split( /,/, $args[ ++$i ] );
-		} ## end elsif ( $args[$i] =~ m/^-(?:f|-file)$/)
-
-		# Check for -h|--help option
-		# -------------------------------------------------------------------------------
-		elsif ( $args[$i] =~ m/^-(?:h|-help)$/ ) {
-			$show_help = 1;
-		}
-
-		# Check for --stay option
-		# -------------------------------------------------------------------------------
-		elsif ( $args[$i] =~ m/^--stay$/ ) {
-			$do_stay = 1;
-		}
-
-		# Check for unknown options:
-		# -------------------------------------------------------------------------------
-		elsif ( $args[$i] =~ m/^-/ ) {
-			print "ERROR: Unknown option \"$args[$1]\" encountered!\n\nUsage: $USAGE_SHORT\n";
-			$result = 0;
-		}
-
-		# Everything else is considered to the path to upstream
-		# -------------------------------------------------------------------------------
-		else {
-			# But only if it is not set, yet:
-			if ( length($upstream_path) ) {
-				print "ERROR: Superfluous upstream path \"$args[$i]\" found!\n\nUsage: $USAGE_SHORT\n";
-				$result = 0;
-				next;
-			}
-			if ( !-d "$args[$i]" ) {
-				print "ERROR: Upstream path \"$args[$i]\" does not exist!\n\nUsage: $USAGE_SHORT\n";
-				$result = 0;
-				next;
-			}
-			$upstream_path = $args[$i];
-		} ## end else [ if ( $args[$i] =~ m/^-(?:c|-commit)$/)]
-	}  ## End looping arguments
-
-	# If we have no upstream path now, show short help.
-	if ( $result && !$show_help && !length($upstream_path) ) {
-		print "ERROR: Please provide a path to upstream!\n\nUsage: $USAGE_SHORT\n";
-		$result = 0;
-	}
-
-	# If --create was given, @wanted_files must not be empty
-	if ( $result && !$show_help && $do_create && ( 0 == scalar @wanted_files ) ) {
-		print "ERROR: --create must not be used on the full tree!\n";
-		print "       Add at least one file using the --file option.\n";
-		$result = 0;
-	}
-
-	# If --stay was given, $wanted_commit must not be empty
-	if ( $result && !$show_help && $do_stay && ( 0 == length($wanted_commit) ) ) {
-		print "ERROR: --stay makes only sense with the -c|--commit option!\n";
-		$result = 0;
-	}
-
-	# If any of the wanted files do not exist, error out unless --create was used.
-	if ( $result && !$show_help && defined( $wanted_files[0] ) ) {
-		foreach my $f (@wanted_files) {
-			-f $f
-			  or $do_create and $hToCreate{$f} = 1
-			  or print "ERROR: $f does not exist!\n" and $result = 0;
-		}
-	} ## end if ( $result && !$show_help...)
-
-	return $result;
-}  ## parse_srgs() end
-
-# -----------------------------------------------------------------------
 # --- Prepare shell and meson files for our processing.               ---
 # --- If this is a shell or meson file, we have to adapt it first:    ---
 # --- To be able to use our patch building system, the files use the  ---
@@ -3325,3 +3205,145 @@ sub write_to_log {
 
 	return 1;
 } ## end sub write_to_log
+
+
+__END__
+
+
+=head1 NAME
+
+elogind git tree checker
+
+
+=head1 USAGE
+
+check_tree.pl [OPTIONS] <--upstream <path to upstream tree>>
+
+
+=head1 ARGUMENTS
+
+=over 8
+
+=item B<-u | --upstream>
+
+The path to the upstream tree should have the same layout as the place from
+where this program is called. It is best to call this program from the
+elogind root path and use a systemd upstream root path for comparison.
+
+=back
+
+
+=head1 OPTIONS
+
+=over 8
+
+=item B<-h | --help>
+
+This help message
+
+=item B<-c|--commit>
+
+Check out <refid> in the upstream tree.
+
+=item B<--create>
+
+Needs --file.
+If the file does not exist, create it.
+
+=item B<-f|--file>
+
+Do not search recursively, check only <path>.
+
+For the check of multiple files, you can either specify -f multiple times,
+or concatenate paths with  a comma, or mix both methods.
+
+=item B<--stay>
+
+Needs --commit.
+Do not reset to the current commit, stay with the wanted commit.
+
+=back
+
+
+=head1 DESCRIPTION
+
+Check the current tree, from where this program is called, against an upstream tree for changes,
+and generate a patchset out of the differences, that does not interfere with elogind development
+markings.
+
+
+=head1 REQUIRED ARGUMENTS
+
+The path to the upstream tree tro compare with is the only mandatory argument.
+
+
+=head1 EXIT STATUS
+
+The tools returns 0 on success and 1 on error.
+If you kill the program with any signal that can be caught and handled, it will
+do its best to end gracefully, and exit with exit code 42.
+
+
+=head1 CONFIGURATION
+
+Currently the only supported configuration are the command line arguments.
+
+
+=head1 DEPENDENCIES
+
+You will need a recent version of git to make use of this tool.
+
+
+=head1 DIAGNOSTICS
+
+To find issues on odd program behavior, the -D/--debug command line argument can
+be used. Please be warned, though, that the program becomes **very** chatty!
+
+=head2 DEBUG MODE
+
+=over 8
+
+=item B<-D | --debug>
+
+Displays extra information on all the steps of the way.
+IMPORTANT: _ALL_ temporary files are kept! Use with caution!
+
+=back
+
+
+=head1 INCOMPATIBILITIES
+
+None known at the moment.
+
+
+=head1 BUGS AND LIMITATIONS
+
+Currently none known.
+
+Please report bugs and/or errors at:
+git@github.com:Yamakuzure/pwx-elogind-migration-tools/issues
+
+
+=head1 AUTHOR
+
+Sven Eden <sven@eden-worx.com>
+
+
+=head1 LICENSE AND COPYRIGHT
+
+Copyright (C) 2017 Sven Eden, EdenWorX
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later
+version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License along with
+this program. If not, see https://www.gnu.org/licenses/.
+
+
+=cut
