@@ -82,12 +82,22 @@
 # ------------------------
 use strict;
 use warnings;
+use Carp;
 use Cwd qw( getcwd abs_path );
 use File::Basename;
 use File::Find;
 use Git::Wrapper;
 use Readonly;
 use Try::Tiny;
+
+# ---------------------------------------------------------
+# Shared Variables
+# ---------------------------------------------------------
+# signal handling
+my $death_note = 0;
+
+# Global return value, is set to 1 by log_error()
+my $ret_global = 0;
 
 # ================================================================
 # ===        ==> ------ Help Text and Version ----- <==        ===
@@ -133,6 +143,33 @@ Readonly my $PIPE  => q{|};
 Readonly my $PLUS  => q{+};
 Readonly my $SLASH => q{/};
 Readonly my $SPACE => q{ };
+
+# ================================================================
+# ===        ==> ------- Logging facilities ------- <==        ===
+# ================================================================
+my $do_debug          = 0;
+my $have_progress_msg = 0;
+my $logfile           = $EMPTY;
+
+Readonly my $LOG_DEBUG   => 1;
+Readonly my $LOG_INFO    => 2;
+Readonly my $LOG_STATUS  => 3;
+Readonly my $LOG_WARNING => 4;
+Readonly my $LOG_ERROR   => 5;
+
+# ================================================================
+#===        ==> --------- Signal Handlers --------- <==        ===
+# ================================================================
+Readonly my %SIGS_CAUGHT => ( 'INT' => 1, 'QUIT' => 1, 'TERM' => 1 );
+local $SIG{INT}  = \&sigHandler;
+local $SIG{QUIT} = \&sigHandler;
+local $SIG{TERM} = \&sigHandler;
+
+# Warnings should be logged, too:
+$SIG{__WARN__} = \&warnHandler;
+
+# And fatal errors go to the log as well
+$SIG{__DIE__} = \&dieHandler;
 
 # ================================================================
 # ===       ==> -------- File name patterns -------- <==       ===
@@ -259,8 +296,6 @@ sub check_useless;       ## Check for useless updates that do nothing.
 sub checkout_upstream;   ## Checkout the given refid on $upstream_path
 sub clean_hFile;         ## Completely clean up the current %hFile data structure.
 sub diff_hFile;          ## Generates the diff and builds $hFile{hunks} if needed.
-
-# sub generate_file_list;  ## Find all relevant files and store them in @wanted_files
 sub get_hunk_head;       ## Generate the "@@ -xx,n +yy,m @@" hunk header line out of $hHunk.
 sub hunk_failed;         ## Generates a new @lFails entry and terminates the progress line.
 sub hunk_is_useful;      ## Prunes the hunk and checks whether it stil does anything
@@ -269,8 +304,6 @@ sub is_insert_start;     ## Return 1 if the argument consists of any insertion s
 sub is_mask_else;        ## Return 1 if the argument consists of any mask else
 sub is_mask_end;         ## Return 1 if the argument consists of any mask end
 sub is_mask_start;       ## Return 1 if the argument consists of any mask start
-
-# sub parse_args;          ## Parse ARGV for the options we support
 sub prepare_shell;       ## Prepare shell (and meson) files for our processing
 sub prepare_xml;         ## Prepare XML files for our processing (Unmask double dashes in comments)
 sub protect_config;      ## Special function to not let diff add unwanted or remove our lines in logind.conf.in
@@ -1231,6 +1264,15 @@ sub check_includes {
 	return 1;
 } ## end sub check_includes
 
+sub check_logger {
+	my ($logger) = @_;
+	if ( defined $logger ) {
+		$logger =~ m/^log_(info|warning|error|status|debug)$/xms
+		or confess("logMsg() called from wrong sub $logger");
+	}
+	return 1;
+} ## end sub check_logger
+
 # -----------------------------------------------------------------------
 # --- Check $hHunk for elogind preprocessor masks and additions       ---
 # --- Rules:                                                          ---
@@ -1607,7 +1649,7 @@ sub check_name_reverts {
 			# Note it down for later:
 			$hRemovals{$1} = { line => $i, masked => $is_masked_now, spliceme => 0 };
 			next;
-		} ## end if ( $$line =~ m/^[${DASH}${SPACE}][${HASH}\/*${SPACE}]*\s*(.*(?:elogind|systemd).*)\s*[*\/${SPACE}]*$/msx)
+		}
 
 		# Check Additions
 		# ---------------------------------
@@ -2073,6 +2115,18 @@ sub clean_hFile {
 	return 1;
 } ## end sub clean_hFile
 
+# A die handler that lets perl death notes be printed via log
+sub dieHandler {
+	my ($err) = @_;
+
+	$death_note = 5;
+	$ret_global = 42;
+
+	log_error( '%s', $err );
+
+	confess('Program died');
+} ## end sub dieHandler
+
 # -----------------------------------------------------------------------
 # --- Builds the diff between source and target file, and stores all  ---
 # --- hunks in $hFile{hunks} - if any.                                ---
@@ -2123,6 +2177,13 @@ sub diff_hFile {
 
 	return 1;
 } ## end sub diff_hFile
+
+sub format_caller {
+	my ($caller) = @_;
+	$caller =~ s/^.*::([^:]+)$/$1/xms;
+	$caller =~ m/__ANON__/xmsi and $caller = 'AnonSub';
+	return $caller;
+} ## end sub format_caller
 
 # -----------------------------------------------------------------------
 # --- Finds all relevant files and store them in @wanted_files        ---
@@ -2219,6 +2280,64 @@ sub get_hunk_head {
 
 	return sprintf( "%s -%d,%d +%d,%d %s", '@@', $src_start, $src_len, $tgt_start, $tgt_len, '@@' );
 } ## end sub get_hunk_head
+
+sub get_location {
+	my $is_regular_log   = 0;
+	my $curr_caller_line = ( caller 1 )[2] // -1;
+	my $curr_caller_name = format_caller( ( caller 2 )[3] // 'main' );
+	my $prev_caller_line = ( caller 2 )[2] // -1;
+	my $prev_caller_name = format_caller( ( caller 3 )[3] // 'main' );
+
+	( 'main::logMsg' eq ( caller 1 )[3] // 'undef' ) and check_logger($curr_caller_name) and $is_regular_log = 1;
+
+	my $connect_string   = $EMPTY;
+	my $line_format      = $EMPTY;
+	my $pid_format       = $EMPTY;
+	my $prev_info_format = $EMPTY;
+	my @args             = ();
+
+	if ( 1 == $is_regular_log ) {
+		$pid_format  = '[%5d] ';
+		$line_format = make_location_fmt( $prev_caller_line, ( length $prev_caller_name ) );
+
+		# Curr is the logging function, prev is the function that does the logging
+		push @args, $$;
+		( $prev_caller_line > -1 ) and push @args, $prev_caller_line;
+		push @args, $prev_caller_name;
+
+	} else {
+		$connect_string   = ' called from ';
+		$line_format      = make_location_fmt( $curr_caller_line, ( length $curr_caller_name ) );
+		$prev_info_format = make_location_fmt( $prev_caller_line, ( length $prev_caller_name ) );
+
+		# curr is the function that calls the sub that logs, and prev is its caller
+		( $curr_caller_line > -1 ) and push @args, $curr_caller_line;
+		push @args, $curr_caller_name;
+		( $prev_caller_line > -1 ) and push @args, $prev_caller_line;
+		push @args, $prev_caller_name;
+	} ## end else [ if ( 1 == $is_regular_log)]
+
+	my $format_string = $pid_format . $line_format . $connect_string . $prev_info_format;
+
+	return sprintf $format_string, @args;
+} ## end sub get_location
+
+sub get_log_level {
+	my ($level) = @_;
+
+	( $LOG_INFO == $level )    and return ('--Info--')
+	or ( $LOG_WARNING == $level ) and return ('Warning!')
+	or ( $LOG_ERROR == $level )   and return ('ERROR !!')
+	or ( $LOG_STATUS == $level )  and return ('-status-')
+	or return ('_DEBUG!_');
+
+	return ('=DEBUG=');
+} ## end sub get_log_level
+
+sub get_time_now {
+	my @tLocalTime = localtime;
+	return sprintf '%04d-%02d-%02d %02d:%02d:%02d', $tLocalTime[5] + 1900, $tLocalTime[4] + 1, $tLocalTime[3], $tLocalTime[2], $tLocalTime[1], $tLocalTime[0];
+}
 
 # -----------------------------------------------------------------------
 # --- Whenever a check finds an illegal situation, it has to call     ---
@@ -2346,9 +2465,9 @@ sub is_mask_end {
 
 	defined($line) and length($line) or return 0;
 
-	if (   ( $line =~ m,^[- ]?#endif\s*/(?:[*/]+)\s*(?:0), )
-		|| ( $line =~ m,//\s+0\s+-->\s*$, )
-		|| ( $line =~ m,\*\s+//\s+0\s+\*\*/\s*$, ) )
+	if (   ( $line =~ m,^[- ]?[${HASH}]endif\s*/(?:[*/]+)\s*(?:0),msx )
+		|| ( $line =~ m,//\s+0\s+-->\s*$,msx )
+		|| ( $line =~ m,\*\s+//\s+0\s+\*\*/\s*$,msx ) )
 	{
 		return 1;
 	} ## end if ( ( $line =~ m,^[- ]?#endif\s*/(?:[*/]+)\s*(?:0),...))
@@ -2365,11 +2484,11 @@ sub is_mask_start {
 	defined($line) and length($line) or return 0;
 
 	if (
-		( $line =~ m/^[- ]?#if\s+0.+elogind/ )
-		|| ( ( $line =~ m/<!--\s+0.+elogind/ )
-			&& !( $line =~ m/-->\s*$/ ) )
-		|| ( ( $line =~ m,/\*\*\s+0.+elogind, )
-			&& !( $line =~ m,\*\*/\s*$, ) )
+		( $line =~ m/^[- ]?[${HASH}]if\s+0.+elogind/msx )
+		|| ( ( $line =~ m/<!--\s+0.+elogind/msx )
+			&& !( $line =~ m/-->\s*$/msx ) )
+		|| ( ( $line =~ m,/\*\*\s+0.+elogind,msx )
+			&& !( $line =~ m,\*\*/\s*$,msx ) )
 	  )
 	{
 		return 1;
@@ -2377,6 +2496,71 @@ sub is_mask_start {
 
 	return 0;
 } ## end sub is_mask_start
+
+sub logMsg {
+	my ( $lvl, $fmt, @args ) = @_;
+
+	( defined $lvl ) or $lvl = 2;
+
+	( $LOG_DEBUG == $lvl ) and ( 0 == $do_debug ) and return 1;
+
+	if ( !( defined $fmt ) ) {
+		$fmt = shift @args // $EMPTY;
+	}
+
+	# If $fmt is now a fixed string, and @args is empty, we have to make sure that all
+	# possible formatting strings are ignored, as the string might come from an error
+	# handler.
+	if ( 0 == scalar @args ) {
+		@args = ($fmt);  ## Make the fixed string the first (and only) argument
+		$fmt  = '%s';    ## And print it "as-is".
+	}
+
+	my $stTime  = get_time_now();
+	my $stLevel = get_log_level($lvl);
+	my $stMsg   = sprintf "%s|%s|%s|$fmt", $stTime, $stLevel, get_location(), @args;
+
+	( 0 < ( length $logfile ) ) and write_to_log($stMsg);
+	( $LOG_INFO < $lvl ) and write_to_console($stMsg);
+
+	return 1;
+} ## end sub logMsg
+
+
+sub log_info {
+	my ( $fmt, @args ) = @_;
+	return logMsg( $LOG_INFO, $fmt, @args );
+}
+
+sub log_warning {
+	my ( $fmt, @args ) = @_;
+	return logMsg( $LOG_WARNING, $fmt, @args );
+}
+
+sub log_error {
+	my ( $fmt, @args ) = @_;
+	$ret_global = 1;
+	return logMsg( $LOG_ERROR, $fmt, @args );
+}
+
+sub log_status {
+	my ( $fmt, @args ) = @_;
+	return logMsg( $LOG_STATUS, $fmt, @args );
+}
+
+sub log_debug {
+	my ( $fmt, @args ) = @_;
+	$do_debug or return 1;
+	return logMsg( $LOG_DEBUG, $fmt, @args );
+}
+
+sub make_location_fmt {
+	my ( $lineno, $name_len ) = @_;
+	my $len = $name_len + ( ( $lineno > -1 ) ? 0 : 5 );
+	my $fmtfmt = ( $lineno > -1 ) ? '%%4d:%%-%ds' : '%%-%ds';
+
+	return sprintf $fmtfmt, $len;
+} ## end sub make_location_fmt
 
 # -----------------------------------------------------------------------
 # --- parse the given list for arguments.                             ---
@@ -2812,7 +2996,7 @@ sub unprepare_shell {
 			&& ( "# #" ne substr( $line, 0, 3 ) )
 			&& ( "  * " ne substr( $line, 0, 4 ) ) )
 		{
-			$hFile{source} =~ m/${DOT}sym${DOT}pwx$/ms and $line = "  * " . $line
+			$hFile{source} =~ m/${DOT}sym${DOT}pwx$/msx and $line = "  * " . $line
 			  or $line = "# " . $line;
 
 			# Do not create empty comment lines with trailing spaces.
@@ -2842,7 +3026,7 @@ sub unprepare_shell {
 	@lIn      = splice( @{ $hFile{output} } );
 
 	for my $line (@lIn) {
-		if ( $line =~ m/${HASH}\s+masked_(?:start|end)\s+([01])$/ms ) {
+		if ( $line =~ m/[${HASH}]\s+masked_(?:start|end)\s+([01])$/msx ) {
 			$1        and $is_block = 1 or $is_block = 0;
 			$is_block and $is_else  = 0;                  ## can't be.
 			next;                                         ## do not transport this line
@@ -2946,7 +3130,7 @@ sub unprepare_xml {
 	$is_else  = 0;
 	@lIn      = splice( @{ $hFile{output} } );
 	for my $line (@lIn) {
-		if ( $line =~ m/${HASH}\s+masked_(?:start|end)\s+([01])$/ms ) {
+		if ( $line =~ m/[${HASH}]\s+masked_(?:start|end)\s+([01])$/msx ) {
 			$1        and $is_block = 1 or $is_block = 0;
 			$is_block and $is_else  = 0;                  ## can't be.
 			next;                                         ## do not transport this line
@@ -2985,17 +3169,17 @@ sub read_includes {
 		my $line = \$hHunk->{lines}[$i];  ## Shortcut
 
 		# Note down removals of includes we commented out
-		if ( $$line =~ m,^[${DASH}]\s*/[/*]+\s*${HASH}include\s+([<"'])([^>"']+)[>"']\s*(?:\*/)?,ms ) {
+		if ( $$line =~ m/^[${DASH}]\s*\/[\/*]+\s*[${HASH}]include\s+([<"'])([^>"']+)[>"']\s*(?:\*\/)?/msx ) {
 			$hIncs{$2}{remove} = {
 				hunkid => $hHunk->{idx},
 				lineid => $i,
 				sysinc => $1 eq "<"
 			};
 			next;
-		} ## end if ( $$line =~ m,^[${DASH}]\s*/[/*]+\s*${HASH}include\s+([<"'])([^>"']+)[>"']\s*(?:\*/)?,ms)
+		}
 
 		# Note down inserts of possibly new includes we might want commented out
-		if ( $$line =~ m,^[${PLUS}]\s*${HASH}include\s+([<"'])([^>"']+)[>"'],ms ) {
+		if ( $$line =~ m/^[${PLUS}]\s*[${HASH}]include\s+([<"'])([^>"']+)[>"']/msx ) {
 			$hIncs{$2}{insert} = {
 				elogind  => $in_elogind_block,
 				hunkid   => $hHunk->{idx},
@@ -3004,10 +3188,10 @@ sub read_includes {
 				sysinc   => $1 eq "<"
 			};
 			next;
-		} ## end if ( $$line =~ m,^[${PLUS}]\s*${HASH}include\s+([<"'])([^>"']+)[>"'],ms)
+		}
 
 		# Note down removals of includes we explicitly added for elogind
-		if ( $in_elogind_block && ( $$line =~ m,^[${DASH}]\s*[${HASH}]include\s+([<"'])([^>"']+)[>"'],ms ) ) {
+		if ( $in_elogind_block && ( $$line =~ m/^[${DASH}]\s*[${HASH}]include\s+([<"'])([^>"']+)[>"']/msx ) ) {
 			$hIncs{$2}{elogind} = { hunkid => $hHunk->{idx}, lineid => $i };
 			next;
 		}
@@ -3024,6 +3208,28 @@ sub read_includes {
 
 	return 1;
 } ## end sub read_includes
+
+# ---------------------------------------------------------
+# A signal handler that sets global vars according to the
+# signal given.
+# Unknown signals are ignored.
+# ---------------------------------------------------------
+sub sigHandler {
+	my ($sig) = @_;
+	if ( exists $SIGS_CAUGHT{$sig} ) {
+		if ( ++$death_note > 5 ) {
+
+			# This is very crude, so only do _THAT_ if everything else failed
+			log_error( undef, 'Caught %s Signal %d times - breaking all off!', $sig, $death_note );
+			kill 'KILL', $$ or croak('KILL failed');
+		} else {
+			log_warning( undef, 'Caught %s Signal - Ending Tasks...', $sig );
+		}
+	} else {
+		log_warning( 'Caught Unknown Signal [%s] ... ignoring Signal!', $sig );
+	}
+	return 1;
+} ## end sub sigHandler
 
 # -----------------------------------------------------------------------
 # --- Splice all includes that were marked for splicing.              ---
@@ -3090,3 +3296,32 @@ sub wanted {
 
 	return 1;
 } ## end sub wanted
+
+# A warnings handler that lets perl warnings be printed via log
+sub warnHandler {
+	my ($warn) = @_;
+	return log_warning( '%s', $warn );
+}
+
+sub write_to_console {
+	my ($msg) = @_;
+
+	if ( $have_progress_msg > 0 ) {
+		print "\n";
+		$have_progress_msg = 0;
+	}
+
+	local $| = 1;
+	return print "${msg}\n";
+} ## end sub write_to_console
+
+sub write_to_log {
+	my ($msg) = @_;
+
+	if ( open my $fLog, '>>', $logfile ) {
+		print {$fLog} "${msg}\n";
+		close $fLog or confess("Closing logfile '$logfile' FAILED!");
+	}
+
+	return 1;
+} ## end sub write_to_log
