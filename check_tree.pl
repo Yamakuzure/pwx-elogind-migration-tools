@@ -313,9 +313,9 @@ my %program_options = (
 	'upstream|u=s' => \$upstream_path
 );
 GetOptions(%program_options) or pod2usage( { -message => $podmsg, -exitval => 2, -verbose => 0 } );
-( 0 < ( length $upstream_path ) ) or pod2usage( { -exitval => 1, -verbose => 0, -noperldoc => 1 } );
 $show_help > 1 and pod2usage( { -exitval => 0, -verbose => 2, -noperldoc => 0 } );
-$show_help > 0 and pod2usage( { -exitval => 0, -verbose => 2, -noperldoc => 1 } );
+$show_help > 0 and pod2usage( { -exitval => 0, -verbose => 1, -noperldoc => 1 } );
+( 0 < ( length $upstream_path ) ) or pod2usage( { -exitval => 1, -verbose => 0, -noperldoc => 1 } );
 
 # ================================================================
 # ===        ==> --------    Prechecks     -------- <==        ===
@@ -3787,7 +3787,7 @@ elogind root path and use a systemd upstream root path for comparison.
 
 =item B<-h | --help>
 
-This help message
+This help message. Use twice to show full perldoc page.
 
 =item B<-c|--commit>
 
