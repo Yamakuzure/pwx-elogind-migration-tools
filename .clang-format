@@ -1,229 +1,220 @@
-# Please use clang-format version 20 or later
+# Please use clang-format version 19 or later
+# Newest on Debian 12 "Bookworm" is clang-format-14 - manual update is required
+# Newest on Debian 13 "Trixie"   is clang-format-19
 
-Standard: Latest
-DisableFormat: false
+Standard: Latest                          # Use the latest language standard supported by clang-format
+DisableFormat: false                      # Enable formatting (false = enabled)
 
-ColumnLimit: 168                    # Modern displays really do not need low-low limits anymore. Even TTYs have 120+ columns
-LineEnding:  LF                     # Needs clang-format version 16
-IndentWidth: 8
-TabWidth: 8
-UseTab: AlignWithSpaces
+ColumnLimit: 168                          # Maximum line width before breaking lines
+LineEnding: LF                            # Use Unix-style line endings (LF)
+IndentWidth: 8                            # Number of spaces for each indentation level
+TabWidth: 8                               # Width of tab characters in spaces
+UseTab: AlignWithSpaces                   # Use spaces to align code, not tabs
 
-AccessModifierOffset: -8
-ConstructorInitializerIndentWidth: 8
-ContinuationIndentWidth: 8
+AccessModifierOffset: -8                  # Offset for access modifiers (negative = move left)
+ConstructorInitializerIndentWidth: 8      # Indentation for constructor initializers
+ContinuationIndentWidth: 8                # Indentation for continuation lines
 
-AlignAfterOpenBracket: BlockIndent
-AlignArrayOfStructures: Left
-AlignConsecutiveAssignments:
-  Enabled: true
-  AcrossEmptyLines: true
-  AcrossComments: false
-  AlignCompound: true
-  PadOperators: true
-AlignConsecutiveBitFields: AcrossEmptyLines
-AlignConsecutiveDeclarations: AcrossEmptyLines
-AlignConsecutiveMacros: AcrossEmptyLines
-AlignEscapedNewlines: Left
-AlignOperands: AlignAfterOperator
-AlignTrailingComments:              # Needs clang-format version 16
-  Kind:           Always
-  OverEmptyLines: 2
+AlignAfterOpenBracket: BlockIndent        # Align code after opening bracket with block indentation
+AlignArrayOfStructures: Left              # Align arrays of structures at the leftmost column
+AlignConsecutiveAssignments:              # Align consecutive assignments
+  Enabled: true                           # Enable alignment of assignments
+  AcrossEmptyLines: true                  # Allow alignment across empty lines
+  AcrossComments: false                   # Do not align across comments
+  AlignCompound: true                     # Align compound assignments (e.g., +=)
+  PadOperators: true                      # Pad operators with spaces for alignment
 
-AllowAllArgumentsOnNextLine: false
-AllowAllParametersOfDeclarationOnNextLine: false
-AllowShortBlocksOnASingleLine: Empty
-AllowShortCaseExpressionOnASingleLine: true      # Needs clang-format version 19
-AllowShortCaseLabelsOnASingleLine: true
-AllowShortCompoundRequirementOnASingleLine: true # Needs clang-format version 18
-AlignConsecutiveShortCaseStatements:             # Needs clang-format version 17
-  Enabled: true
-  AcrossEmptyLines: true
-  AcrossComments: true
-  AlignCaseColons: true
-AllowShortEnumsOnASingleLine: true
-AllowShortFunctionsOnASingleLine: Inline
-AllowShortIfStatementsOnASingleLine: WithoutElse
-AllowShortLambdasOnASingleLine: Inline
-AllowShortLoopsOnASingleLine: true
-AllowShortNamespacesOnASingleLine: true     # Needs clang-format version 20
+AlignConsecutiveBitFields:                # Align consecutive bit fields
+  Enabled: true                           # Enable alignment of bit fields
+  AcrossEmptyLines: true                  # Allow alignment across empty lines
+  AcrossComments: false                   # Do not align across comments
 
-AlwaysBreakAfterReturnType: None
-AlwaysBreakBeforeMultilineStrings: false
-AlwaysBreakTemplateDeclarations: MultiLine
+AlignConsecutiveDeclarations:             # Align consecutive declarations
+  Enabled: true                           # Enable alignment of declarations
+  AcrossEmptyLines: true                  # Allow alignment across empty lines
+  AcrossComments: false                   # Do not align across comments
 
-BinPackArguments: false
-BinPackParameters: false
+AlignConsecutiveMacros:                   # Align consecutive macro definitions
+  Enabled: true                           # Enable alignment of macros
+  AcrossEmptyLines: true                  # Allow alignment across empty lines
+  AcrossComments: false                   # Do not align across comments
 
-BitFieldColonSpacing: After
+AlignEscapedNewlines: Left                # Align escaped newlines to the left
+AlignOperands: AlignAfterOperator         # Align operands after operators
+AlignTrailingComments:                    # Align trailing comments
+  Kind: Always                            # Always align trailing comments
+  OverEmptyLines: 2                       # Allow up to 2 empty lines before alignment
 
-BreakBeforeBraces: Custom
-BraceWrapping:
-  AfterCaseLabel: false
-  AfterClass: false
-  AfterControlStatement: Never
-  AfterEnum: false
-  AfterFunction: false
-  AfterNamespace: false
-  AfterObjCDeclaration: false
-  AfterStruct: false
-  AfterUnion: false
-  AfterExternBlock: false
-  BeforeCatch: false
-  BeforeElse: false
-  BeforeLambdaBody: false
-  BeforeWhile: false
-  IndentBraces: false
-  SplitEmptyFunction: false
-  SplitEmptyRecord: false
-  SplitEmptyNamespace: false
-  BracedInitializerIndentWidth:   2             # Needs clang-format version 17
-  BreakAfterAttributes:           Leave         # Needs clang-format version 16
-  BreakArrays:                    false         # Needs clang-format version 16 (Currently only for JSON)
-BreakAdjacentStringLiterals: true               # Needs clang-format version 18
-BreakAfterReturnType: ExceptShortType           # Needs clang-format version 19
-BreakBeforeBinaryOperators: NonAssignment
-BreakBeforeConceptDeclarations: Allowed
-BreakBeforeInlineASMColon:      OnlyMultiline   # Needs clang-format version 16
-BreakBeforeTernaryOperators: true
-BreakBinaryOperations: RespectPrecedence        # Needs clang-format version 20
-BreakConstructorInitializers: BeforeComma
-BreakFunctionDefinitionParameters: false        # Needs clang-format version 19
-BreakInheritanceList: BeforeComma
-BreakStringLiterals: true
-BreakTemplateDeclarations: MultiLine            # Needs clang-format version 19
+AllowAllArgumentsOnNextLine: false                # Do not allow all arguments on the next line
+AllowAllParametersOfDeclarationOnNextLine: false  # Do not allow all parameters on next line
+AllowShortBlocksOnASingleLine: Empty              # Allow short blocks only if they are empty
+AllowShortCaseLabelsOnASingleLine: false          # Do not allow short case labels on single line
+AllowShortEnumsOnASingleLine: true                # Allow short enums on a single line
+AllowShortFunctionsOnASingleLine: Inline          # Allow short functions inline
+AllowShortIfStatementsOnASingleLine: WithoutElse  # Allow short if statements without else
+AllowShortLambdasOnASingleLine: Inline            # Allow short lambdas inline
+AllowShortLoopsOnASingleLine: true                # Allow short loops on a single line
 
-CompactNamespaces: false
-Cpp11BracedListStyle: false
-DerivePointerAlignment: true # Let's respect the authors preference
-EmptyLineAfterAccessModifier: Never
-EmptyLineBeforeAccessModifier: Always
-FixNamespaceComments: true
+AlwaysBreakBeforeMultilineStrings: false    # Do not break before multiline strings
 
-IncludeBlocks: Regroup
-IncludeCategories:
-  - Regex: '"*.h"'
-    Priority: 3
-  - Regex: '^(("|<)havilib/)'
-    Priority: 4
-    CaseSensitive: true
-  - Regex: '^([<](jbig|jpe?g|pdf|png|tiff?))'
-    Priority: 5
-    CaseSensitive: false
-  - Regex: '^(("|<)(gtest|gmock|isl|json)/)'
-    Priority: 6
-    CaseSensitive: true
-  - Regex: '<[[:alnum:].]+>'
-    Priority: 7
-  - Regex: '<.+>'
-    Priority: 8
-  - Regex: '.*'
-    Priority: 2
-    SortPriority: 0
-SortIncludes: CaseSensitive
+BinPackArguments: false                   # Do not pack arguments into one line
+BinPackParameters: OnePerLine             # Pack parameters one per line
 
-IndentAccessModifiers: false
-IndentCaseBlocks: true
-IndentCaseLabels: true
-IndentExportBlock: true       # Needs clang-format version 20
-IndentExternBlock: NoIndent
-IndentGotoLabels: false
-IndentPPDirectives: AfterHash
-PPIndentWidth: 2
-IndentRequiresClause:       true
-IndentWrappedFunctionNames: true
+BitFieldColonSpacing: After               # Place colon after bit field name
 
-InsertBraces:
-  InsertNewlineAtEOF: true    # Needs clang-format version 16
-  IntegerLiteralSeparator:    # Needs clang-format version 16
-    Binary:           4       # Needs clang-format version 16
-    BinaryMinDigits:  8       # Needs clang-format version 16
-    Decimal:          3       # Needs clang-format version 16
-    DecimalMinDigits: 4       # Needs clang-format version 16
-    Hex:             -1       # Needs clang-format version 16
+BreakAfterReturnType: Automatic           # Break after return type automatically
+BreakBeforeBraces: Custom                 # Use custom brace breaking rules
+BreakTemplateDeclarations: MultiLine      # Break template declarations at multilines (needs clang-format 19)
+BraceWrapping:                            # Control brace wrapping
+  AfterCaseLabel: false                   # Do not wrap braces after case labels
+  AfterClass: false                       # Do not wrap braces after class definitions
+  AfterControlStatement: Never            # Never wrap braces after control statements
+  AfterEnum: false                        # Do not wrap braces after enum definitions
+  AfterFunction: false                    # Do not wrap braces after function definitions
+  AfterNamespace: false                   # Do not wrap braces after namespace definitions
+  AfterObjCDeclaration: false             # Do not wrap braces after Objective-C declarations
+  AfterStruct: false                      # Do not wrap braces after struct definitions
+  AfterUnion: false                       # Do not wrap braces after union definitions
+  AfterExternBlock: false                 # Do not wrap braces after extern blocks
+  BeforeCatch: false                      # Do not wrap braces before catch statements
+  BeforeElse: false                       # Do not wrap braces before else statements
+  BeforeLambdaBody: false                 # Do not wrap braces before lambda bodies
+  BeforeWhile: false                      # Do not wrap braces before while statements
+  IndentBraces: false                     # Do not indent braces
+  SplitEmptyFunction: false               # Do not split empty functions
+  SplitEmptyRecord: false                 # Do not split empty records
+  SplitEmptyNamespace: false              # Do not split empty namespaces
 
-KeepEmptyLines:               # Needs clang-format version 19
-  AtEndOfFile: true
-  AtStartOfBlock: false
-  AtStartOfFile: false
+BracedInitializerIndentWidth: 2           # Indentation for braced initializer lists (needs clang-format 17)
+BreakAfterAttributes: Leave               # Leave break after attributes
+BreakArrays: false                        # Do not break arrays (only for JSON)
+BreakBeforeBinaryOperators: NonAssignment # Break before binary operators that are not assignments
+BreakBeforeConceptDeclarations: Allowed   # Allow breaking before concept declarations
+BreakBeforeInlineASMColon: OnlyMultiline  # Break before inline assembly colon only if multiline
+BreakBeforeTernaryOperators: true         # Break before ternary operators
+BreakConstructorInitializers: BeforeComma # Break constructor initializers before comma
+BreakInheritanceList: BeforeComma         # Break inheritance list before comma
+BreakStringLiterals: true                 # Break string literals at line limit
 
-LambdaBodyIndentation: Signature
-MaxEmptyLinesToKeep: 2        # Set to 2 so implementations can be kept apart with better visibility
-NamespaceIndentation: Inner   # If you have to nest namespaces, re-think your design.
+CompactNamespaces: false                  # Do not compact namespaces
+Cpp11BracedListStyle: false               # Do not use C++11 braced list style
+DerivePointerAlignment: true              # Derive pointer alignment from the code
+EmptyLineAfterAccessModifier: Never       # Do not insert empty line after access modifier
+EmptyLineBeforeAccessModifier: Always     # Insert empty line before access modifier
+FixNamespaceComments: true                # Fix namespace comments
 
-# AllowAllConstructorInitializersOnNextLine: true       # Deprecated in clang-format 15, See PackConstructorInitializers!
-# ConstructorInitializerAllOnOneLineOrOnePerLine: true  # Deprecated in clang-format 15, See PackConstructorInitializers!
-PackConstructorInitializers: CurrentLine                # Needs clang-format version 14
+IncludeBlocks: Regroup                    # Regroup include blocks
+IncludeCategories:                        # Group includes by category
+  - Regex: '"*.h"'                            # Header files in quotes
+    Priority: 3                                 # Priority level
+  - Regex: '^(("|<)havilib/)'                 # Havilib headers
+    Priority: 4                                 # Priority level
+  - Regex: '^([<](jbig|jpe?g|pdf|png|tiff?))' # Image formats
+    Priority: 5                                 # Priority level
+  - Regex: '^(("|<)(gtest|gmock|isl|json)/)'  # Test and utility libraries
+    Priority: 6                                 # Priority level
+  - Regex: '<[[:alnum:].]+>'                  # System headers
+    Priority: 7                                 # Priority level
+  - Regex: '<.+>'                             # All other system headers
+    Priority: 8                                 # Priority level
+  - Regex: '.*'                               # Everything else
+    Priority: 2                                 # Priority level
+    SortPriority: 0                             # Sort priority
 
-PenaltyBreakAssignment: 10
-PenaltyBreakBeforeFirstCallParameter: 30
-PenaltyBreakComment: 10
-PenaltyBreakFirstLessLess: 0
-PenaltyBreakOpenParenthesis: 10
-PenaltyBreakString: 10
-PenaltyBreakTemplateDeclaration: 20
-PenaltyExcessCharacter: 100
-PenaltyIndentedWhitespace: 40
-PenaltyReturnTypeOnItsOwnLine: 60
+SortIncludes: CaseSensitive               # Sort includes case-sensitively
+IndentAccessModifiers: false              # Do not indent access modifiers
+IndentCaseBlocks: true                    # Indent case blocks
+IndentCaseLabels: true                    # Indent case labels
+IndentExternBlock: NoIndent               # Do not indent extern blocks
+IndentGotoLabels: false                   # Do not indent goto labels
+IndentPPDirectives: AfterHash             # Indent preprocessor directives after hash
+PPIndentWidth: 2                          # Preprocessor directive indentation width
+IndentRequiresClause: true                # Indent requires clause (since clang-format 15)
+IndentWrappedFunctionNames: true          # Indent wrapped function names
 
-PointerAlignment: Left
-QualifierAlignment: Right                   # Needs clang-format version 14
-ReferenceAlignment: Right
-ReflowComments: true
-RemoveBracesLLVM: false                     # Needs clang-format version 14
-RemoveEmptyLinesInUnwrappedLines: true      # Needs clang-format version 20
-RemoveSemicolon: true                       # Needs clang-format version 16
-RequiresClausePosition: WithFollowing       # Needs clang-format version 15
-RequiresExpressionIndentation: OuterScope   # Needs clang-format version 16
-SeparateDefinitionBlocks: Always            # Needs clang-format version 14
-ShortNamespaceLines: 8
-SortJavaStaticImport: Before
-SortUsingDeclarations: LexicographicNumeric # Needs clang-format version 17
+InsertBraces: true                        # Insert braces for control structures (needs clang-format 15)
+InsertNewlineAtEOF: true                  # Insert newline at end of file (needs clang-format 16)
+IntegerLiteralSeparator:                  # Add separators to integer literals (needs clang-format 16)
+  Binary: 4                               # Binary separator every 4 digits
+  BinaryMinDigits: 8                      # Minimum binary digits for separation
+  Decimal: 3                              # Decimal separator every 3 digits
+  DecimalMinDigits: 4                     # Minimum decimal digits for separation
+  Hex: -1                                 # Hex separator disabled
 
-SpaceAfterCStyleCast: false
-SpaceAfterLogicalNot: false
-SpaceAfterTemplateKeyword: false
+KeepEmptyLines:                           # Control empty lines behavior (since clang-format 19)
+  AtEndOfFile: false                      # Do not keep empty lines at end of file
+  AtStartOfBlock: true                    # Keep empty lines at start of blocks
+  AtStartOfFile: false                    # Do not keep empty lines at start of file
 
-SpaceAroundPointerQualifiers: Before
+LambdaBodyIndentation: Signature          # Indent lambda body according to signature
+MaxEmptyLinesToKeep: 2                    # Maximum empty lines to preserve (set to 2)
+NamespaceIndentation: Inner               # Indent nested namespaces inside outer namespace
 
-SpaceBeforeAssignmentOperators: true
-SpaceBeforeCaseColon: false
-SpaceBeforeCpp11BracedList: false
-SpaceBeforeCtorInitializerColon: true
-SpaceBeforeInheritanceColon: true
-SpaceBeforeJsonColon:              false    # Needs clang-format version 17
-SpaceBeforeParens: Custom
-SpaceBeforeParensOptions:
-  AfterControlStatements: true
-  AfterForeachMacros: false
-  AfterFunctionDeclarationName: false
-  AfterFunctionDefinitionName: false
-  AfterIfMacros: false
-  AfterOverloadedOperator: true
-  AfterRequiresInClause: true
-  AfterRequiresInExpression: true
-  BeforeNonEmptyParentheses: false
-SpaceBeforeRangeBasedForLoopColon: true
-SpaceBeforeSquareBrackets: false
+PackConstructorInitializers: CurrentLine  # Pack constructor initializers on current line
 
-SpaceInEmptyBlock: false
-SpaceInEmptyParentheses: false
+PenaltyBreakAssignment: 10                # Penalty for breaking assignment
+PenaltyBreakBeforeFirstCallParameter: 30  # Penalty for breaking before first parameter
+PenaltyBreakComment: 10                   # Penalty for breaking comments
+PenaltyBreakFirstLessLess: 0              # Penalty for breaking first less-than-less-than
+PenaltyBreakOpenParenthesis: 10           # Penalty for breaking open parenthesis
+PenaltyBreakString: 10                    # Penalty for breaking strings
+PenaltyBreakTemplateDeclaration: 20       # Penalty for breaking template declarations
+PenaltyExcessCharacter: 100               # Penalty for exceeding column limit
+PenaltyIndentedWhitespace: 40             # Penalty for indented whitespace
+PenaltyReturnTypeOnItsOwnLine: 60         # Penalty for putting return type on its own line
 
-SpacesBeforeTrailingComments: 1
-SpacesInAngles: Always
-SpacesInCStyleCastParentheses: false
-SpacesInConditionalStatement: true
-SpacesInContainerLiterals: true
+PointerAlignment: Left                    # Align pointer to the left
+QualifierAlignment: Right                 # Align qualifiers to the right (needs clang-format 14)
+ReferenceAlignment: Right                 # Align references to the right
+ReflowComments: Always                    # Reflow comments if needed
+RemoveBracesLLVM: false                   # Do not remove braces for LLVM style
+RemoveSemicolon: true                     # Remove semicolons from statements (needs clang-format 16)
+RequiresClausePosition: WithFollowing     # Position requires clause with following token (needs clang-format 15)
+RequiresExpressionIndentation: OuterScope # Indent requires expression in outer scope (needs clang-format 16)
+SeparateDefinitionBlocks: Always          # Always separate definition blocks (needs clang-format 14)
+ShortNamespaceLines: 8                    # Short namespace lines limit
+SortJavaStaticImport: Before              # Sort Java static imports before other imports
+SortUsingDeclarations: Lexicographic      # Sort using declarations lexicographically (reimplemented in clang-format 17)
+
+SpaceAfterCStyleCast: false               # Do not add space after C-style cast
+SpaceAfterLogicalNot: false               # Do not add space after logical not (!)
+SpaceAfterTemplateKeyword: false          # Do not add space after template keyword
+
+SpaceAroundPointerQualifiers: Before      # Space before pointer qualifiers
+
+SpaceBeforeAssignmentOperators: true      # Add space before assignment operators
+SpaceBeforeCaseColon: false               # Do not add space before case colon
+SpaceBeforeCpp11BracedList: false         # Do not add space before C++11 braced list
+SpaceBeforeCtorInitializerColon: true     # Add space before constructor initializer colon
+SpaceBeforeInheritanceColon: true         # Add space before inheritance colon
+SpaceBeforeParens: Custom                 # Use custom spacing for parentheses
+SpaceBeforeParensOptions:                 # Custom options for space before parens
+  AfterControlStatements: true            # Add space after control statements
+  AfterForeachMacros: false               # Do not add space after foreach macros
+  AfterFunctionDeclarationName: false     # Do not add space after function declaration name
+  AfterFunctionDefinitionName: false      # Do not add space after function definition name
+  AfterIfMacros: false                    # Do not add space after if macros
+  AfterOverloadedOperator: true           # Add space after overloaded operator
+  AfterRequiresInClause: true             # Add space after requires in clause
+  AfterRequiresInExpression: true         # Add space after requires in expression
+  BeforeNonEmptyParentheses: false        # Do not add space before non-empty parentheses
+
+SpaceBeforeRangeBasedForLoopColon: true   # Add space before range-based for loop colon
+SpaceBeforeSquareBrackets: false          # Do not add space before square brackets
+
+SpaceInEmptyBlock: false                  # Do not add space in empty block
+SpacesBeforeTrailingComments: 1           # Add one space before trailing comments
+SpacesInAngles: Always                    # Always add spaces in angle brackets
+SpacesInContainerLiterals: true           # Add spaces in container literals
 SpacesInLineCommentPrefix:
-  Minimum: 1
-  Maximum: -1
-SpacesInParens: Custom                      # Needs clang-format version 17
-SpacesInParensOptions:                      # Needs clang-format version 17
-  ExceptDoubleParentheses: false
-  InConditionalStatements: true
-  InCStyleCasts: false
-  InEmptyParentheses: false
-  Other: true
-SpacesInSquareBrackets: true
-WrapNamespaceBodyWithEmptyLines: Always     # Needs clang-format version 20
+  Minimum: 1                              # Minimum number of spaces before line comment prefix
+  Maximum: -1                             # No maximum limit on spaces
+
+SpacesInParens: Custom                    # Use custom spacing for parentheses
+SpacesInParensOptions:                    # Custom options for space in parens
+  ExceptDoubleParentheses: true           # Do not apply spacing to double parentheses
+  InConditionalStatements: true           # Add spaces in conditional statements
+  InCStyleCasts: true                     # Add spaces in C-style casts
+  InEmptyParentheses: false               # Do not add space in empty parentheses
+  Other: true                             # Add space in other parentheses
 

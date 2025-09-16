@@ -10,3 +10,5 @@
 -iscl
 -otr
 -cab=1
+-i=8
+-ci=8
