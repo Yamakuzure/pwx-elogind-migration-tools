@@ -25,7 +25,7 @@ use Try::Tiny;
 # 0.8.3    2018-03-08  sed, PrydeWorX  Handle systemd-logind <=> elogind renames. Do not allow moving of
 #                                        commented out includes under out elogind block.
 # 0.8.4    2018-03-09  sed, PrydeWorX  Added handling of .gperf and .xml files.
-# 0.8.5    2018-03-13  sed, PrydeWorX  Added possibility to (manualy) check root files and enhanced the
+# 0.8.5    2018-03-13  sed, PrydeWorX  Added possibility to (manually) check root files and enhanced the
 #                                        handling of shell masks and unmasks.
 # 0.8.6    2018-03-16  sed, PrydeWorX  Enhanced mask block handling and added handling of .sym files.
 # 0.8.7    2018-04-20  sed, PrydeWorX  Add [un]preparation for XML files.
@@ -79,7 +79,7 @@ use Try::Tiny;
 # 1.3.1    2020-08-18  sed, PrydeWorX  As this is easy to get wrong, elogind include additions can be be marked
 #                                        with "needed for elogind", too.
 # 1.3.2    2021-03-02  sed, PrydeWorX  Add LINGUAS to the list of shell files, as elogind has additional locales now.
-# 1.4.0    2023-05-12  sed, EdenWorX   Fix accidential renaming of systemd-only apps and revert reversals into mask blocks.
+# 1.4.0    2023-05-12  sed, EdenWorX   Fix accidental renaming of systemd-only apps and revert reversals into mask blocks.
 # 1.4.1    2023-12-28  sed, EdenWorX   Do not revert a name change if the reversal moves the line into a mask.
 #                                        Also check for reversals where the removal is anywhere before the addition. This fixes
 #                                        multiline-comments to magically multiply when patches are applied by migrate_tree.pl..
@@ -202,7 +202,7 @@ my @wanted_files    = ();  ## User given file list (if any) to limit generate_fi
 # ================================================================
 my %hFile = ();  ## Main data structure to manage a complete compare of two files. (See: build_hFile() )
 
-# Note: %hFile is used globaly for each file that is processed.
+# Note: %hFile is used globally for each file that is processed.
 # The structure is:
 # ( count  : Number of hunks stored
 #   create : Set to 1 if this is a new file to be created, 0 otherwise.
@@ -264,7 +264,7 @@ my @lFails     = ();  ## List of failed hunks. These are worth noting down in an
 # ================================================================
 # ===        ==> --------  Function list   -------- <==        ===
 # ================================================================
-sub build_hFile;         ## Inititializes and fills %hFile.
+sub build_hFile;         ## Initializes and fills %hFile.
 sub build_hHunk;         ## Adds a new $hFile{hunks}[] instance.
 sub build_output;        ## Writes $hFile{output} from all useful $hFile{hunks}.
 sub check_blanks;        ## Check that useful blank line additions aren't misplaced.
@@ -545,7 +545,7 @@ END {
 # ================================================================
 
 # -----------------------------------------------------------------------
-# --- Inititializes and fills %hFile. Old values are discarded.       ---
+# --- Initializes and fills %hFile. Old values are discarded.         ---
 # --- Adds files, that do not exist upstream, to @only_here.          ---
 # --- Returns 1 on success, 0 otherwise.                              ---
 # -----------------------------------------------------------------------
@@ -946,7 +946,7 @@ sub change_find_and_set_partner {
 		#   second partner
 		#   ...
 		#   this change
-		#   ... no further occurence of this change
+		#   ... no further occurrence of this change
 		# In this case it is valid to assume that the first is a solitary removal/addition and the second
 		# partner teams up with this change. This assumption might be wrong, but it would not change the outcome.
 		# However, if we have the following situation, the correct partnering is crucial:
@@ -1176,7 +1176,7 @@ sub change_move_partner_up {
 	( defined $change )              or confess('Serious bug, change is undef!');
 	( defined $change->{'partner'} ) or confess('Serious bug, partner is undef!');
 
-	# Simple recursive function to move partners up a chnages prev chain.
+	# Simple recursive function to move partners up a changes prev chain.
 	my $prev = $change->{'prev'};
 	( defined $prev ) or return $FALSE;  ## This should not be possible!
 
@@ -2302,7 +2302,7 @@ sub check_stdc_version {
 	$in_else_block = 0;
 	$in_mask_block = $hHunk->{masked_start} ? 1 : 0;
 
-	# Remember lines directly, as thos switches are one-liners only
+	# Remember lines directly, as those switches are one-liners only
 	my $line_del_num = -1;
 	my $line_del_str = $EMPTY;
 	my $line_rep_num = -1;
@@ -2832,7 +2832,7 @@ sub get_time_now {
 
 # -----------------------------------------------------------------------
 # --- Whenever a check finds an illegal situation, it has to call     ---
-# --- this subroutine which terminates the progress line and creaes   ---
+# --- this subroutine which terminates the progress line and creates  ---
 # --- an entry in @lFails.                                            ---
 # --- Param: An error message, preferably with the name of the failed ---
 # ---        check.                                                   ---
