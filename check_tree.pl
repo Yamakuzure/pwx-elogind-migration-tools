@@ -710,7 +710,7 @@ sub change_analyze_hunk_line {
 	my $areas        = q{elogind|loginctl|systemctl|systemd};
 	my $source_str   = $EMPTY;
 
-	if ( $text =~ m/^([${PLUS}${DASH}${SPACE}])\s*([${HASH}\/*]*)\s*(.*(${areas}).*)\s*[*\/${HASH}]*\s*$/misx ) {
+	if ( $text =~ m/^([${PLUS}${SPACE}${DASH}])\s*([${HASH}${SLASH}*]*)\s*(.*(${areas}).*)\s*[*${SLASH}${HASH}]*\s*$/misx ) {
 		$prefix       = $1;
 		$comment_str  = strempty($2);
 		$replace_text = $3;
@@ -725,7 +725,7 @@ sub change_analyze_hunk_line {
 	}
 
 	# We need a few values...
-	my $i = $pChanges->{$replace_text}{'count'};  # The count is the next free index
+	my $i = $pChanges->{$replace_text}{'count'} // 0;  # The count is the next free index
 	my $kind =
 	          ( 'elogind' eq $source_str )   ? $KIND_ELOGIND
 	        : ( 'loginctl' eq $source_str )  ? $KIND_LOGINCTL
@@ -758,7 +758,7 @@ sub change_analyze_hunk_line {
 	};
 
 	# Record the change at its line number
-	$pChanges->{'lines'}[$line_no] = \$pChanges->{$replace_text}{'texts'}{'changes'}[$i];
+	$pChanges->{'lines'}[$line_no] = $pChanges->{$replace_text}{'texts'}{'changes'}[$i];
 
 	log_debug( "%-8s type %d at line % 3d: \"%s\"", ( 0 > $type ) ? 'REMOVAL' : ( 0 < $type ) ? 'ADDITION' : 'Neutral', $kind, $line_no, $replace_text );
 
@@ -786,7 +786,7 @@ sub change_check_solo_changes {
 		if ( $TYPE_ADDITION == $change->{'type'} ) {
 
 			# Replace the non-protected systemd phrases with our elogind alternative.
-			if ( ( ( length $change->{'alttxt'} ) > 0 ) && ( $change->{'systemctl'} > 0 ) ) {
+			if ( ( ( length $change->{'alttxt'} ) > 0 ) && ( $change->{'systemd'} > 0 ) ) {
 				log_debug( "     => Replacing \"%s\"", $change->{'text'} );
 				log_debug( "     => with      \"%s\"", $change->{'alttxt'} );
 				$change->{'text'} = $change->{'alttxt'};
@@ -1140,7 +1140,7 @@ sub change_map_hunk_lines {
 		#    $pChanges->{string}{'texts'}{'changes'}[no]
 		# and has write-back capabilities.
 		( $FALSE == $change->{'done'} ) and ( $TYPE_ADDITION == $change->{'type'} ) or next;  ## Already handled or not an addition
-		( 1 == $change->{'systemctl'} )                                             or next;  ## only systemd additions are relevant
+		( 1 == $change->{'systemd'} )                                               or next;  ## only systemd additions are relevant
 		change_find_and_set_partner( $pChanges, $change );
 	} ## end foreach my $change ( grep {...})
 
@@ -1244,9 +1244,7 @@ sub change_use_alt {
 	my $newText  = $change->{'alttxt'};
 	my $oldText  = $change->{'text'};
 
-	( '+' eq substr( $hHunk->{lines}[$lno], 0, 1 ) ) or log_error( 'Hunk line %d does not start with a +!\n%s', $lno, $hHunk->{lines}[$lno] );
-
-	$hHunk->{lines}[$lno] =~ s/^[+](.*)${oldText}/ $1${newText}/msx;
+	$hHunk->{lines}[$lno] =~ s{\Q$oldText\E}{$newText};
 
 	return 1;
 } ## end sub change_use_alt
