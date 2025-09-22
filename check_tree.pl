@@ -703,7 +703,7 @@ sub build_output {
 } ## end sub build_output
 
 sub change_analyze_hunk_line {
-	my ( $pChanges, $line_no, $text, $is_masked ) = @_;
+	my ( $pChanges, $line_idx, $text, $is_masked ) = @_;
 	my $prefix       = $EMPTY;
 	my $comment_str  = $EMPTY;
 	my $replace_text = $EMPTY;
@@ -747,7 +747,7 @@ sub change_analyze_hunk_line {
 		'done'      => $FALSE,
 		'elogind'   => ( ( $KIND_ELOGIND == $kind ) || ( $KIND_LOGINCTL == $kind ) ) ? 1 : 0,
 		'kind'      => $kind,
-		'line'      => $line_no,
+		'line'      => $line_idx,
 		'masked'    => $is_masked,
 		'partner'   => undef,
 		'prev'      => undef,
@@ -758,12 +758,50 @@ sub change_analyze_hunk_line {
 	};
 
 	# Record the change at its line number
-	$pChanges->{'lines'}[$line_no] = $pChanges->{$replace_text}{'texts'}{'changes'}[$i];
+	$pChanges->{'lines'}[$line_idx] = $pChanges->{$replace_text}{'texts'}{'changes'}[$i];
 
-	log_debug( "%-8s type %d at line % 3d: \"%s\"", ( 0 > $type ) ? 'REMOVAL' : ( 0 < $type ) ? 'ADDITION' : 'Neutral', $kind, $line_no, $replace_text );
+	log_debug( "%-8s type %d at line % 3d: \"%s\"", ( 0 > $type ) ? 'REMOVAL' : ( 0 < $type ) ? 'ADDITION' : 'Neutral', $kind, $line_idx + 1, $replace_text );
 
 	return 1;
 } ## end sub change_analyze_hunk_line
+
+sub change_check_next_partner {
+	my ( $change, $next_partner, $partner_p, $prev_partner_p ) = @_;
+	my $kind         = change_get_partner_kind( $change->{'kind'} );
+	my $partner_line = ( defined ${$partner_p} ) ? ${$partner_p}->{'line'} : -1;  ## To ensure not to shuffle partner relations
+	my $type =
+	          ( $TYPE_ADDITION == $change->{'type'} ) ? $TYPE_REMOVAL
+	        : ( $TYPE_REMOVAL == $change->{'type'} )  ? $TYPE_ADDITION
+	        :                                           $TYPE_NEUTRAL;
+
+	# Check whether at least one text matches the partners alttxt
+	# Note: On a systemd-logind <=> elogind change, only one comparison matches, because the alttxt to "elogind" is
+	#       "systemd", the "systemd-logind" can not be recreated like that.
+	( $next_partner->{'alttxt'} eq $change->{'text'} )
+	        or ( $next_partner->{'text'} eq $change->{'alttxt'} )
+	        or log_debug('    | => Skipped (Text Mismatch)')
+	        and return 0;
+
+	# The potential partner must be of the right kind, have the right type and must not be done, yet
+	( $kind == $next_partner->{'kind'} ) and ( $type == $next_partner->{'type'} ) and ( 0 == $next_partner->{'done'} )
+	        or log_debug('    | => Skipped (Kind or Type Mismatch)')
+	        and return 0;
+
+	# Note: We do not check whether a partner is already set or not, because a set partner might change later.
+
+	# Record this as the prev partner, but store the previous partner as prev, first
+	if ( $partner_line > -1 ) {
+		log_debug( '    | => Saving line %d as prev', $partner_line + 1 );
+		${$partner_p}->{'prev'} = ${$prev_partner_p};  # Save previous partner in current partner
+		${$prev_partner_p} = ${$partner_p};            # Set previous partner to current partner
+	}
+
+	# We do not take any candidates into account, that are located earlier than an already set partner
+	# (Skipping this earlier would disrupt the prev-chain)
+	( $next_partner->{'line'} > $partner_line ) or log_debug('    | => Skipped (line too low)') and return 0;
+
+	return 1;
+} ## end sub change_check_next_partner
 
 sub change_check_solo_changes {
 	my ($pChanges) = @_;
@@ -773,6 +811,9 @@ sub change_check_solo_changes {
 		# change is now a reference into $pChange, explicitly at
 		#    $pChanges->{string}{'texts'}{'changes'}[no]
 		# and has write-back capabilities.
+
+		log_change( 'Handle Solo Changes ; Considering Change', $change,              0 );
+		log_change( '--- ==> Partner : ---',                    $change->{'partner'}, 1 );
 
 		# If the change is already finished, or if it has a partner defined, nothing is to be done.
 		( ( $TRUE == $change->{'done'} ) || ( defined $change->{'partner'} ) ) and next;
@@ -836,7 +877,8 @@ sub change_find_alt_text {
 	my ( $source_kind, $source_text ) = @_;
 	my $alt = $source_text;
 
-	log_debug( "Searching alt text for source kind %d: \"%s\"", $source_kind, $source_text );
+	log_debug( "Searching alt text for source kind %d:", $source_kind );
+	log_debug( " txt: \"%s\"",                           $source_text );
 
 	# 1) 'elogind' => 'systemd'
 	if ( $KIND_ELOGIND == $source_kind ) {
@@ -883,7 +925,7 @@ sub change_find_alt_text {
 	$alt =~ s/(?:systemd|elogind)${DASH}(sleep${DOT}conf)/$1/msgx;
 
 	my $alttxt = ( $alt eq $source_text ) ? $EMPTY : $alt;
-	log_debug( "  => \"%s\"", ( ( length $alttxt ) > 0 ) ? $alttxt : 'n/a' );
+	log_debug( " alt: \"%s\"", ( ( length $alttxt ) > 0 ) ? $alttxt : 'n/a' );
 
 	return $alttxt;
 } ## end sub change_find_alt_text
@@ -898,47 +940,37 @@ sub change_find_alt_text {
 # @return Always 1, we never fail.
 sub change_find_and_set_partner {
 	my ( $pChanges, $change ) = @_;
-	my $kind         = change_get_partner_kind( $change->{'kind'} );
 	my $lines_ref    = $pChanges->{'lines'};
-	my $max_line     = $change->{'line'};
-	my $partner      = undef;                                        ## The last partner found
-	my $prev_partner = undef;                                        ## The previous partner found
-	my $type =
-	          ( $TYPE_ADDITION == $change->{'type'} ) ? $TYPE_REMOVAL
-	        : ( $TYPE_REMOVAL == $change->{'type'} )  ? $TYPE_ADDITION
-	        :                                           $TYPE_NEUTRAL;
+	my $max_idx      = $change->{'line'};
+	my $partner      = $change->{'partner'};  ## The last partner found
+	my $prev_partner = undef;                 ## The previous partner found
+
+	log_debug( ' => Searching Partner for line %d', $max_idx + 1 );
+	( defined $partner ) and log_debug( '    Current partner at line %d', $partner->{'line'} + 1 );
 
 	for my $i ( 0 .. $#{$lines_ref} ) {
 		( defined $lines_ref->[$i] ) or next;  # skip gaps that come from using only relevant line numbers as indices
-		( $i >= $max_line ) and last;          # stop at the change we map
+		( $i >= $max_idx ) and last;           # stop at the change we map
 		my $next_partner = $lines_ref->[$i];
 
-		# Check whether at least one text matches the partners alttxt
-		# Note: On a systemd-logind <=> elogind change, only one comparison matches, because the alttxt to "elogind" is
-		#       "systemd", the "systemd-logind" can not be recreated like that.
-		( $next_partner->{'alttxt'} eq $change->{'text'} ) or ( $next_partner->{'text'} eq $change->{'alttxt'} ) or next;
+		log_debug( '    | Check line %d', $i + 1 );
 
-		# The potential partner must be of the right kind, have the right type and must not be done, yet
-		( $kind == $next_partner->{'kind'} ) and ( $type == $next_partner->{'type'} ) and ( 0 == $next_partner->{'done'} ) or next;
+		# Do the relevant checks in another sub
+		change_check_next_partner( $change, $next_partner, \$partner, \$prev_partner ) or next;
 
-		# Note: We do not check whether a partner is already set or not, because a set partner might change later.
-
-		# Record this as the prev partner, but store the previous partner as prev, first
-		if ( defined $partner ) {
-			( defined $prev_partner ) and $partner->{'prev'} = $prev_partner;
-			$prev_partner = $partner;
-		}
-
-		# The last partner found is always set.
-		$partner = $next_partner;
+		# If all conditions are met, record this as the next viable candidate
+		log_debug( '    | => Storing line %d as partner', $next_partner->{'line'} + 1 );
+		$partner = $next_partner;              # Set current partner to next partner found
 	} ## end for my $i ( 0 .. $#{$lines_ref...})
 
-	# At this point we have zero, one or two partners. The first two are easy.
-	( defined $partner ) or return 1;  ## Nothing to do
+	# At this point we have zero, one or two+ partners. The first two are easy.
+	( defined $partner ) or return 1;              ## Nothing to do
 
-	# If we have 2+ partners found, 'prev' is now set
+	log_debug( '    | Found Partner at line %d', $partner->{'line'} + 1 );
+
+	# If we have found 2+ partners, 'prev' is now set
 	if ( defined $prev_partner ) {
-		$partner->{'prev'} = $prev_partner;  ## Store the prev, or the prev chain will be lost
+		$partner->{'prev'} = $prev_partner;    # Store prev_partner to save the backward chain
 
 		# If we have two partners, we must guess which one is correct. The situation might be:
 		#   first partner
@@ -960,12 +992,14 @@ sub change_find_and_set_partner {
 		# In this case the first partner must be teamed with this change, and the second will later be teamed with the next
 		# similar change. Unfortunately we do not know yet that it'll come.
 		# But that is why we do not rule out entries with an already set partner above, we can use that information now:
-		if ( defined $partner->{'partner'} ) {
+		if ( ( defined $partner->{'partner'} ) && ( $change != $partner->{'partner'} ) ) {
+			log_debug( '    | => Moving Partners partner at line %d up', $partner->{'partner'}{'line'} + 1 );
 			change_move_partner_up($partner) or croak('found to many partners, this should be impossible!');
 		}
 	} ## end if ( defined $prev_partner)
 
 	# The rest is easy, just set the partner to the last found
+	log_debug( ' <= Setting Partners %d <=> %d', $change->{'line'} + 1, $partner->{'line'} + 1 );
 	$change->{'partner'}  = $partner;
 	$partner->{'partner'} = $change;
 
@@ -994,11 +1028,16 @@ sub change_get_partner_kind {
 sub change_handle_additions {
 	my ($pChanges) = @_;
 
+	log_debug('Checking Additions ...');
+
 	# Go through additions and check whether they follow a removal
 	my $lines_ref = $pChanges->{'lines'};
 	for my $i ( 0 .. $#{$lines_ref} ) {
 		( defined $lines_ref->[$i] ) or next;  # skip gaps that come from using only relevant line numbers as indices
 		my $change = $lines_ref->[$i];         # change is now at $hChanges{string}{'texts'}{'changes'}[no] with write-back capabilities
+
+		log_change( 'Handle Additions ; Considering Change', $change,              0 );
+		log_change( '--- ==> Partner : ---',                 $change->{'partner'}, 1 );
 
 		# Skip changes that are done and only keep additions
 		( ( $TRUE == $change->{'done'} ) || ( $TYPE_ADDITION != $change->{'type'} ) ) and next;
@@ -1050,6 +1089,9 @@ sub change_handle_false_positives {
 		( $FALSE == $change->{'done'} ) and ( $TYPE_ADDITION == $change->{'type'} ) or next;  ## Already handled or not an addition
 		my $text = $change->{'text'};
 
+		log_change( 'Checking Change Against Reserved Expressions', $change,              0 );
+		log_change( '--- ==> Partner : ---',                        $change->{'partner'}, 1 );
+
 		# 1) References to the systemd github or .io site must not be changed,
 		#    unless it is a reference to the issues tracker.
 		if ( ( ( $text =~ m/github[${DOT}]com[${SLASH}]systemd/msx ) && !( $text =~ m/[${SLASH}]issues/msx ) ) || ( $text =~ m/systemd[${DOT}]io/msx ) ) {
@@ -1084,18 +1126,23 @@ sub change_handle_false_positives {
 sub change_handle_removals {
 	my ($pChanges) = @_;
 
+	log_debug('Checking Removals ...');
+
 	# Go through removals and check whether they follow an addition
 	my $lines_ref = $pChanges->{'lines'};
 	for my $i ( 0 .. $#{$lines_ref} ) {
 		( defined $lines_ref->[$i] ) or next;  # skip gaps that come from using only relevant line numbers as indices
 		my $change = $lines_ref->[$i];         # change is now at $hChanges{string}{'texts'}{'changes'}[no] with write-back capabilities
 
+		log_change( 'Handle Removals ; Considering Change', $change,              0 );
+		log_change( '--- ==> Partner : ---',                $change->{'partner'}, 1 );
+
 		# Skip changes that are done and only keep removals
 		( ( $TRUE == $change->{'done'} ) || ( $TYPE_REMOVAL != $change->{'type'} ) ) and next;
 
 		# At this point only entries with a partner can be not done
 		my $partner = $change->{'partner'};
-		( defined $partner ) or log_error( "Fatal: Line %d '%s' has no partner!", $change->{'line'}, $change->{'text'} ) and croak('Cannot continue!');
+		( defined $partner ) or log_error( "Fatal: Line %d '%s' has no partner!", $change->{'line'} + 1, $change->{'text'} ) and croak('Cannot continue!');
 
 		# We only handle forward removals, so the line number of the removal must be greater than that of the addition
 		( $change->{'line'} > $partner->{'line'} ) or next;  ## change_handle_additions() takes care of forward additions.
@@ -1139,9 +1186,12 @@ sub change_map_hunk_lines {
 		# change is now a reference into $pChange, explicitly at
 		#    $pChanges->{string}{'texts'}{'changes'}[no]
 		# and has write-back capabilities.
+		log_change( 'Scanning Additions ; Considering Change', $change, 0 );
 		( $FALSE == $change->{'done'} ) and ( $TYPE_ADDITION == $change->{'type'} ) or next;  ## Already handled or not an addition
 		( 1 == $change->{'systemd'} )                                               or next;  ## only systemd additions are relevant
 		change_find_and_set_partner( $pChanges, $change );
+		log_change( 'Scanning Additions ; Change Mapped', $change,              0 );
+		log_change( '--- ==> Partner : ---',              $change->{'partner'}, 1 );
 	} ## end foreach my $change ( grep {...})
 
 	# We now have mapped regular diffs that remove something on line n and add it back, changed on line n+x.
@@ -1149,10 +1199,13 @@ sub change_map_hunk_lines {
 	# 2) Loop over removals to find previous matching additions
 	# -----------------------------------------------------------------------------------------------------------------
 	foreach my $change ( grep { defined $_ } @{ $pChanges->{'lines'} } ) {
+		log_change( 'Scanning Removals ; Considering Change', $change, 0 );
 		( $FALSE == $change->{'done'} ) and ( $TYPE_REMOVAL == $change->{'type'} ) or next;  ## Already handled or not a removal
 		( 1 == $change->{'elogind'} )                                              or next;  ## only elogind removals are relevant
 		change_find_and_set_partner( $pChanges, $change );
-	}
+		log_change( 'Scanning Removals ; Change Mapped', $change,              0 );
+		log_change( '--- ==> Partner : ---',             $change->{'partner'}, 1 );
+	} ## end foreach my $change ( grep {...})
 
 	# The second run mapped real moves, so the line was not only changed, it was also moved
 	# At this point we can assume, that unpartnered removals and additions are real changes to the source code and no longer
@@ -1164,6 +1217,8 @@ sub change_map_hunk_lines {
 sub change_mark_as_done {
 	my ($change) = @_;
 	my $partner = $change->{'partner'};
+	log_change( 'Marking Change and partner as done', $change,              0 );
+	log_change( '--- ==> Partner : ---',              $change->{'partner'}, 1 );
 	$change->{'done'} = $TRUE;
 	if ( defined $partner ) {
 		$partner->{'done'} = $TRUE;
@@ -1177,17 +1232,26 @@ sub change_move_partner_up {
 	( defined $change->{'partner'} ) or confess('Serious bug, partner is undef!');
 
 	# Simple recursive function to move partners up a changes prev chain.
-	my $prev = $change->{'prev'};
-	( defined $prev ) or return $FALSE;  ## This should not be possible!
+	my $partner = $change->{'partner'};
+	my $prev    = $change->{'prev'};
+	if ( !( defined $prev ) ) {
+
+		# end of chain found, earliest partner will become a solo
+		if ( defined $partner ) {
+			$partner->{'partner'} = undef;
+			$change->{'partner'}  = undef;
+		}
+		return $TRUE;
+	} ## end if ( !( defined $prev ...))
 
 	# If prev has already a partner, move it up first to make space for ours
 	my $r = ( defined $prev->{'partner'} ) ? change_move_partner_up($prev) : $TRUE;
-	( $TRUE == $r ) or return $FALSE;    ## Followup from running out of prevs above
+	( $TRUE == $r ) or return $FALSE;  ## Followup from running out of prevs above
 
 	# Now we can move the partner to prev
-	my $partner = $change->{'partner'};
 	$prev->{'partner'}    = $partner;
 	$partner->{'partner'} = $prev;
+	$change->{'partner'}  = undef;
 
 	return $TRUE;
 } ## end sub change_move_partner_up
@@ -1214,7 +1278,7 @@ sub change_splice_the_undone {
 	foreach my $change ( grep { defined $_ } @{ $pChanges->{'lines'} } ) {
 		( $change->{'spliceme'} > 0 ) or next;
 		$hSplices{ $change->{'spliceme'} } = 1;
-		log_debug( "Splice line % 3d: \"%s\"", $change->{'spliceme'}, $change->{'text'} );
+		log_debug( "Splice line % 3d: \"%s\"", $change->{'spliceme'} + 1, $change->{'text'} );
 	}
 
 	# 2) Loop over the splices and remove them, use reverse order to not get confused
@@ -1232,8 +1296,8 @@ sub change_undo {
 
 	substr( $hHunk->{lines}[ $to_keep->{'line'} ], 0, 1 ) = " ";
 	$to_splice->{'spliceme'} = $at_line;
-	log_debug( "     => Keeping   \"%s\"", $hHunk->{lines}[ $to_keep->{'line'} ] );
-	log_debug( "     => Splicing  \"%s\"", $hHunk->{lines}[ $to_splice->{'spliceme'} ] );
+	log_debug( "     => Keeping  % 3d: \"%s\"", $to_keep->{'line'} + 1, $hHunk->{lines}[ $to_keep->{'line'} ] );
+	log_debug( "     => Splicing % 3d: \"%s\"", $at_line + 1,           $hHunk->{lines}[ $to_splice->{'spliceme'} ] );
 
 	return 1;
 } ## end sub change_undo
@@ -1244,7 +1308,9 @@ sub change_use_alt {
 	my $newText  = $change->{'alttxt'};
 	my $oldText  = $change->{'text'};
 
+	log_debug( "     => Change  % 3d: \"%s\"", $lno + 1, $hHunk->{lines}[$lno] );
 	$hHunk->{lines}[$lno] =~ s{\Q$oldText\E}{$newText};
+	log_debug( "     =>   To    % 3d: \"%s\"", $lno + 1, $hHunk->{lines}[$lno] );
 
 	return 1;
 } ## end sub change_use_alt
@@ -1842,7 +1908,7 @@ sub check_includes {
 sub check_logger {
 	my ($logger) = @_;
 	if ( defined $logger ) {
-		$logger =~ m/^log_(info|warning|error|status|debug)$/xms
+		$logger =~ m/^log_(info|warning|error|status|debug|change)$/xms
 		        or confess("logMsg() called from wrong sub $logger");
 	}
 	return 1;
@@ -3018,7 +3084,7 @@ sub logMsg {
 
 	my $stTime  = get_time_now();
 	my $stLevel = get_log_level($lvl);
-	my $stMsg   = sprintf "%s|%s|%s|$fmt", $stTime, $stLevel, get_location($lvl), @args;
+	my $stMsg   = sprintf "%s|%s|%s|$fmt", $stTime, $stLevel, get_location($LOG_DEBUG), @args;
 
 	( 0 < ( length $logfile ) ) and write_to_log($stMsg);
 	( $LOG_INFO < $lvl ) and write_to_console($stMsg);
@@ -3052,6 +3118,33 @@ sub log_debug {
 	$do_debug or return 1;
 	return logMsg( $LOG_DEBUG, $fmt, @args );
 }
+
+sub log_change {
+	my ( $txt, $change, $is_partner ) = @_;
+	$do_debug or return 1;
+	logMsg( $LOG_DEBUG, '%s', ${txt} );
+	( defined $change ) or return logMsg( $LOG_DEBUG, ' ==> No Partner Found <==' );
+
+	( $is_partner == 0 ) and logMsg( $LOG_DEBUG, ' -------->' );
+	logMsg(
+		$LOG_DEBUG,
+		'        Line: %d (%s)',
+		$change->{'line'} + 1,
+		$change->{'done'} == $TRUE ? 'DONE' : $change->{'done'} == $FALSE ? 'Not handled, yet' : 'UNKNOWN STATE !!!'
+	);
+	logMsg( $LOG_DEBUG, '        Text: %s', ( substr $change->{'text'}, 0, 77 ) . '...' );
+	logMsg(
+		$LOG_DEBUG,
+		'        Type: %s / %s',
+		$change->{'type'} == $TYPE_ADDITION ? 'Addition' : $change->{'type'} == $TYPE_REMOVAL ? 'Removal' : 'NEUTRAL !!!',
+		$change->{'elogind'}                ? 'elogind'  : $change->{systemd}                 ? 'systemd' : 'UNKNOWN !!!'
+	);
+	logMsg( $LOG_DEBUG, ' inside Mask: %s / in Comment: %s', $change->{'masked'} ? 'Yes' : 'No', $change->{'iscomment'} ? 'Yes' : 'No' );
+	( $change->{'spliceme'} > 0 ) and logMsg( $LOG_DEBUG, '      Splice: %d', $change->{'spliceme'} );
+	( $is_partner > 0 ) and logMsg( $LOG_DEBUG, ' <--------' );
+
+	return 1;
+} ## end sub log_change
 
 sub make_location_fmt {
 	my ( $lineno, $name_len ) = @_;
