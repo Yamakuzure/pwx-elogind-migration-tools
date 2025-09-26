@@ -822,7 +822,7 @@ sub change_check_solo_changes {
 		( $TRUE == $change->{'masked'} ) and change_mark_as_done($change) and next;
 
 		# We have only checked pretexted text additions, yet, not singular removals
-		change_is_protected_text( $change->{'text'} ) and change_mark_as_done($change) and next;
+		change_is_protected_text( $change->{'text'}, $change->{'iscomment'} ) and change_mark_as_done($change) and next;
 
 		if ( $TYPE_ADDITION == $change->{'type'} ) {
 
@@ -849,29 +849,6 @@ sub change_check_solo_changes {
 
 	return 1;
 } ## end sub change_check_solo_changes
-
-sub change_is_protected_text {
-	my ($text) = @_;
-
-	# 1) /run/systemd/ must not be changed, as other applications
-	#    rely on that naming.
-	# Note: The /run/elogind.pid file is not touched by that, as
-	#       systemd does not have something like that.
-	$text =~ m/\/run\/systemd/msx and log_debug( "     => Protected \"%s\"", $text ) and return 1;
-
-	# 2) Several systemd website urls must not be changed, too
-	for my $pat ( keys %SYSTEMD_URLS ) {
-		$text =~ m/$pat/msx and log_debug( "     => Protected \"%s\"", $text ) and return 1;
-	}
-
-	# 3) To be a dropin-replacement, we also need to not change any org[./]freedesktop[./]systemd strings
-	$text =~ m/\/?org[.\/]freedesktop[.\/]systemd/msx and log_debug( "     => Protected \"%s\"", $text ) and return 1;
-
-	# 4) Do not replace referrals to systemd[1]
-	$text =~ m/systemd\[1\]/msx and log_debug( "     => Protected \"%s\"", $text ) and return 1;
-
-	return 0;
-} ## end sub change_is_protected_text
 
 sub change_find_alt_text {
 	my ( $source_kind, $source_text ) = @_;
@@ -1092,11 +1069,16 @@ sub change_handle_false_positives {
 		log_change( 'Checking Change Against Reserved Expressions', $change,              0 );
 		log_change( '--- ==> Partner : ---',                        $change->{'partner'}, 1 );
 
-		# 1) References to the systemd github or .io site must not be changed,
-		#    unless it is a reference to the issues tracker.
-		if ( ( ( $text =~ m/github[${DOT}]com[${SLASH}]systemd/msx ) && !( $text =~ m/[${SLASH}]issues/msx ) ) || ( $text =~ m/systemd[${DOT}]io/msx ) ) {
+		# 1) References to the systemd github or .io site must not be changed.
+		if ( ( $text =~ m/github[${DOT}]com[${SLASH}]systemd/msx ) || ( $text =~ m/systemd[${DOT}]io/msx ) ) {
 
-			# If a removal exists that was a link to the elogind github main page, then do not switch back. We had our reasons!
+			# If it is the issue tracker, look at the issue number. elogind is in the 3-digit area, systemd is in the 5-digit area
+			if ( $text =~ m/github[${DOT}]com[${SLASH}]systemd[${SLASH}]systemd[${SLASH}]issues[${SLASH}](\d+)/msx ) {
+				my $num = $1;
+				( ( length "$num" ) > 4 ) and change_mark_as_done($change) and next;  # clearly a systemd issue
+			}
+
+			# If a removal exists that was a link to the elogind github main page, then allow the switch back. We had our reasons!
 			my $partner      = $change->{'partner'};
 			my $partner_text = ( defined $partner ) ? $partner->{'text'} // $EMPTY : $EMPTY;
 			if ( $partner_text =~ m/github[${DOT}]com[${SLASH}]elogind[${SLASH}]elogind/msx ) {
@@ -1104,10 +1086,10 @@ sub change_handle_false_positives {
 			}
 
 			change_mark_as_done($change) and next;
-		} ## end if ( ( ( $text =~ m/github[${DOT}]com[${SLASH}]systemd/msx...)))
+		} ## end if ( ( $text =~ m/github[${DOT}]com[${SLASH}]systemd/msx...))
 
 		# 2) Several words/paths/phrases are protected
-		change_is_protected_text($text) and change_mark_as_done($change) and next;
+		change_is_protected_text( $text, $change->{'iscomment'} ) and change_mark_as_done($change) and next;
 
 		# 3) References to systemd-homed and other tools not shipped by elogind
 		#    must not be changed either, or users might think elogind has its
@@ -1175,6 +1157,33 @@ sub change_handle_removals {
 
 	return 1;
 } ## end sub change_handle_removals
+
+sub change_is_protected_text {
+	my ( $text, $is_commented ) = @_;
+
+	# 1) /run/systemd/ must not be changed, as other applications
+	#    rely on that naming.
+	# Note: The /run/elogind.pid file is not touched by that, as
+	#       systemd does not have something like that.
+	$text =~ m/\/run\/systemd/msx and log_debug( "     => Protected \"%s\"", $text ) and return 1;
+
+	# 2) Several systemd website urls must not be changed, too
+	for my $pat ( keys %SYSTEMD_URLS ) {
+		$text =~ m/$pat/msx and log_debug( "     => Protected \"%s\"", $text ) and return 1;
+	}
+
+	# 3) To be a dropin-replacement, we also need to not change any org[./]freedesktop[./]systemd strings
+	$text =~ m/\/?org[.\/]freedesktop[.\/]systemd/msx and log_debug( "     => Protected \"%s\"", $text ) and return 1;
+
+	# 4) Do not replace referrals to systemd[1]
+	$text =~ m/systemd\[1\]/msx and log_debug( "     => Protected \"%s\"", $text ) and return 1;
+
+	# 5) Specific systemd services that might be mentioned in comments that are not masked:
+	my $systemd_services = qq{user-sessions|logind};
+	( $is_commented > 0 ) and ( ( $text =~ m/systemd[-_]($systemd_services)[${DOT}]service/msx ) ) and return 1;
+
+	return 0;
+} ## end sub change_is_protected_text
 
 sub change_map_hunk_lines {
 	my ($pChanges) = @_;
