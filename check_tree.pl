@@ -1035,21 +1035,20 @@ sub change_handle_additions {
 			next;
 		} ## end if ( $change->{'line'}...)
 
-		# If they are further away, check comment and mask status
-		if (       ( ( $TRUE == $partner->{'masked'} ) && ( $FALSE == $change->{'masked'} ) )
+		# If they are further away, check comment and mask status. We do not allow a diff to move lines into and out of masks
+		# However, if the move is into a comment is is okay, but not out of a comment. We had reason for commenting something out.
+		if (       ( $partner->{'masked'} != $change->{'masked'} )
 			|| ( ( $TRUE == $partner->{'iscomment'} ) && ( $FALSE == $change->{'iscomment'} ) ) )
 		{
-			## The change moves a masked or commented line out of the mask/comment
-			( $TRUE == $change->{'systemd'} )                    #
-			        and change_reverse( $partner, $change, $i )  # Apply the elogind->systemd change to the partner, splice the removal
-			        or change_undo( $partner, $change, $i );     # Remove the systemd->elogind move, although this seems to be impossibly to ever happen.
-			change_mark_as_done($change);                        # Also marks the partner
+			## The change moves commented line out of the comment, or changes a masked status
+			change_undo( $partner, $change, $i );
+			change_mark_as_done($change);
 			next;
-		} ## end if ( ( ( $TRUE == $partner...)))
+		} ## end if ( ( $partner->{'masked'...}))
 
 		# In all other cases we allow the move, but reverse the text change if it is elogind->systemd
 		( $TRUE == $change->{'systemd'} ) and change_use_alt($change);
-		change_mark_as_done($change);                                # Also marks the partner
+		change_mark_as_done($change);
 	} ## end for my $i ( 0 .. $#{$lines_ref...})
 
 	return 1;
