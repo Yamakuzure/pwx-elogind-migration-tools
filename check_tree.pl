@@ -250,7 +250,7 @@ my %hIncs = ();  ## Hash for remembered includes over different hunks.
 #                 sysinc : Set to 1 if it is <include>, 0 otherwise.
 #     }
 # } }
-my %hProtected = ();  ## check_name_reverts() writes notes down lines here, which check_comments() shall not touch
+my %hProtected = ();  ## check_name_reverts() notes down lines here, which check_comments() shall not touch
 my @lFails     = ();  ## List of failed hunks. These are worth noting down in an extra structure, as these
 
 # mean that something is fishy about a file, like elogind mask starts within masks.
@@ -1095,7 +1095,7 @@ sub change_handle_false_positives {
 		#    must not be changed either, or users might think elogind has its
 		#    own replacements.
 		my $systemd_daemons  = qq{home|import|journal|network|oom|passwor|udev};
-		my $systemd_products = qq{analyze|creds|cryptsetup|export|firstboot|fsck|home|import-fs|nspawn|repart|syscfg|sysusers|tmpfiles|devel\/};
+		my $systemd_products = qq{analyze|creds|cryptsetup|export|firstboot|fsck|home|import-fs|nspawn|repart|syscfg|sysusers|tmpfiles|vmspawn|devel\/};
 		( ( $text =~ m/systemd[-_]($systemd_daemons)d/msx ) || ( $text =~ m/systemd[-_]($systemd_products)/msx ) ) and change_mark_as_done($change) and next;
 
 		# Also the gettext domain is always "systemd", and varlink works via io.systemd domain.
@@ -1265,6 +1265,21 @@ sub change_move_partner_up {
 	return $TRUE;
 } ## end sub change_move_partner_up
 
+sub change_protect_removals {
+	my ($pChanges) = @_;
+
+	# Loop over lines and note down those to be protected
+	# -----------------------------------------------------------------------------------------------------------------
+	foreach my $change ( grep { defined $_ } @{ $pChanges->{'lines'} } ) {
+		( $TYPE_REMOVAL == $change->{'type'} ) or next;
+		my $line = $hHunk->{lines}[ $change->{'line'} ];
+		$hProtected{$line} = 1;
+		log_debug( "Protecting line % 3d: \"%s\"", $change->{'line'} + 1, $line );
+	} ## end foreach my $change ( grep {...})
+
+	return 1;
+} ## end sub change_protect_removals
+
 sub change_reverse {
 	my ( $to_change, $to_splice, $at_line ) = @_;
 
@@ -1390,9 +1405,6 @@ sub check_comments {
 	for ( my $i = 0 ; $i < $hHunk->{count} ; ++$i ) {
 		my $line = \$hHunk->{lines}[$i];  ## Shortcut
 
-		# Ignore protected lines
-		defined( $hProtected{$$line} ) and next;
-
 		# Check for comment block start
 		# -----------------------------
 		if ( $$line =~ m/^[${DASH}]\s*(\/\*+|\/\/+)\s+.*elogind/msx ) {
@@ -1405,8 +1417,8 @@ sub check_comments {
 			( ( $$line =~ m/^[${DASH}]\s*\/\*+/msx ) && !( $$line =~ m/\*\/[^\/]*$/msx ) )
 			        and $in_comment_block = 1;
 
-			# Revert the substract *if* this is not in a mask block
-			$in_mask_block and ( 1 > $in_else_block ) or substr( $$line, 0, 1 ) = " ";
+			# Revert the substract *if* this is not in a mask block, but only if the name reversal checker has not marked this as protected
+			$in_mask_block and ( 1 > $in_else_block ) or defined( $hProtected{$$line} ) or substr( $$line, 0, 1 ) = " ";
 
 			next;
 		} ## end if ( $$line =~ m/^[${DASH}]\s*(\/\*+|\/\/+)\s+.*elogind/msx)
@@ -1414,7 +1426,7 @@ sub check_comments {
 		# Check for comment block end
 		# -----------------------------
 		if ( $in_comment_block && ( $$line =~ m/^[${DASH}].*\*\/\s*$/msx ) ) {
-			substr( $$line, 0, 1 ) = " ";
+			defined( $hProtected{$$line} ) or substr( $$line, 0, 1 ) = " ";
 			$in_comment_block = 0;
 			next;
 		}
@@ -1424,7 +1436,7 @@ sub check_comments {
 		if ( $in_comment_block && ( $$line =~ m/^[${DASH}]/msx ) ) {
 
 			# Note: We do not check for anything else, as empty lines must be allowed.
-			substr( $$line, 0, 1 ) = " ";
+			defined( $hProtected{$$line} ) or substr( $$line, 0, 1 ) = " ";
 			next;
 		} ## end if ( $in_comment_block...)
 
@@ -1542,20 +1554,17 @@ sub check_func_removes {
 	for ( my $i = 0 ; $i < $hHunk->{count} ; ++$i ) {
 		my $line = \$hHunk->{lines}[$i];  ## Shortcut
 
-		# Ignore protected lines
-		defined( $hProtected{$$line} ) and next;
-
 		# Check for elogind_*() call
 		# -------------------------------------------------------------------
-		if ( $$line =~ m/^-.*elogind_\S+\s*\(/msx ) {
-			substr( $$line, 0, 1 ) = " ";  ## Remove '-'
+		if ( $$line =~ m/^[${DASH}].*elogind_\S+\s*\(/msx ) {
+			( defined $hProtected{$$line} ) or substr( $$line, 0, 1 ) = " ";  ## Remove '-'
 			$$line =~ m/\)\s*;/ or ++$is_func_call;
 			next;
 		}
 
 		# Remove '-' prefixes in all lines that belong to an elogind_*() call
 		# -------------------------------------------------------------------
-		if ( ( $$line =~ m,^[${DASH}], ) && $is_func_call ) {
+		if ( ( $$line =~ m,^[${DASH}], ) && $is_func_call && !( defined $hProtected{$$line} ) ) {
 			substr( $$line, 0, 1 ) = " ";  ## Remove '-'
 		}
 
@@ -2288,7 +2297,7 @@ sub check_name_reverts {
 	##                                {'type'}      = $TYPE_REMOVAL, $TYPE_ADDITION, $TYPE_NEUTRAL
 
 	# Remember the final mask state for later reversal
-	# ------------------------------------------------
+	# ------------------------------------------------------------------------------------------------------------
 	my $hunk_ends_in_mask = $in_mask_block;
 	my $hunk_ends_in_else = $in_else_block;
 	$hHunk->{masked_start} and $in_mask_block = 1 or $in_mask_block = 0;
@@ -2325,28 +2334,37 @@ sub check_name_reverts {
 	#    ( This can be an addition followed by a removal or a removal followed by an addition. )
 	# However, we have to find the counterpart to the change before we can do anything, and for
 	# that to work all changes of the hunk have to be recorded first.
+	# ------------------------------------------------------------------------------------------------------------
 	change_map_hunk_lines( \%hChanges );
 
 	# Before we can process our findings, we have to protect false positives, like mentioning of systemd daemons elogind does not ship.
+	# ------------------------------------------------------------------------------------------------------------
 	change_handle_false_positives( \%hChanges );
 
 	# Before we can go through our findings, we have to check the solos, meaning additions and removals that have no partner set.
 	# Removals are okay, unless they contain an elogind function call.
 	# Additions have to be checked for possible systemd->elogind renaming
+	# ------------------------------------------------------------------------------------------------------------
 	change_check_solo_changes( \%hChanges );
 
 	# Check additions that have not been handled with.
+	# ------------------------------------------------------------------------------------------------------------
 	change_handle_additions( \%hChanges );
 
 	# Upward removals (where the addition comes first) are handled with last
+	# ------------------------------------------------------------------------------------------------------------
 	change_handle_removals( \%hChanges );
 
+	# Protect those lines that we allow to be removed, so neither the comment nor func checker will touch them.
+	# ------------------------------------------------------------------------------------------------------------
+	change_protect_removals( \%hChanges );
+
 	# Splice the lines that were noted for splicing
-	# ------------------------------------------------
+	# ------------------------------------------------------------------------------------------------------------
 	change_splice_the_undone( \%hChanges );
 
 	# Revert the final mask state remembered above
-	# ------------------------------------------------
+	# ------------------------------------------------------------------------------------------------------------
 	$in_mask_block = $hunk_ends_in_mask;
 	$in_else_block = $hunk_ends_in_else;
 
@@ -3202,20 +3220,32 @@ sub prepare_shell {
 				croak('Illegal file');
 			}
 			$is_block = 1;
-		} elsif ( is_mask_else($line) ) {
+			push @lOut, $line;
+			next;
+		} ## end if ( is_mask_start($line...))
+
+		if ( is_mask_else($line) ) {
 			if ( 0 == $is_block ) {
 				log_error( '%s:%d : Mask else outside mask!', $in, $line_no );
 				croak('Illegal file');
 			}
 			$is_else = 1;
-		} elsif ( is_mask_end($line) ) {
+			push @lOut, $line;
+			next;
+		} ## end if ( is_mask_else($line...))
+
+		if ( is_mask_end($line) ) {
 			if ( 0 == $is_block ) {
 				log_error( '%s:%d : Mask end outside mask!', $in, $line_no );
 				croak('Illegal file');
 			}
 			$is_block = 0;
 			$is_else  = 0;
-		} elsif ( $is_block && !$is_else ) {
+			push @lOut, $line;
+			next;
+		} ## end if ( is_mask_end($line...))
+
+		if ( $is_block && !$is_else ) {
 			$line =~ s/^[${HASH}]\s?//msgx;
 			$line =~ s/^\s\s\*\s?//msgx;
 		}
@@ -3276,20 +3306,32 @@ sub prepare_xml {
 				croak('Illegal file');
 			}
 			$is_block = 1;
-		} elsif ( is_mask_else($line) ) {
+			push @lOut, $line;
+			next;
+		} ## end if ( is_mask_start($line...))
+
+		if ( is_mask_else($line) ) {
 			if ( 0 == $is_block ) {
 				log_error( '%s:%d : Mask else outside mask!', $in, $line_no );
 				croak('Illegal file');
 			}
 			$is_else = 1;
-		} elsif ( is_mask_end($line) ) {
+			push @lOut, $line;
+			next;
+		} ## end if ( is_mask_else($line...))
+
+		if ( is_mask_end($line) ) {
 			if ( 0 == $is_block ) {
 				log_error( '%s:%d : Mask end outside mask!', $in, $line_no );
 				croak('Illegal file');
 			}
 			$is_block = 0;
 			$is_else  = 0;
-		} elsif ( $is_block && !$is_else ) {
+			push @lOut, $line;
+			next;
+		} ## end if ( is_mask_end($line...))
+
+		if ( $is_block && !$is_else ) {
 			$line =~ s/&#x2D;/-/msg;
 		}
 
@@ -3857,6 +3899,7 @@ sub write_to_log {
 
 __END__
 
+# -*- Perl -*-
 
 =head1 NAME
 
