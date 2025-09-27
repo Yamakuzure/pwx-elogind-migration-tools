@@ -710,13 +710,12 @@ sub change_analyze_hunk_line {
 	my $comment_str  = $EMPTY;
 	my $replace_text = $EMPTY;
 	my $areas        = q{elogind|loginctl|systemctl|systemd};
-	my $source_str   = $EMPTY;
 
-	if ( $text =~ m/^([${PLUS}${SPACE}${DASH}])\s*([${HASH}${SLASH}*]*)\s*(.*(${areas}).*)\s*[*${SLASH}${HASH}]*\s*$/misx ) {
+	if ( $text =~ m/^([${PLUS}${SPACE}${DASH}])\s*([${HASH}${SLASH}*]*)\s*(.*(?=${areas}).*)\s*[*${SLASH}${HASH}]*\s*$/misx ) {
 		$prefix       = $1;
 		$comment_str  = strempty($2);
 		$replace_text = $3;
-		$source_str   = lc($4);
+		log_debug( ' => Line % 3d [%s] "%s"', $line_idx + 1, $prefix, $replace_text );
 	} else {
 		return 0;  # Other lines are of no concern
 	}
@@ -729,11 +728,11 @@ sub change_analyze_hunk_line {
 	# We need a few values...
 	my $i = $pChanges->{$replace_text}{'count'} // 0;  # The count is the next free index
 	my $kind =
-	          ( 'elogind' eq $source_str )   ? $KIND_ELOGIND
-	        : ( 'loginctl' eq $source_str )  ? $KIND_LOGINCTL
-	        : ( 'systemd' eq $source_str )   ? $KIND_SYSTEMD
-	        : ( 'systemctl' eq $source_str ) ? $KIND_SYSTEMCTL
-	        :                                  0;
+	          ( $replace_text =~ m/.*elogind.*/msxi )   ? $KIND_ELOGIND
+	        : ( $replace_text =~ m/.*loginctl.*/msxi )  ? $KIND_LOGINCTL
+	        : ( $replace_text =~ m/.*systemd.*/msxi )   ? $KIND_SYSTEMD
+	        : ( $replace_text =~ m/.*systemctl.*/msxi ) ? $KIND_SYSTEMCTL
+	        :                                             0;
 	my $type   = ( '-' eq $prefix ) ? $TYPE_REMOVAL : ( '+' eq $prefix ) ? $TYPE_ADDITION : $TYPE_NEUTRAL;
 	my $alttxt = change_find_alt_text( $kind, $replace_text );
 	my $iscomment =
@@ -762,7 +761,7 @@ sub change_analyze_hunk_line {
 	# Record the change at its line number
 	$pChanges->{'lines'}[$line_idx] = $pChanges->{$replace_text}{'texts'}{'changes'}[$i];
 
-	log_debug( "%-8s type %d at line % 3d: \"%s\"", ( 0 > $type ) ? 'REMOVAL' : ( 0 < $type ) ? 'ADDITION' : 'Neutral', $kind, $line_idx + 1, $replace_text );
+	log_debug( " => %-8s type %d at line % 3d: \"%s\"", ( 0 > $type ) ? 'REMOVAL' : ( 0 < $type ) ? 'ADDITION' : 'Neutral', $kind, $line_idx + 1, $replace_text );
 
 	return 1;
 } ## end sub change_analyze_hunk_line
