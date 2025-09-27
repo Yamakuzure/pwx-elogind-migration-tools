@@ -709,7 +709,7 @@ sub change_analyze_hunk_line {
 	my $prefix       = $EMPTY;
 	my $comment_str  = $EMPTY;
 	my $replace_text = $EMPTY;
-	my $areas        = q{elogind|loginctl|systemctl|systemd};
+	my $areas        = q{elogind|loginctl|systemctl|systemd|sleep};
 
 	if ( $text =~ m/^([${PLUS}${SPACE}${DASH}])\s*([${HASH}${SLASH}*]*)\s*(.*(?=${areas}).*)\s*[*${SLASH}${HASH}]*\s*$/misx ) {
 		$prefix       = $1;
@@ -728,11 +728,13 @@ sub change_analyze_hunk_line {
 	# We need a few values...
 	my $i = $pChanges->{$replace_text}{'count'} // 0;  # The count is the next free index
 	my $kind =
-	          ( $replace_text =~ m/.*elogind.*/msxi )   ? $KIND_ELOGIND
-	        : ( $replace_text =~ m/.*loginctl.*/msxi )  ? $KIND_LOGINCTL
-	        : ( $replace_text =~ m/.*systemd.*/msxi )   ? $KIND_SYSTEMD
-	        : ( $replace_text =~ m/.*systemctl.*/msxi ) ? $KIND_SYSTEMCTL
-	        :                                             0;
+	          ( $replace_text =~ m/.*elogind.*/msxi )                      ? $KIND_ELOGIND
+	        : ( $replace_text =~ m/.*loginctl.*/msxi )                     ? $KIND_LOGINCTL
+	        : ( $replace_text =~ m/.*systemd.*/msxi )                      ? $KIND_SYSTEMD
+	        : ( $replace_text =~ m/.*systemctl.*/msxi )                    ? $KIND_SYSTEMCTL
+	        : ( $replace_text =~ m/.*systemd[-_]sleep[${DOT}]conf.*/msxi ) ? $KIND_SYSTEMD   # The full name is systemd...
+	        : ( $replace_text =~ m/.*sleep[${DOT}]conf.*/msxi )            ? $KIND_ELOGIND   # ... and the short name is elogind...
+	        :                                                                0;
 	my $type   = ( '-' eq $prefix ) ? $TYPE_REMOVAL : ( '+' eq $prefix ) ? $TYPE_ADDITION : $TYPE_NEUTRAL;
 	my $alttxt = change_find_alt_text( $kind, $replace_text );
 	my $iscomment =
@@ -865,6 +867,9 @@ sub change_find_alt_text {
 		$source_text eq $alt and $alt =~ s/ELOGIND/SYSTEMD/msgx; ## Try uppercase alternative
 		$source_text eq $alt and $alt =~ s/elogind/systemd/misgx; ## Try caseless alternative
 
+		# sleep.conf in elogind is systemd-sleep.conf in systemd
+		$alt =~ s/([^${DASH}])(sleep${DOT}conf)/$1systemd-$2/msgx;
+
 		# Note: The replacement of 'systemd-logind' or 'systemd-stable' with elogind can not be reversed this way.
 		#       The usr of this subs result (change_map_hunk_lines()) has to do this itself when searching for a match.
 	} ## end if ( $KIND_ELOGIND == ...)
@@ -886,6 +891,9 @@ sub change_find_alt_text {
 
 		# If we are in a man page, systemd is placed in volume 1, while elogind is placed in volume 8
 		$source_text ne $alt and $alt =~ s/<manvolnum>1<\/manvolnum>/<manvolnum>8<\/manvolnum>/msgx;
+
+		# systemd-sleep.conf is *not* elogind-sleep.conf, but just sleep.conf in elogind
+		$alt =~ s/(?:systemd|elogind)${DASH}(sleep${DOT}conf)/$1/msgx;
 	} ## end if ( $KIND_SYSTEMD == ...)
 
 	# 4) 'systemctl' => 'loginctl'
@@ -899,9 +907,6 @@ sub change_find_alt_text {
 	# This refers to the systemd API headers that get installed,
 	# and must therefore not be renamed to elogind_headers.
 	$alt =~ s/elogind_headers/systemd_headers/msg;
-
-	# systemd-sleep.conf is *not* elogind-sleep.conf, but just sleep.conf in elogind
-	$alt =~ s/(?:systemd|elogind)${DASH}(sleep${DOT}conf)/$1/msgx;
 
 	my $alttxt = ( $alt eq $source_text ) ? $EMPTY : $alt;
 	log_debug( " alt: \"%s\"", ( ( length $alttxt ) > 0 ) ? $alttxt : 'n/a' );
