@@ -179,23 +179,23 @@ Readonly my %SYSTEMD_URLS => (
 # ================================================================
 # ===        ==> -------- Global variables -------- <==        ===
 # ================================================================
-my $do_create       = 0;   ## If set to 1, a non-existing file is created.
-my $do_stay         = 0;   ## If set to 1, the previous commit isn't restored on exit.
-my $file_fmt        = "";  ## Format string built from the longest file name in generate_file_list().
-my $have_wanted     = 0;   ## Helper for finding relevant files (see wanted())
-my %hToCreate       = ();  ## The keys are files that do not exist and shall be created.
-my %hWanted         = ();  ## Helper hash for finding relevant files (see wanted())
-my $in_else_block   = 0;   ## Set to 1 if we switched from mask/unmask to 'else'.
-my $in_glibc_block  = 0;   ## Set to 1 if we enter a __GLIBC__ block
-my $in_mask_block   = 0;   ## Set to 1 if we entered an elogind mask block
-my $in_insert_block = 0;   ## Set to 1 if we entered an elogind addition block
-my @only_here       = ();  ## List of files that do not exist in $upstream_path.
-my $previous_commit = "";  ## Store current upstream state, so we can revert afterwards.
+my $do_create       = 0;   # If set to 1, a non-existing file is created.
+my $do_stay         = 0;   # If set to 1, the previous commit isn't restored on exit.
+my $file_fmt        = "";  # Format string built from the longest file name in generate_file_list().
+my $have_wanted     = 0;   # Helper for finding relevant files (see wanted())
+my %hToCreate       = ();  # The keys are files that do not exist and shall be created.
+my %hWanted         = ();  # Helper hash for finding relevant files (see wanted())
+my $in_else_block   = 0;   # Set to 1 if we switched from mask/unmask to 'else'.
+my $in_glibc_block  = 0;   # Set to 1 if we enter a __GLIBC__ block
+my $in_mask_block   = 0;   # Set to 1 if we entered an elogind mask block
+my $in_insert_block = 0;   # Set to 1 if we entered an elogind addition block
+my @only_here       = ();  # List of files that do not exist in $upstream_path.
+my $previous_commit = "";  # Store current upstream state, so we can revert afterwards.
 my $show_help       = 0;
-my @source_files    = ();  ## Final file list to process, generated in in generate_file_list().
+my @source_files    = ();  # Final file list to process, generated in in generate_file_list().
 my $upstream_path   = "";
 my $wanted_commit   = "";
-my @wanted_files    = ();  ## User given file list (if any) to limit generate_file_list()
+my @wanted_files    = ();  # User given file list (if any) to limit generate_file_list()
 
 # ================================================================
 # ===        ==> ------- MAIN DATA STRUCTURES ------ <==       ===
@@ -215,7 +215,7 @@ my @wanted_files    = ();  ## User given file list (if any) to limit generate_fi
 #   source : WORKDIR/<part>
 #   target : UPSTREAM/<part>
 # )
-my %hFile = ();  ## Main data structure to manage a complete compare of two files. (See: build_hFile() )
+my %hFile = (); ## Main data structure to manage a complete compare of two files. (See: build_hFile() )
 
 ## @brief $hHunk is used globally for each Hunk that is processed and points to the current $hFile{hunks}[] instance.
 # The structure is:
@@ -228,7 +228,7 @@ my %hFile = ();  ## Main data structure to manage a complete compare of two file
 #   tgt_start    : line number this hunk becomes in the target file.
 #   useful       : 1 if the hunk is transported, 0 if it is to be omitted.
 # }
-my $hHunk = {};  ## Secondary data structure to describe one diff hunk.            (See: build_hHunk() )
+my $hHunk = {}; ## Secondary data structure to describe one diff hunk.            (See: build_hHunk() )
 
 ## @brief: Only counted in the first step, actions are only in the second step.
 # The structure is:
@@ -248,56 +248,58 @@ my $hHunk = {};  ## Secondary data structure to describe one diff hunk.         
 #                 sysinc : Set to 1 if it is <include>, 0 otherwise.
 #     }
 # } }
-my %hIncs = ();  ## Hash for remembered includes over different hunks.
+my %hIncs = (); ## Hash for remembered includes over different hunks.
 
-my %hProtected = ();  ## check_name_reverts() notes down lines here, which check_comments() shall not touch
-my @lFails     = ();  ## List of failed hunks. These are worth noting down in an extra structure, as these
+my %hProtected = (); ## check_name_reverts() notes down lines here, which check_comments() shall not touch
 
-# mean that something is fishy about a file, like elogind mask starts within masks.
+## @brief List of failed hunks.
+# These are worth noting down in an extra structure, as these mean that something is fishy about a file,
+# like elogind mask starts within masks.
 # The structure is:
 # ( { hunk : the failed hunk for later printing
 #     msg  : a message set by the function that failed
 #     part : local relative file part
 #   }
 # )
+my @lFails = ();
 
 # ================================================================
 # ===        ==> --------  Function list   -------- <==        ===
 # ================================================================
-sub build_hFile;         ## Initializes and fills %hFile.
-sub build_hHunk;         ## Adds a new $hFile{hunks}[] instance.
-sub build_output;        ## Writes $hFile{output} from all useful $hFile{hunks}.
-sub check_blanks;        ## Check that useful blank line additions aren't misplaced.
-sub check_comments;      ## Check comments we added for elogind specific information.
-sub check_debug;         ## Check for debug constructs
-sub check_empty_masks;   ## Check for empty mask blocks, remove them and leave a note.
-sub check_func_removes;  ## Check for attempts to remove elogind_*() special function calls.
-sub check_includes;      ## performe necessary actions with the help of %hIncs (built by read_includes())
-sub check_masks;         ## Check for elogind preprocessor masks
-sub check_musl;          ## Check for musl_libc compatibility blocks
-sub check_name_reverts;  ## Check for attempts to revert 'elogind' to 'systemd'
-sub check_stdc_version;  ## Check for removal of a dfined(__STDC_VERSION) guard
-sub check_sym_lines;     ## Check for attempts to uncomment unsupported API functions in .sym files.
-sub check_useless;       ## Check for useless updates that do nothing.
-sub checkout_upstream;   ## Checkout the given refid on $upstream_path
-sub clean_hFile;         ## Completely clean up the current %hFile data structure.
-sub diff_hFile;          ## Generates the diff and builds $hFile{hunks} if needed.
-sub get_hunk_head;       ## Generate the "@@ -xx,n +yy,m @@" hunk header line out of $hHunk.
-sub hunk_failed;         ## Generates a new @lFails entry and terminates the progress line.
-sub hunk_is_useful;      ## Prunes the hunk and checks whether it stil does anything
-sub is_insert_end;       ## Return 1 if the argument consists of any insertion end
-sub is_insert_start;     ## Return 1 if the argument consists of any insertion start
-sub is_mask_else;        ## Return 1 if the argument consists of any mask else
-sub is_mask_end;         ## Return 1 if the argument consists of any mask end
-sub is_mask_start;       ## Return 1 if the argument consists of any mask start
-sub prepare_shell;       ## Prepare shell (and meson) files for our processing
-sub prepare_xml;         ## Prepare XML files for our processing (Unmask double dashes in comments)
-sub protect_config;      ## Special function to not let diff add unwanted or remove our lines in logind.conf.in
-sub prune_hunk;          ## remove unneeded prefix and postfix lines.
-sub read_includes;       ## map include changes
-sub splice_includes;     ## Splice all includes that were marked for splicing
-sub unprepare_shell;     ## Unprepare shell (and meson) files after our processing
-sub unprepare_xml;       ## Unprepare XML files after our processing (Mask double dashes in comments)
+sub build_hFile;         # Initializes and fills %hFile.
+sub build_hHunk;         # Adds a new $hFile{hunks}[] instance.
+sub build_output;        # Writes $hFile{output} from all useful $hFile{hunks}.
+sub check_blanks;        # Check that useful blank line additions aren't misplaced.
+sub check_comments;      # Check comments we added for elogind specific information.
+sub check_debug;         # Check for debug constructs
+sub check_empty_masks;   # Check for empty mask blocks, remove them and leave a note.
+sub check_func_removes;  # Check for attempts to remove elogind_*() special function calls.
+sub check_includes;      # performe necessary actions with the help of %hIncs (built by read_includes())
+sub check_masks;         # Check for elogind preprocessor masks
+sub check_musl;          # Check for musl_libc compatibility blocks
+sub check_name_reverts;  # Check for attempts to revert 'elogind' to 'systemd'
+sub check_stdc_version;  # Check for removal of a dfined(__STDC_VERSION) guard
+sub check_sym_lines;     # Check for attempts to uncomment unsupported API functions in .sym files.
+sub check_useless;       # Check for useless updates that do nothing.
+sub checkout_upstream;   # Checkout the given refid on $upstream_path
+sub clean_hFile;         # Completely clean up the current %hFile data structure.
+sub diff_hFile;          # Generates the diff and builds $hFile{hunks} if needed.
+sub get_hunk_head;       # Generate the "@@ -xx,n +yy,m @@" hunk header line out of $hHunk.
+sub hunk_failed;         # Generates a new @lFails entry and terminates the progress line.
+sub hunk_is_useful;      # Prunes the hunk and checks whether it stil does anything
+sub is_insert_end;       # Return 1 if the argument consists of any insertion end
+sub is_insert_start;     # Return 1 if the argument consists of any insertion start
+sub is_mask_else;        # Return 1 if the argument consists of any mask else
+sub is_mask_end;         # Return 1 if the argument consists of any mask end
+sub is_mask_start;       # Return 1 if the argument consists of any mask start
+sub prepare_shell;       # Prepare shell (and meson) files for our processing
+sub prepare_xml;         # Prepare XML files for our processing (Unmask double dashes in comments)
+sub protect_config;      # Special function to not let diff add unwanted or remove our lines in logind.conf.in
+sub prune_hunk;          # remove unneeded prefix and postfix lines.
+sub read_includes;       # map include changes
+sub splice_includes;     # Splice all includes that were marked for splicing
+sub unprepare_shell;     # Unprepare shell (and meson) files after our processing
+sub unprepare_xml;       # Unprepare XML files after our processing (Mask double dashes in comments)
 
 # ================================================================
 # ===     ==> -------    Argument handling     ------- <==     ===
@@ -325,10 +327,10 @@ do_prechecks() or pod2usage( { -exitval => 3, -verbose => 2, -noperldoc => 1 } )
 set_log_file( basename($upstream_path) );
 log_status("Program Start");
 if ( ( length $wanted_commit ) > 0 ) {
-	checkout_upstream($wanted_commit)  ## Note: Does nothing if $wanted_commit is already checked out.
+	checkout_upstream($wanted_commit) ## Note: Does nothing if $wanted_commit is already checked out.
 	        or exit 1;
 }
-generate_file_list() or exit 1;            ## Note: @wanted_files is heeded.
+generate_file_list() or exit 1; ## Note: @wanted_files is heeded.
 
 # ================================================================
 # ===        ==> -------- = MAIN PROGRAM = -------- <==        ===
@@ -337,7 +339,7 @@ generate_file_list() or exit 1;            ## Note: @wanted_files is heeded.
 for my $file_part (@source_files) {
 
 	# Pre-exit, check for a signal.
-	( $death_note > 0 ) and next;  ## No display, we already have the cancellation msg out!
+	( $death_note > 0 ) and next; ## No display, we already have the cancellation msg out!
 
 	# Otherise begin with a progress show
 	show_progress( 0, "$file_fmt: ", $file_part );
@@ -364,7 +366,7 @@ for my $file_part (@source_files) {
 		( $death_note > 0 ) and ( $pos = $hFile{count} ) and next;
 
 		log_debug( "Checking Hunk %d", $pos + 1 );
-		$hHunk = $hFile{hunks}[$pos];  ## Global shortcut
+		$hHunk = $hFile{hunks}[$pos]; ## Global shortcut
 
 		# === Special 1) protect src/login/logind.conf.in =================
 		if ( $hFile{source} =~ m/src\/login\/logind[${DOT}]conf[${DOT}]in/msx ) {
@@ -408,7 +410,7 @@ for my $file_part (@source_files) {
 		#  ===> IMPORTANT: From here on no more pruning, lines must *NOT* change any more! <===
 
 		# === 11) Analyze includes and note their appearance in $hIncs =====
-		read_includes();  ## Never fails, doesn't change anything.
+		read_includes(); ## Never fails, doesn't change anything.
 
 	} ## end for ( my $pos = 0 ; $pos...)
 
@@ -432,7 +434,7 @@ for my $file_part (@source_files) {
 	# --- Go through all hunks and apply remaining changes and checks   ---
 	# ---------------------------------------------------------------------
 	for ( my $pos = 0 ; $pos < $hFile{count} ; ++$pos ) {
-		$hHunk = $hFile{hunks}[$pos];  ## Global shortcut
+		$hHunk = $hFile{hunks}[$pos]; ## Global shortcut
 
 		# (pre -> early out)
 		hunk_is_useful() or next;
@@ -452,7 +454,7 @@ for my $file_part (@source_files) {
 	# ---------------------------------------------------------------------
 	my $have_hunk = 0;
 	for ( my $pos = 0 ; $pos < $hFile{count} ; ++$pos ) {
-		$hHunk = $hFile{hunks}[$pos];  ## Global shortcut
+		$hHunk = $hFile{hunks}[$pos]; ## Global shortcut
 
 		# (pre -> early out)
 		hunk_is_useful() or next;
@@ -650,10 +652,10 @@ sub build_hHunk {
 # -----------------------------------------------------------------------
 sub build_output {
 
-	my $offset = 0;  ## Count building up target offsets
+	my $offset = 0; ## Count building up target offsets
 
 	for ( my $pos = 0 ; $pos < $hFile{count} ; ++$pos ) {
-		$hHunk = $hFile{hunks}[$pos];  ## Global shortcut
+		$hHunk = $hFile{hunks}[$pos]; ## Global shortcut
 
 		# The useless are to be skipped, but we need the hunks masked_end
 		if ( $hHunk->{useful} ) {
@@ -767,8 +769,9 @@ sub change_analyze_hunk_line {
 
 sub change_check_next_partner {
 	my ( $change, $next_partner, $partner_p, $prev_partner_p ) = @_;
-	my $kind         = change_get_partner_kind( $change->{'kind'} );
-	my $partner_line = ( defined ${$partner_p} ) ? ${$partner_p}->{'line'} : -1;  ## To ensure not to shuffle partner relations
+	my $kind = change_get_partner_kind( $change->{'kind'} );
+	my $partner_line =
+	        ( defined ${$partner_p} ) ? ${$partner_p}->{'line'} : -1; ## To ensure not to shuffle partner relations
 	my $type =
 	          ( $TYPE_ADDITION == $change->{'type'} ) ? $TYPE_REMOVAL
 	        : ( $TYPE_REMOVAL == $change->{'type'} )  ? $TYPE_ADDITION
@@ -860,8 +863,8 @@ sub change_find_alt_text {
 	# 1) 'elogind' => 'systemd'
 	if ( $KIND_ELOGIND == $source_kind ) {
 		$alt =~ s/elogind/systemd/msgx;
-		$source_text eq $alt and $alt =~ s/ELOGIND/SYSTEMD/msgx;   ## Try uppercase alternative
-		$source_text eq $alt and $alt =~ s/elogind/systemd/misgx;  ## Try caseless alternative
+		$source_text eq $alt and $alt =~ s/ELOGIND/SYSTEMD/msgx; ## Try uppercase alternative
+		$source_text eq $alt and $alt =~ s/elogind/systemd/misgx; ## Try caseless alternative
 
 		# Note: The replacement of 'systemd-logind' or 'systemd-stable' with elogind can not be reversed this way.
 		#       The usr of this subs result (change_map_hunk_lines()) has to do this itself when searching for a match.
@@ -870,17 +873,17 @@ sub change_find_alt_text {
 	# 2) 'loginctl' => 'systemctl'
 	if ( $KIND_LOGINCTL == $source_kind ) {
 		$alt =~ s/loginctl/systemctl/msgx;
-		$source_text eq $alt and $alt =~ s/LOGINCTL/SYSTEMCTL/msgx;   ## Try uppercase alternative
-		$source_text eq $alt and $alt =~ s/loginctl/systemctl/misgx;  ## Try caseless alternative
+		$source_text eq $alt and $alt =~ s/LOGINCTL/SYSTEMCTL/msgx; ## Try uppercase alternative
+		$source_text eq $alt and $alt =~ s/loginctl/systemctl/misgx; ## Try caseless alternative
 	}
 
 	# 3) 'systemd' => 'elogind'
 	if ( $KIND_SYSTEMD == $source_kind ) {
 		$alt =~ s/systemd[-_]logind/elogind/msgx;
-		$source_text eq $alt and $alt =~ s/systemd[-_]stable/elogind/msgx;  ## Try the stable alternative
-		$source_text eq $alt and $alt =~ s/systemd/elogind/msgx;            ## Try plain alternative
-		$source_text eq $alt and $alt =~ s/SYSTEMD/ELOGIND/msgx;            ## Try uppercase alternative
-		$source_text eq $alt and $alt =~ s/systemd/elogind/misgx;           ## Try caseless alternative
+		$source_text eq $alt and $alt =~ s/systemd[-_]stable/elogind/msgx; ## Try the stable alternative
+		$source_text eq $alt and $alt =~ s/systemd/elogind/msgx; ## Try plain alternative
+		$source_text eq $alt and $alt =~ s/SYSTEMD/ELOGIND/msgx; ## Try uppercase alternative
+		$source_text eq $alt and $alt =~ s/systemd/elogind/misgx; ## Try caseless alternative
 
 		# If we are in a man page, systemd is placed in volume 1, while elogind is placed in volume 8
 		$source_text ne $alt and $alt =~ s/<manvolnum>1<\/manvolnum>/<manvolnum>8<\/manvolnum>/msgx;
@@ -889,8 +892,8 @@ sub change_find_alt_text {
 	# 4) 'systemctl' => 'loginctl'
 	if ( $KIND_SYSTEMCTL == $source_kind ) {
 		$alt =~ s/systemctl/loginctl/msgx;
-		$source_text eq $alt and $alt =~ s/SYSTEMCTL/LOGINCTL/msgx;         ## Try uppercase alternative
-		$source_text eq $alt and $alt =~ s/systemctl/loginctl/misgx;        ## Try caseless alternative
+		$source_text eq $alt and $alt =~ s/SYSTEMCTL/LOGINCTL/msgx; ## Try uppercase alternative
+		$source_text eq $alt and $alt =~ s/systemctl/loginctl/misgx; ## Try caseless alternative
 	}
 
 	# In some meson files, we need the variable "systemd_headers".
@@ -919,8 +922,8 @@ sub change_find_and_set_partner {
 	my ( $pChanges, $change ) = @_;
 	my $lines_ref    = $pChanges->{'lines'};
 	my $max_idx      = $change->{'line'};
-	my $partner      = $change->{'partner'};  ## The last partner found
-	my $prev_partner = undef;                 ## The previous partner found
+	my $partner      = $change->{'partner'}; ## The last partner found
+	my $prev_partner = undef; ## The previous partner found
 
 	log_debug( ' => Searching Partner for line %d', $max_idx + 1 );
 	( defined $partner ) and log_debug( '    Current partner at line %d', $partner->{'line'} + 1 );
@@ -941,7 +944,7 @@ sub change_find_and_set_partner {
 	} ## end for my $i ( 0 .. $#{$lines_ref...})
 
 	# At this point we have zero, one or two+ partners. The first two are easy.
-	( defined $partner ) or return 1;              ## Nothing to do
+	( defined $partner ) or return 1; ## Nothing to do
 
 	log_debug( '    | Found Partner at line %d', $partner->{'line'} + 1 );
 
@@ -1024,14 +1027,14 @@ sub change_handle_additions {
 		( defined $partner ) or log_error( "Fatal: Line %d '%s' has no partner!", $change->{'line'}, $change->{'text'} ) and croak('Cannot continue!');
 
 		# We only handle forward additions, so the line number of the addition must be greater than that of the removal
-		( $change->{'line'} > $partner->{'line'} ) or next;  ## change_handle_removals() takes care of forward removals.
+		( $change->{'line'} > $partner->{'line'} ) or next; ## change_handle_removals() takes care of forward removals.
 
 		# If they are direct renames, undo them if they go from elogind to systemd, but accept if it is the other way round
 		if ( $change->{'line'} == ( $partner->{'line'} + 1 ) ) {
 			( $TRUE == $change->{'systemd'} ) and change_undo( $partner, $change, $i );
 
 			# No change for the other way around, just mark as done
-			change_mark_as_done($change);  ## Also marks the partner
+			change_mark_as_done($change); ## Also marks the partner
 			next;
 		} ## end if ( $change->{'line'}...)
 
@@ -1046,8 +1049,8 @@ sub change_handle_additions {
 			next;
 		} ## end if ( ( $partner->{'masked'...}))
 
-		# In all other cases we allow the move, but reverse the text change if it is elogind->systemd
-		( $TRUE == $change->{'systemd'} ) and change_use_alt($change);
+		# In all other cases we allow the move, but reverse the text change if it is elogind->systemd and not a protected text
+		change_is_protected_text( $change->{'text'}, $change->{'iscomment'} ) or ( $TRUE == $change->{'systemd'} ) and change_use_alt($change);
 		change_mark_as_done($change);
 	} ## end for my $i ( 0 .. $#{$lines_ref...})
 
@@ -1062,7 +1065,7 @@ sub change_handle_false_positives {
 		# change is now a reference into $pChange, explicitly at
 		#    $pChanges->{string}{'texts'}{'changes'}[no]
 		# and has write-back capabilities.
-		( $FALSE == $change->{'done'} ) and ( $TYPE_ADDITION == $change->{'type'} ) or next;  ## Already handled or not an addition
+		( $FALSE == $change->{'done'} ) and ( $TYPE_ADDITION == $change->{'type'} ) or next; ## Already handled or not an addition
 		my $text = $change->{'text'};
 
 		log_change( 'Checking Change Against Reserved Expressions', $change,              0 );
@@ -1089,13 +1092,6 @@ sub change_handle_false_positives {
 
 		# 2) Several words/paths/phrases are protected
 		change_is_protected_text( $text, $change->{'iscomment'} ) and change_mark_as_done($change) and next;
-
-		# 3) References to systemd-homed and other tools not shipped by elogind
-		#    must not be changed either, or users might think elogind has its
-		#    own replacements.
-		my $systemd_daemons  = qq{home|import|journal|network|oom|passwor|udev};
-		my $systemd_products = qq{analyze|creds|cryptsetup|export|firstboot|fsck|home|import-fs|nspawn|repart|syscfg|sysusers|tmpfiles|vmspawn|devel\/};
-		( ( $text =~ m/systemd[-_]($systemd_daemons)d/msx ) || ( $text =~ m/systemd[-_]($systemd_products)/msx ) ) and change_mark_as_done($change) and next;
 
 		# Also the gettext domain is always "systemd", and varlink works via io.systemd domain.
 		( ( $text =~ m/gettext-domain="systemd/msx ) || ( $text =~ m/io[.]systemd/msx ) ) and change_mark_as_done($change) and next;
@@ -1126,14 +1122,14 @@ sub change_handle_removals {
 		( defined $partner ) or log_error( "Fatal: Line %d '%s' has no partner!", $change->{'line'} + 1, $change->{'text'} ) and croak('Cannot continue!');
 
 		# We only handle forward removals, so the line number of the removal must be greater than that of the addition
-		( $change->{'line'} > $partner->{'line'} ) or next;  ## change_handle_additions() takes care of forward additions.
+		( $change->{'line'} > $partner->{'line'} ) or next; ## change_handle_additions() takes care of forward additions.
 
 		# If they are direct renames, undo them if they go from elogind to systemd, but accept if it is the other way round
 		if ( $change->{'line'} == ( $partner->{'line'} + 1 ) ) {
 			( $TRUE == $change->{'elogind'} ) and change_undo( $change, $partner, $i );
 
 			# No change for the other way around, just mark as done
-			change_mark_as_done($change);  ## Also marks the partner
+			change_mark_as_done($change); ## Also marks the partner
 			next;
 		} ## end if ( $change->{'line'}...)
 
@@ -1149,9 +1145,9 @@ sub change_handle_removals {
 			next;
 		} ## end if ( ( ( $FALSE == $partner...)))
 
-		# In all other cases we allow the move, but reverse the text change if it is elogind->systemd
-		( $TRUE == $change->{'elogind'} ) and change_use_alt($partner);
-		change_mark_as_done($change);                                # Also marks the partner
+		# In all other cases we allow the move, but reverse the text change if it is elogind->systemd and the partner is not protected
+		change_is_protected_text( $partner->{'text'}, $partner->{'iscomment'} ) or ( $TRUE == $change->{'elogind'} ) and change_use_alt($partner);
+		change_mark_as_done($change); ## Also marks the partner
 	} ## end for my $i ( 0 .. $#{$lines_ref...})
 
 	return 1;
@@ -1160,26 +1156,41 @@ sub change_handle_removals {
 sub change_is_protected_text {
 	my ( $text, $is_commented ) = @_;
 
+	log_debug( "Checking whether '%s' is protected", $text );
+
 	# 1) /run/systemd/ must not be changed, as other applications
 	#    rely on that naming.
 	# Note: The /run/elogind.pid file is not touched by that, as
 	#       systemd does not have something like that.
-	$text =~ m/\/run\/systemd/msx and log_debug( "     => Protected \"%s\"", $text ) and return 1;
+	$text =~ m/\/run\/systemd/msx and log_debug( "     => Protected \"%s\"", 'run/systemd' ) and return 1;
 
 	# 2) Several systemd website urls must not be changed, too
 	for my $pat ( keys %SYSTEMD_URLS ) {
-		$text =~ m/$pat/msx and log_debug( "     => Protected \"%s\"", $text ) and return 1;
+		$text =~ m/$pat/msx and log_debug( "     => Protected \"%s\"", 'systemd URL' ) and return 1;
 	}
 
 	# 3) To be a dropin-replacement, we also need to not change any org[./]freedesktop[./]systemd strings
-	$text =~ m/\/?org[.\/]freedesktop[.\/]systemd/msx and log_debug( "     => Protected \"%s\"", $text ) and return 1;
+	$text =~ m/\/?org[.\/]freedesktop[.\/]systemd/msx and log_debug( "     => Protected \"%s\"", 'freedesktop/systemd' ) and return 1;
 
 	# 4) Do not replace referrals to systemd[1]
-	$text =~ m/systemd\[1\]/msx and log_debug( "     => Protected \"%s\"", $text ) and return 1;
+	$text =~ m/systemd\[1\]/msx and log_debug( "     => Protected \"%s\"", 'man systemd' ) and return 1;
 
 	# 5) Specific systemd services that might be mentioned in comments that are not masked:
 	my $systemd_services = qq{user-sessions|logind};
-	( $is_commented > 0 ) and ( ( $text =~ m/systemd[-_]($systemd_services)[${DOT}]service/msx ) ) and return 1;
+	            ( $is_commented > 0 )
+	        and ( ( $text =~ m/systemd[-_]($systemd_services)[${DOT}]service/msx ) )
+	        and log_debug( "     => Protected \"%s\"", 'systemd service' )
+	        and return 1;
+
+	# 6) References to systemd-homed and other tools not shipped by elogind
+	#    must not be changed either, or users might think elogind has its
+	#    own replacements.
+	my $systemd_daemon  = qq{home|import|journal|network|oom|passwor|udev};
+	my $systemd_keyword = qq{NR_[\{]|devel[/]};
+	my $systemd_product = qq{analyze|creds|cryptsetup|export|firstboot|fsck|home|import-fs|nspawn|repart|syscfg|sysusers|tmpfiles|vmspawn};
+	( $text =~ m/systemd[-_]($systemd_daemon)d/msx ) and log_debug( "     => Protected \"%s\"", 'systemd daemons' ) and return 1;
+	( $text =~ m/systemd[-_]($systemd_keyword)/msx ) and log_debug( "     => Protected \"%s\"", 'systemd keyword' ) and return 1;
+	( $text =~ m/systemd[-_]($systemd_product)/msx ) and log_debug( "     => Protected \"%s\"", 'systemd product' ) and return 1;
 
 	return 0;
 } ## end sub change_is_protected_text
@@ -1195,8 +1206,8 @@ sub change_map_hunk_lines {
 		#    $pChanges->{string}{'texts'}{'changes'}[no]
 		# and has write-back capabilities.
 		log_change( 'Scanning Additions ; Considering Change', $change, 0 );
-		( $FALSE == $change->{'done'} ) and ( $TYPE_ADDITION == $change->{'type'} ) or next;  ## Already handled or not an addition
-		( 1 == $change->{'systemd'} )                                               or next;  ## only systemd additions are relevant
+		( $FALSE == $change->{'done'} ) and ( $TYPE_ADDITION == $change->{'type'} ) or next; ## Already handled or not an addition
+		( 1 == $change->{'systemd'} ) or next; ## only systemd additions are relevant
 		change_find_and_set_partner( $pChanges, $change );
 		log_change( 'Scanning Additions ; Change Mapped', $change,              0 );
 		log_change( '--- ==> Partner : ---',              $change->{'partner'}, 1 );
@@ -1208,8 +1219,8 @@ sub change_map_hunk_lines {
 	# -----------------------------------------------------------------------------------------------------------------
 	foreach my $change ( grep { defined $_ } @{ $pChanges->{'lines'} } ) {
 		log_change( 'Scanning Removals ; Considering Change', $change, 0 );
-		( $FALSE == $change->{'done'} ) and ( $TYPE_REMOVAL == $change->{'type'} ) or next;  ## Already handled or not a removal
-		( 1 == $change->{'elogind'} )                                              or next;  ## only elogind removals are relevant
+		( $FALSE == $change->{'done'} ) and ( $TYPE_REMOVAL == $change->{'type'} ) or next; ## Already handled or not a removal
+		( 1 == $change->{'elogind'} ) or next; ## only elogind removals are relevant
 		change_find_and_set_partner( $pChanges, $change );
 		log_change( 'Scanning Removals ; Change Mapped', $change,              0 );
 		log_change( '--- ==> Partner : ---',             $change->{'partner'}, 1 );
@@ -1254,7 +1265,7 @@ sub change_move_partner_up {
 
 	# If prev has already a partner, move it up first to make space for ours
 	my $r = ( defined $prev->{'partner'} ) ? change_move_partner_up($prev) : $TRUE;
-	( $TRUE == $r ) or return $FALSE;  ## Followup from running out of prevs above
+	( $TRUE == $r ) or return $FALSE; ## Followup from running out of prevs above
 
 	# Now we can move the partner to prev
 	$prev->{'partner'}    = $partner;
@@ -1356,7 +1367,7 @@ sub check_blanks {
 	log_debug("Checking useful blank additions ...");
 
 	for ( my $i = 0 ; $i < $hHunk->{count} ; ++$i ) {
-		my $line = \$hHunk->{lines}[$i];  ## Shortcut
+		my $line = \$hHunk->{lines}[$i]; ## Shortcut
 
 		# Check for misplaced addition
 		if (       ( $$line =~ m/^[${PLUS}]\s*$/ )
@@ -1402,7 +1413,7 @@ sub check_comments {
 	my $in_comment_block = 0;
 
 	for ( my $i = 0 ; $i < $hHunk->{count} ; ++$i ) {
-		my $line = \$hHunk->{lines}[$i];  ## Shortcut
+		my $line = \$hHunk->{lines}[$i]; ## Shortcut
 
 		# Check for comment block start
 		# -----------------------------
@@ -1465,17 +1476,17 @@ sub check_debug {
 	# #if/#else/#/endif constructs can be put inside both the
 	# debug and the release block.
 	my $regular_ifs   = 0;
-	my $is_debug_func = 0;  ## Special for log_debug_elogind()
+	my $is_debug_func = 0; ## Special for log_debug_elogind()
 
 	for ( my $i = 0 ; $i < $hHunk->{count} ; ++$i ) {
-		my $line = \$hHunk->{lines}[$i];  ## Shortcut
+		my $line = \$hHunk->{lines}[$i]; ## Shortcut
 
 		# entering a debug construct block
 		# ---------------------------------------
 		if ( $$line =~ m/^-[${HASH}]if.+ENABLE_DEBUG_ELOGIND/msx ) {
 			## Note: Here it is perfectly fine to be in an elogind mask or insert block.
-			substr( $$line, 0, 1 ) = " ";  ## Remove '-'
-			$in_insert_block++;            ## Increase instead of setting this to 1.
+			substr( $$line, 0, 1 ) = " "; ## Remove '-'
+			$in_insert_block++; ## Increase instead of setting this to 1.
 			next;
 		} ## end if ( $$line =~ m/^-[${HASH}]if.+ENABLE_DEBUG_ELOGIND/msx)
 
@@ -1485,8 +1496,8 @@ sub check_debug {
 		# Switching to the release variant.
 		# ---------------------------------------
 		if ( ( $$line =~ m/^-[${HASH}]else/msx ) && $in_insert_block && !$regular_ifs ) {
-			substr( $$line, 0, 1 ) = " ";  ## Remove '-'
-			$in_else_block++;              ## Increase instead of setting this to 1.
+			substr( $$line, 0, 1 ) = " "; ## Remove '-'
+			$in_else_block++; ## Increase instead of setting this to 1.
 			next;
 		}
 
@@ -1495,9 +1506,9 @@ sub check_debug {
 		if ( $$line =~ m/^[${DASH}][${HASH}]endif\s*\/\/\/?.*ENABLE_DEBUG_/msx ) {
 			( !$in_insert_block )
 			        and return hunk_failed("check_debug: #endif // ENABLE_DEBUG_* found outside any debug construct");
-			substr( $$line, 0, 1 ) = " ";  ## Remove '-'
-			$in_insert_block--;            ## Decrease instead of setting to 0. This allows such
-			$in_else_block--;              ## blocks to reside in regular elogind mask/insert blocks.
+			substr( $$line, 0, 1 ) = " "; ## Remove '-'
+			$in_insert_block--; ## Decrease instead of setting to 0. This allows such
+			$in_else_block--; ## blocks to reside in regular elogind mask/insert blocks.
 			next;
 		} ## end if ( $$line =~ m/^[${DASH}][${HASH}]endif\s*\/\/\/?.*ENABLE_DEBUG_/msx)
 
@@ -1508,7 +1519,7 @@ sub check_debug {
 		# Check for log_debug_elogind()
 		# ---------------------------------------
 		if ( $$line =~ m/^-.*log_debug_elogind\s*\(/msx ) {
-			substr( $$line, 0, 1 ) = " ";  ## Remove '-'
+			substr( $$line, 0, 1 ) = " "; ## Remove '-'
 			$$line =~ m/\)\s*;/ or ++$is_debug_func;
 			next;
 		}
@@ -1516,8 +1527,9 @@ sub check_debug {
 		# Remove '-' prefixes in all lines within the debug construct block
 		# -------------------------------------------------------------------
 		if ( ( $$line =~ m,^[${DASH}], ) && ( $in_insert_block || $is_debug_func ) ) {
-			substr( $$line, 0, 1 ) = " ";  ## Remove '-'
-			                               # Note: Everything in *any* insert block must not be removed anyway.
+			substr( $$line, 0, 1 ) = " "; ## Remove '-'
+
+			# Note: Everything in *any* insert block must not be removed anyway.
 		}
 
 		# Check for the end of a multiline log_debug_elogind() call
@@ -1551,12 +1563,12 @@ sub check_func_removes {
 	my $is_func_call = 0;
 
 	for ( my $i = 0 ; $i < $hHunk->{count} ; ++$i ) {
-		my $line = \$hHunk->{lines}[$i];  ## Shortcut
+		my $line = \$hHunk->{lines}[$i]; ## Shortcut
 
 		# Check for elogind_*() call
 		# -------------------------------------------------------------------
 		if ( $$line =~ m/^[${DASH}].*elogind_\S+\s*\(/msx ) {
-			( defined $hProtected{$$line} ) or substr( $$line, 0, 1 ) = " ";  ## Remove '-'
+			( defined $hProtected{$$line} ) or substr( $$line, 0, 1 ) = " "; ## Remove '-'
 			$$line =~ m/\)\s*;/ or ++$is_func_call;
 			next;
 		}
@@ -1564,7 +1576,7 @@ sub check_func_removes {
 		# Remove '-' prefixes in all lines that belong to an elogind_*() call
 		# -------------------------------------------------------------------
 		if ( ( $$line =~ m,^[${DASH}], ) && $is_func_call && !( defined $hProtected{$$line} ) ) {
-			substr( $$line, 0, 1 ) = " ";  ## Remove '-'
+			substr( $$line, 0, 1 ) = " "; ## Remove '-'
 		}
 
 		# Check for the end of a multiline elogind_*() call
@@ -1610,7 +1622,7 @@ sub check_empty_masks {
 	my $mask_message = "";
 
 	for ( my $i = 0 ; $i < $hHunk->{count} ; ++$i ) {
-		my $line = \$hHunk->{lines}[$i];  ## Shortcut
+		my $line = \$hHunk->{lines}[$i]; ## Shortcut
 
 		# entering an elogind mask
 		# ---------------------------------------
@@ -1663,7 +1675,7 @@ sub check_empty_masks {
 
 				$hHunk->{count} += 2;
 				$need_endif_conversion = 1;
-				$i += 2;  ## Already known...
+				$i += 2; ## Already known...
 			} ## end if ( $i && ( $i == ( $mask_block_start...)))
 
 			$mask_block_start = -1;
@@ -1700,7 +1712,7 @@ sub check_empty_masks {
 					splice( @{ $hHunk->{lines} }, $i + 1, 0, ("+#endif // 1") );
 
 					$hHunk->{count} += 1;
-					$i += 1;               ## Already known...
+					$i += 1; ## Already known...
 				} ## end elsif ( $need_endif_conversion...)
 			} ## end if ( $i < ( $hHunk->{count...}))
 
@@ -1771,12 +1783,12 @@ sub check_includes {
 	my %undos = ();
 
 	for ( my $i = 0 ; $i < $hHunk->{count} ; ++$i ) {
-		my $line = \$hHunk->{lines}[$i];  ## Shortcut
+		my $line = \$hHunk->{lines}[$i]; ## Shortcut
 
 		# === Ruleset 1 : Handling of removals of includes we commented out ===
 		# =====================================================================
 		if ( $$line =~ m/^[${DASH}]\s*\/[\/*]+\s*[${HASH}]include\s+([<"'])([^>"']+)([>"'])/msx ) {
-			$hIncs{$2}{applied} and next;  ## No double handling
+			$hIncs{$2}{applied} and next; ## No double handling
 
 			log_debug( 'Checking remove commented at % 3d: %s%s%s', $i + 1, $1, $2, $3 );
 
@@ -1787,8 +1799,8 @@ sub check_includes {
 			        or return hunk_failed("check_includes: Unrecorded removal found!");
 
 			# a) Check for removals of obsolete includes.
-			$hIncs{$inc}{elogind}{hunkid} > -1            ## If no insert was found, then the include was
-			        or $hIncs{$inc}{insert}{hunkid} > -1  ## removed by systemd devs for good.
+			$hIncs{$inc}{elogind}{hunkid} > -1 ## If no insert was found, then the include was
+			        or $hIncs{$inc}{insert}{hunkid} > -1 ## removed by systemd devs for good.
 			        or ( ++$hIncs{$inc}{applied} and next );
 
 			# b) Check for a simple undo of our commenting out
@@ -1845,7 +1857,7 @@ sub check_includes {
 		# === Ruleset 2 : Handling of insertions, not handled by 1          ===
 		# =====================================================================
 		if ( $$line =~ m/^[${PLUS}]\s*[${HASH}]include\s+([<"'])([^>"']+)([>"'])/msx ) {
-			$hIncs{$2}{applied} and next;  ## No double handling
+			$hIncs{$2}{applied} and next; ## No double handling
 
 			log_debug( 'Checking adding new       at % 3d: %s%s%s', $i + 1, $1, $2, $3 );
 
@@ -1864,7 +1876,7 @@ sub check_includes {
 		if ( $in_elogind_block
 			&& ( $$line =~ m/^[${DASH}]\s*[${HASH}]include\s+([<"'])([^>"']+)([>"'])/msx ) )
 		{
-			$hIncs{$2}{applied} and next;  ## No double handling
+			$hIncs{$2}{applied} and next; ## No double handling
 
 			log_debug( 'Checking remove elogind   at % 3d: %s%s%s', $i + 1, $1, $2, $3 );
 
@@ -1991,7 +2003,7 @@ sub check_masks {
 	$hHunk->{masked_start} = $in_mask_block && !$in_else_block ? 1 : 0;
 
 	for ( my $i = 0 ; $i < $hHunk->{count} ; ++$i ) {
-		my $line = \$hHunk->{lines}[$i];  ## Shortcut
+		my $line = \$hHunk->{lines}[$i]; ## Shortcut
 
 		# entering an elogind mask
 		# ---------------------------------------
@@ -1999,7 +2011,7 @@ sub check_masks {
 			$in_mask_block and return hunk_failed("check_masks: Mask start found while being in a mask block!");
 			$in_insert_block
 			        and return hunk_failed("check_masks: Mask start found while being in an insert block!");
-			substr( $$line, 0, 1 ) = " ";  ## Remove '-'
+			substr( $$line, 0, 1 ) = " "; ## Remove '-'
 			$in_insert_block  = 0;
 			$in_mask_block    = 1;
 			$mask_block_start = $i;
@@ -2021,7 +2033,7 @@ sub check_masks {
 		if ( is_insert_start($$line) ) {
 			$in_mask_block   and return hunk_failed("check_masks: Insert start found while being in a mask block!");
 			$in_insert_block and return hunk_failed("check_masks: Insert start found while being in an insert block!");
-			substr( $$line, 0, 1 ) = " ";  ## Remove '-'
+			substr( $$line, 0, 1 ) = " "; ## Remove '-'
 			$in_insert_block  = 1;
 			$in_mask_block    = 0;
 			$mask_block_start = -1;
@@ -2048,7 +2060,7 @@ sub check_masks {
 			$in_mask_block
 			        or return hunk_failed("check_masks: Mask else found outside any mask block!");
 
-			substr( $$line, 0, 1 ) = " ";  ## Remove '-'
+			substr( $$line, 0, 1 ) = " "; ## Remove '-'
 			$in_else_block = 1;
 			$move_to_line  = $i;
 			next;
@@ -2058,7 +2070,7 @@ sub check_masks {
 		# ---------------------------------------
 		if ( is_mask_end($$line) ) {
 			$in_mask_block or return hunk_failed("check_masks: #endif // 0 found outside any mask block");
-			substr( $$line, 0, 1 ) = " ";  ## Remove '-'
+			substr( $$line, 0, 1 ) = " "; ## Remove '-'
 			$in_mask_block    = 0;
 			$in_else_block    = 0;
 			$mask_block_start = -1;
@@ -2070,7 +2082,7 @@ sub check_masks {
 		# ---------------------------------------
 		if ( is_insert_end($$line) ) {
 			$in_insert_block or return hunk_failed("check_masks: #endif // 1 found outside any insert block");
-			substr( $$line, 0, 1 ) = " ";  ## Remove '-'
+			substr( $$line, 0, 1 ) = " "; ## Remove '-'
 			$in_insert_block  = 0;
 			$mask_block_start = -1;
 			$mask_end_line    = $i;
@@ -2087,7 +2099,7 @@ sub check_masks {
 			# Remove '-' prefixes in all lines within insert and mask-else blocks
 			# -------------------------------------------------------------------
 			if ( $$line =~ m,^[${DASH}], ) {
-				substr( $$line, 0, 1 ) = " ";  ## Remove '-'
+				substr( $$line, 0, 1 ) = " "; ## Remove '-'
 			}
 
 			# Special check for additions/keepers that might (will!) wreak havoc:
@@ -2108,16 +2120,16 @@ sub check_masks {
 				# Case 1 ; The keeper: Copy the offending line back above the else/insert
 				# -----------------------------------------------------------------------
 				if ( $$line =~ m,^ , ) {
-					substr( $cpy_line, 0, 1 ) = "+";  ## Above, this is an addition.
+					substr( $cpy_line, 0, 1 ) = "+"; ## Above, this is an addition.
 					splice( @{ $hHunk->{lines} }, $move_to_line++, 0, $cpy_line );
 					$hHunk->{count} += 1;
-					$i++;                             ## We have to advance i, or the next iteration puts as back here.
+					$i++; ## We have to advance i, or the next iteration puts as back here.
 				} ## end if ( $$line =~ m,^ , )
 
 				# Case 2 ; The addition: move the offending line back above the else/insert
 				# -----------------------------------------------------------------------
 				else {
-					splice( @{ $hHunk->{lines} }, $i, 1 );  ## Order matters here.
+					splice( @{ $hHunk->{lines} }, $i, 1 ); ## Order matters here.
 					splice( @{ $hHunk->{lines} }, $move_to_line++, 0, $cpy_line );
 
 					# Note: No change to $hHunk->{count} here, as the lines are moved.
@@ -2140,7 +2152,7 @@ sub check_masks {
 		if ( 0 == $in_mask_block ) {
 			if ( ( $move_to_line > -1 ) && ( $$line =~ m,^[${PLUS}], ) ) {
 				my $cpy_line = $$line;
-				splice( @{ $hHunk->{lines} }, $i, 1 );  ## Order matters here.
+				splice( @{ $hHunk->{lines} }, $i, 1 ); ## Order matters here.
 				splice( @{ $hHunk->{lines} }, $move_to_line++, 0, $cpy_line );
 
 				# Note: Again no change to $hHunk->{count} here, as the lines are moved.
@@ -2192,7 +2204,7 @@ sub check_musl {
 	$hHunk->{masked_start} and $in_mask_block = 1 or $in_mask_block = 0;
 
 	for ( my $i = 0 ; $i < $hHunk->{count} ; ++$i ) {
-		my $line = \$hHunk->{lines}[$i];  ## Shortcut
+		my $line = \$hHunk->{lines}[$i]; ## Shortcut
 
 		# The increment/decrement variant can cause negative values:
 		$in_mask_block < 0 and $in_mask_block = 0;
@@ -2211,7 +2223,7 @@ sub check_musl {
 		# ---------------------------------------
 		if ( $$line =~ m/^-[${HASH}]if(?:def|\s+defined).+__GLIBC__/msx ) {
 			## Note: Here it is perfectly fine to be in an elogind mask block.
-			substr( $$line, 0, 1 ) = " ";  ## Remove '-'
+			substr( $$line, 0, 1 ) = " "; ## Remove '-'
 			$in_glibc_block = 1;
 			next;
 		} ## end if ( $$line =~ m/^-[${HASH}]if(?:def|\s+defined).+__GLIBC__/msx)
@@ -2219,7 +2231,7 @@ sub check_musl {
 		# entering a __GLIBC__ block as insert
 		# ---------------------------------------
 		if ( $$line =~ m/^-[${HASH}]if(?:ndef|\s+!defined).+__GLIBC__/msx ) {
-			substr( $$line, 0, 1 ) = " ";  ## Remove '-'
+			substr( $$line, 0, 1 ) = " "; ## Remove '-'
 			$in_glibc_block = 1;
 			$in_else_block++;
 			next;
@@ -2241,7 +2253,7 @@ sub check_musl {
 		if ( $$line =~ m/^[${DASH}][${HASH}]endif\s*\/\/\/?.*__GLIBC__/msx ) {
 			( !$in_glibc_block )
 			        and return hunk_failed("check_musl: #endif // __GLIBC__ found outside any __GLIBC__ block");
-			substr( $$line, 0, 1 ) = " ";  ## Remove '-'
+			substr( $$line, 0, 1 ) = " "; ## Remove '-'
 			$in_glibc_block = 0;
 			$in_else_block--;
 			next;
@@ -2256,7 +2268,7 @@ sub check_musl {
 			&& ( $in_glibc_block > 0 )
 			&& ( $in_else_block > $in_mask_block ) )
 		{
-			substr( $$line, 0, 1 ) = " ";  ## Remove '-'
+			substr( $$line, 0, 1 ) = " "; ## Remove '-'
 		} ## end if ( ( $$line =~ m,^[${DASH}],...))
 	} ## end for ( my $i = 0 ; $i < ...)
 
@@ -2314,7 +2326,7 @@ sub check_name_reverts {
 	$in_else_block = 0;
 
 	for ( my $i = 0 ; $i < $hHunk->{count} ; ++$i ) {
-		my $line_p = \$hHunk->{lines}[$i];  ## Shortcut
+		my $line_p = \$hHunk->{lines}[$i]; ## Shortcut
 		defined($$line_p)
 		        or return hunk_failed( "check_name_reverts: Line " . ( $i + 1 ) . "/$hHunk->{count} is undef?" );
 
@@ -2406,7 +2418,7 @@ sub check_stdc_version {
 	my $line_rep_num = -1;
 	my $line_rep_str = $EMPTY;
 	for ( my $i = 0 ; $i < $hHunk->{count} ; ++$i ) {
-		my $line = \$hHunk->{lines}[$i];  ## Shortcut
+		my $line = \$hHunk->{lines}[$i]; ## Shortcut
 
 		# The increment/decrement variant can cause negative values:
 		$in_mask_block < 0 and $in_mask_block = 0;
@@ -2489,7 +2501,7 @@ sub check_sym_lines {
 	my %hAddMap = ();
 
 	for ( my $i = 0 ; $i < $hHunk->{count} ; ++$i ) {
-		my $line = \$hHunk->{lines}[$i];  ## Shortcut
+		my $line = \$hHunk->{lines}[$i]; ## Shortcut
 
 		defined($$line)
 		        or return hunk_failed( "check_sym_files: Line " . ( $i + 1 ) . "/$hHunk->{count} is undef?" );
@@ -2558,12 +2570,12 @@ sub check_useless {
 
 	# Now go through the line and find out what is to be done
 	for ( my $i = 0 ; $i < $hHunk->{count} ; ++$i ) {
-		my $line = \$hHunk->{lines}[$i];  ## Shortcut
+		my $line = \$hHunk->{lines}[$i]; ## Shortcut
 
 		# --- (1) Note down removal ---
 		if ( $$line =~ m/^-(.*)$/ ) {
 			my $token = $1 || "";
-			$token =~ s/\s+$//;       ## No trailing whitespace/lines!
+			$token =~ s/\s+$//; ## No trailing whitespace/lines!
 			$r_start > -1 or $r_start = $i;
 			length($token) and $hRemovals{$token} = $i
 			        or $hRemovals{ "empty" . $i } = $i;
@@ -2573,7 +2585,7 @@ sub check_useless {
 		# --- (2) Check Addition ---
 		if ( $$line =~ m/^[${PLUS}](.*)$/ ) {
 			my $token = $1 || "";
-			$token =~ s/\s+$//;       ## No trailing whitespace/lines!
+			$token =~ s/\s+$//; ## No trailing whitespace/lines!
 			$r_offset > -1 or $r_offset = $i - $r_start;
 			if (       ( length($token) && ( defined( $hRemovals{$token} ) && ( $hRemovals{$token} + $r_offset ) == $i ) )
 				|| ( !length($token) && ( defined( $hRemovals{ "empty" . ( $i - $r_offset ) } ) ) ) )
@@ -2807,7 +2819,7 @@ sub generate_file_list {
 
 		# Files with systemd<->elogind alternatives might not be there
 		-f "$xFile" or $hWanted{$xFile} = 2;
-		$hWanted{$xFile} == 2 and next;  ## Already handled or unavailable
+		$hWanted{$xFile} == 2 and next; ## Already handled or unavailable
 		find( \&wanted, "$xFile" );
 	} ## end for my $xFile ( keys %hWanted)
 
@@ -3089,7 +3101,7 @@ sub is_mask_start {
 			&& !( $line =~ m/-->\s*$/msx ) )
 		|| ( ( $line =~ m,/\*\*\s+0.+elogind,msx )
 			&& !( $line =~ m,\*\*/\s*$,msx ) )
-	        )
+	   )
 	{
 		return 1;
 	} ## end if ( ( $line =~ m/^[-${SPACE}]?[${HASH}]if\s+0.+elogind/msx...))
@@ -3112,8 +3124,8 @@ sub logMsg {
 	# possible formatting strings are ignored, as the string might come from an error
 	# handler.
 	if ( 0 == scalar @args ) {
-		@args = ($fmt);  ## Make the fixed string the first (and only) argument
-		$fmt  = '%s';    ## And print it "as-is".
+		@args = ($fmt); ## Make the fixed string the first (and only) argument
+		$fmt = '%s'; ## And print it "as-is".
 	}
 
 	my $stTime  = get_time_now();
@@ -3165,14 +3177,14 @@ sub log_change {
 		'        Line: %d (%s)',
 		$change->{'line'} + 1,
 		$change->{'done'} == $TRUE ? 'DONE' : $change->{'done'} == $FALSE ? 'Not handled, yet' : 'UNKNOWN STATE !!!'
-	);
+	      );
 	logMsg( $LOG_DEBUG, '        Text: %s', ( substr $change->{'text'}, 0, 77 ) . '...' );
 	logMsg(
 		$LOG_DEBUG,
 		'        Type: %s / %s',
 		$change->{'type'} == $TYPE_ADDITION ? 'Addition' : $change->{'type'} == $TYPE_REMOVAL ? 'Removal' : 'NEUTRAL !!!',
 		$change->{'elogind'}                ? 'elogind'  : $change->{systemd}                 ? 'systemd' : 'UNKNOWN !!!'
-	);
+	      );
 	logMsg( $LOG_DEBUG, ' inside Mask: %s / in Comment: %s', $change->{'masked'} ? 'Yes' : 'No', $change->{'iscomment'} ? 'Yes' : 'No' );
 	( $change->{'spliceme'} > 0 ) and logMsg( $LOG_DEBUG, '      Splice: %d', $change->{'spliceme'} );
 	( $is_partner > 0 ) and logMsg( $LOG_DEBUG, ' <--------' );
@@ -3373,7 +3385,7 @@ sub protect_config() {
 
 	my $is_sleep_block = 0;
 	for ( my $i = 0 ; $i < $hHunk->{count} ; ++$i ) {
-		my $line = \$hHunk->{lines}[$i];  ## Shortcut
+		my $line = \$hHunk->{lines}[$i]; ## Shortcut
 
 		# Kill addition of lines we do not need
 		# ---------------------------------------
@@ -3386,7 +3398,7 @@ sub protect_config() {
 		# enter elogind specific [Sleep] block
 		# ------------------------------------------
 		if ( $$line =~ m,^\-\[Sleep\], ) {
-			substr( $$line, 0, 1 ) = " ";  ## Remove '-'
+			substr( $$line, 0, 1 ) = " "; ## Remove '-'
 
 			# The previous line is probably the deletion of the blank line before the block
 			( $i > 0 ) and ( $hHunk->{lines}[ $i - 1 ] =~ /^-/ ) and $hHunk->{lines}[ $i - 1 ] = " ";
@@ -3398,7 +3410,7 @@ sub protect_config() {
 		# Remove deletions of lines in our [Sleep] block
 		$is_sleep_block
 		        and ( $$line =~ m,^[${DASH}], )
-		        and substr( $$line, 0, 1 ) = " "  ## Remove '-'
+		        and substr( $$line, 0, 1 ) = " " ## Remove '-'
 		        and next;
 
 		# No sleep block
@@ -3424,10 +3436,10 @@ sub prune_hunk() {
 	my @mask_info = ( $hHunk->{masked_start} );
 	my $prefix    = 0;
 	my $postfix   = 0;
-	my $changed   = 0;                          ## Set to 1 once the first change was found.
+	my $changed   = 0; ## Set to 1 once the first change was found.
 
 	for ( my $i = 0 ; $i < $hHunk->{count} ; ++$i ) {
-		my $line = $hHunk->{lines}[$i];     ## Shortcut
+		my $line = $hHunk->{lines}[$i]; ## Shortcut
 		if ( $line =~ m/^[-+]/ ) {
 			$changed = 1;
 			$postfix = 0;
@@ -3571,8 +3583,8 @@ sub unprepare_shell {
 	for my $line (@lIn) {
 		if ( $line =~ m/[${HASH}]\s+masked_(?:start|end)\s+([01])$/msx ) {
 			$1        and $is_block = 1 or $is_block = 0;
-			$is_block and $is_else  = 0;                  ## can't be.
-			next;                                         ## do not transport this line
+			$is_block and $is_else  = 0; ## can't be.
+			next; ## do not transport this line
 		}
 		is_mask_end($line)   and $is_block = 0;
 		is_mask_start($line) and $is_block = 1;
@@ -3675,8 +3687,8 @@ sub unprepare_xml {
 	for my $line (@lIn) {
 		if ( $line =~ m/[${HASH}]\s+masked_(?:start|end)\s+([01])$/msx ) {
 			$1        and $is_block = 1 or $is_block = 0;
-			$is_block and $is_else  = 0;                  ## can't be.
-			next;                                         ## do not transport this line
+			$is_block and $is_else  = 0; ## can't be.
+			next; ## do not transport this line
 		}
 		is_mask_end($line)   and $is_block = 0;
 		is_mask_start($line) and $is_block = 1;
@@ -3711,7 +3723,7 @@ sub read_includes {
 	# We must know when "needed by elogind blocks" start
 	my $in_elogind_block = 0;
 	for ( my $i = 0 ; $i < $hHunk->{count} ; ++$i ) {
-		my $line = \$hHunk->{lines}[$i];  ## Shortcut
+		my $line = \$hHunk->{lines}[$i]; ## Shortcut
 
 		# Note down removals of includes we commented out
 		if ( $$line =~ m/^[${DASH}]\s*\/[\/*]+\s*[${HASH}]include\s+([<"'])([^>"']+)([>"'])/msx ) {
@@ -3786,7 +3798,7 @@ sub show_progress {
 	if ( 0 < $log_as_status ) {
 
 		# Write into log file
-		$have_progress_msg = 0;  ## ( We already deleted the line above, leaving it at 1 would add a useless empty line. )
+		$have_progress_msg = 0; ## ( We already deleted the line above, leaving it at 1 would add a useless empty line. )
 		log_status( '%s', $progress_str );
 	} else {
 
@@ -3886,7 +3898,7 @@ sub wanted {
 	-f $_
 	        and ( ( 0 == $have_wanted ) or defined( $hWanted{$f} ) )
 	        and ( !( $_                =~ m/\.pwx$/ ) )
-	        and ( !( $File::Find::name =~ m,man/rules/, ) )  ## Protect generated man rules (Issue #3)
+	        and ( !( $File::Find::name =~ m,man/rules/, ) ) ## Protect generated man rules (Issue #3)
 	        and push @source_files, $File::Find::name
 	        and $is_wanted = 1;
 
