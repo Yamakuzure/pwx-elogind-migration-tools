@@ -200,9 +200,8 @@ my @wanted_files    = ();  ## User given file list (if any) to limit generate_fi
 # ================================================================
 # ===        ==> ------- MAIN DATA STRUCTURES ------ <==       ===
 # ================================================================
-my %hFile = ();  ## Main data structure to manage a complete compare of two files. (See: build_hFile() )
 
-# Note: %hFile is used globally for each file that is processed.
+## @brief %hFile is used globally for each file that is processed.
 # The structure is:
 # ( count  : Number of hunks stored
 #   create : Set to 1 if this is a new file to be created, 0 otherwise.
@@ -216,10 +215,9 @@ my %hFile = ();  ## Main data structure to manage a complete compare of two file
 #   source : WORKDIR/<part>
 #   target : UPSTREAM/<part>
 # )
-my $hHunk = {};  ## Secondary data structure to describe one diff hunk.            (See: build_hHunk() )
+my %hFile = ();  ## Main data structure to manage a complete compare of two files. (See: build_hFile() )
 
-# Note: $hHunk is used globally for each Hunk that is processed and points to the
-#       current $hFile{hunks}[] instance.
+## @brief $hHunk is used globally for each Hunk that is processed and points to the current $hFile{hunks}[] instance.
 # The structure is:
 # { count        : Number of lines in {lines}
 #   idx          : Index of this hunk in %hFile{hunks}
@@ -230,9 +228,9 @@ my $hHunk = {};  ## Secondary data structure to describe one diff hunk.         
 #   tgt_start    : line number this hunk becomes in the target file.
 #   useful       : 1 if the hunk is transported, 0 if it is to be omitted.
 # }
-my %hIncs = ();  ## Hash for remembered includes over different hunks.
+my $hHunk = {};  ## Secondary data structure to describe one diff hunk.            (See: build_hHunk() )
 
-# Note: Only counted in the first step, actions are only in the second step.
+## @brief: Only counted in the first step, actions are only in the second step.
 # The structure is:
 # { include => {
 #     applied : Set to 1 once check_includes() has applied any rules on it.
@@ -250,6 +248,8 @@ my %hIncs = ();  ## Hash for remembered includes over different hunks.
 #                 sysinc : Set to 1 if it is <include>, 0 otherwise.
 #     }
 # } }
+my %hIncs = ();  ## Hash for remembered includes over different hunks.
+
 my %hProtected = ();  ## check_name_reverts() notes down lines here, which check_comments() shall not touch
 my @lFails     = ();  ## List of failed hunks. These are worth noting down in an extra structure, as these
 
@@ -1775,10 +1775,12 @@ sub check_includes {
 
 		# === Ruleset 1 : Handling of removals of includes we commented out ===
 		# =====================================================================
-		if ( $$line =~ m/^[${DASH}]\s*\/[\/*]+\s*[${HASH}]include\s+[<"']([^>"']+)[>"']\s*(?:\*\/)?/msx ) {
-			$hIncs{$1}{applied} and next;  ## No double handling
+		if ( $$line =~ m/^[${DASH}]\s*\/[\/*]+\s*[${HASH}]include\s+([<"'])([^>"']+)([>"'])/msx ) {
+			$hIncs{$2}{applied} and next;  ## No double handling
 
-			my $inc = $1;
+			log_debug( 'Checking remove commented at % 3d: %s%s%s', $i + 1, $1, $2, $3 );
+
+			my $inc = $2;
 
 			# Pre: Sanity check:
 			defined( $hIncs{$inc}{remove}{hunkid} ) and $hIncs{$inc}{remove}{hunkid} > -1
@@ -1838,37 +1840,41 @@ sub check_includes {
 
 			$hIncs{$inc}{applied} = 1;
 			next;
-		} ## end if ( $$line =~ m/^[${DASH}]\s*\/[\/*]+\s*[${HASH}]include\s+[<"']([^>"']+)[>"']\s*(?:\*\/)?/msx)
+		} ## end if ( $$line =~ m/^[${DASH}]\s*\/[\/*]+\s*[${HASH}]include\s+([<"'])([^>"']+)([>"'])/msx)
 
 		# === Ruleset 2 : Handling of insertions, not handled by 1          ===
 		# =====================================================================
-		if ( $$line =~ m/^[${PLUS}]\s*[${HASH}]include\s+[<"']([^>"']+)[>"']/msx ) {
-			$hIncs{$1}{applied} and next;  ## No double handling
+		if ( $$line =~ m/^[${PLUS}]\s*[${HASH}]include\s+([<"'])([^>"']+)([>"'])/msx ) {
+			$hIncs{$2}{applied} and next;  ## No double handling
+
+			log_debug( 'Checking adding new       at % 3d: %s%s%s', $i + 1, $1, $2, $3 );
 
 			# Pre: Sanity check:
-			defined( $hIncs{$1}{insert}{hunkid} ) and $hIncs{$1}{insert}{hunkid} > -1
+			defined( $hIncs{$2}{insert}{hunkid} ) and $hIncs{$2}{insert}{hunkid} > -1
 			        or return hunk_failed("check_includes: Unrecorded insertion found!");
 
 			# Nicely enough we are already set here.
-			$hIncs{$1}{applied} = 1;
+			$hIncs{$2}{applied} = 1;
 
 			next;
-		} ## end if ( $$line =~ m/^[${PLUS}]\s*[${HASH}]include\s+[<"']([^>"']+)[>"']/msx)
+		} ## end if ( $$line =~ m/^[${PLUS}]\s*[${HASH}]include\s+([<"'])([^>"']+)([>"'])/msx)
 
 		# === Ruleset 3 : Handling of "needed by elogind" blocks            ===
 		# =====================================================================
 		if ( $in_elogind_block
-			&& ( $$line =~ m/^[${DASH}]\s*[${HASH}]include\s+[<"']([^>"']+)[>"']/msx ) )
+			&& ( $$line =~ m/^[${DASH}]\s*[${HASH}]include\s+([<"'])([^>"']+)([>"'])/msx ) )
 		{
-			$hIncs{$1}{applied} and next;  ## No double handling
+			$hIncs{$2}{applied} and next;  ## No double handling
+
+			log_debug( 'Checking remove elogind   at % 3d: %s%s%s', $i + 1, $1, $2, $3 );
 
 			# Pre: Sanity check:
-			defined( $hIncs{$1}{elogind}{hunkid} ) and $hIncs{$1}{elogind}{hunkid} > -1
+			defined( $hIncs{$2}{elogind}{hunkid} ) and $hIncs{$2}{elogind}{hunkid} > -1
 			        or return hunk_failed("check_includes: Unrecorded elogind include found!");
 
 			# As 1 and 2 do not apply, simply undo the removal.
 			substr( $$line, 0, 1 ) = " ";
-			$hIncs{$1}{applied} = 1;
+			$hIncs{$2}{applied} = 1;
 
 			next;
 		} ## end if ( $in_elogind_block...)
@@ -1876,6 +1882,7 @@ sub check_includes {
 		# === Other 1 : Look for "needed by elogind" block starts           ===
 		# =====================================================================
 		if ( $$line =~ m/^[- ]\s*\/\/+.*needed\s+(?:by|for)\s+elogind.*/misx ) {
+			log_debug( 'Entering elogind include block at line %d', $i + 1 );
 			$in_elogind_block = 1;
 
 			# Never remove the block start
@@ -1894,7 +1901,8 @@ sub check_includes {
 		# ===           found that does not starts with #include            ===
 		# ===
 		# =====================================================================
-		if ( $in_elogind_block && !( $$line =~ m/^.\s*[${HASH}]include$/msx ) ) {
+		if ( $in_elogind_block && !( $$line =~ m,^[${DASH}${PLUS}${SPACE}]\s*[${HASH}]include\s*,misx ) ) {
+			log_debug( 'Leaving elogind include block at line %d', $i + 1 );
 
 			# diff may want to remove the first empty line after our block.
 			( $$line =~ m,^[${DASH}]\s*$, ) and substr( $$line, 0, 1 ) = " ";
@@ -3698,23 +3706,33 @@ sub read_includes {
 	defined($hHunk)  or return 1;
 	$hHunk->{useful} or return 1;
 
+	log_debug('Reading includes ...');
+
 	# We must know when "needed by elogind blocks" start
 	my $in_elogind_block = 0;
 	for ( my $i = 0 ; $i < $hHunk->{count} ; ++$i ) {
 		my $line = \$hHunk->{lines}[$i];  ## Shortcut
 
 		# Note down removals of includes we commented out
-		if ( $$line =~ m/^[${DASH}]\s*\/[\/*]+\s*[${HASH}]include\s+([<"'])([^>"']+)[>"']\s*(?:\*\/)?/msx ) {
+		if ( $$line =~ m/^[${DASH}]\s*\/[\/*]+\s*[${HASH}]include\s+([<"'])([^>"']+)([>"'])/msx ) {
+			( defined $hIncs{$2}{remove} )
+			        and log_debug( 'Line % 3d Include %s removal first in line %d', $i + 1, $2, $hIncs{$2}{remove}{lineid} + 1 )
+			        and next;
+			log_debug( 'Recording remove commented at % 3d: %s%s%s', $i + 1, $1, $2, $3 );
 			$hIncs{$2}{remove} = {
 				hunkid => $hHunk->{idx},
 				lineid => $i,
 				sysinc => $1 eq "<"
 			};
 			next;
-		} ## end if ( $$line =~ m/^[${DASH}]\s*\/[\/*]+\s*[${HASH}]include\s+([<"'])([^>"']+)[>"']\s*(?:\*\/)?/msx)
+		} ## end if ( $$line =~ m/^[${DASH}]\s*\/[\/*]+\s*[${HASH}]include\s+([<"'])([^>"']+)([>"'])/msx)
 
 		# Note down inserts of possibly new includes we might want commented out
-		if ( $$line =~ m/^[${PLUS}]\s*[${HASH}]include\s+([<"'])([^>"']+)[>"']/msx ) {
+		if ( $$line =~ m/^[${PLUS}]\s*[${HASH}]include\s+([<"'])([^>"']+)([>"'])/msx ) {
+			( defined $hIncs{$2}{insert} )
+			        and log_debug( 'Line % 3d Include %s insertion first in line %d', $i + 1, $2, $hIncs{$2}{insert}{lineid} + 1 )
+			        and next;
+			log_debug( 'Recording adding new       at % 3d: %s%s%s', $i + 1, $1, $2, $3 );
 			$hIncs{$2}{insert} = {
 				elogind  => $in_elogind_block,
 				hunkid   => $hHunk->{idx},
@@ -3723,22 +3741,30 @@ sub read_includes {
 				sysinc   => $1 eq "<"
 			};
 			next;
-		} ## end if ( $$line =~ m/^[${PLUS}]\s*[${HASH}]include\s+([<"'])([^>"']+)[>"']/msx)
+		} ## end if ( $$line =~ m/^[${PLUS}]\s*[${HASH}]include\s+([<"'])([^>"']+)([>"'])/msx)
 
 		# Note down removals of includes we explicitly added for elogind
-		if ( $in_elogind_block && ( $$line =~ m/^[${DASH}]\s*[${HASH}]include\s+([<"'])([^>"']+)[>"']/msx ) ) {
+		if ( $in_elogind_block && ( $$line =~ m/^[${DASH}]\s*[${HASH}]include\s+([<"'])([^>"']+)([>"'])/msx ) ) {
+			( defined $hIncs{$2}{elogind} )
+			        and log_debug( 'Line % 3d elogind Include %s first in line %d', $i + 1, $2, $hIncs{$2}{elogind}{lineid} + 1 )
+			        and next;
+			log_debug( 'Recording remove elogind   at % 3d: %s%s%s', $i + 1, $1, $2, $3 );
 			$hIncs{$2}{elogind} = { hunkid => $hHunk->{idx}, lineid => $i };
 			next;
-		}
+		} ## end if ( $in_elogind_block...)
 
 		# elogind include blocks are started by a comment featuring "needed by elogind"
 		if ( $$line =~ m,^[ -]\s*/+.*needed\s+(?:by|for)\s+elogind.*,msxi ) {
+			log_debug( 'Entering elogind include block at line %d', $i + 1 );
 			$in_elogind_block = 1;
 			next;
 		}
 
-		# elogind include blocks end, when the first not removed *EMPTY* line is found
-		$in_elogind_block and ( $$line =~ m,^[ ]\s*$, ) and $in_elogind_block = 0;
+		# elogind include blocks end, when the first non-include line is found
+		if ( $in_elogind_block && !( $$line =~ m,^[${DASH}${PLUS}${SPACE}]\s*[${HASH}]include\s*,misx ) ) {
+			log_debug( 'Leaving elogind include block at line %d', $i + 1 );
+			$in_elogind_block = 0;
+		}
 	} ## end for ( my $i = 0 ; $i < ...)
 
 	return 1;
@@ -3803,6 +3829,8 @@ sub sigHandler {
 # --- worse, the splicing being attempted out of bounds.              ---
 # -----------------------------------------------------------------------
 sub splice_includes {
+
+	log_debug('Splicing undone include additions ...');
 
 	# First build a tree of the includes to splice:
 	my %incMap = ();
