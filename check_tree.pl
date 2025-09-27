@@ -2573,7 +2573,7 @@ sub check_useless {
 
 		# --- (1) Note down removal ---
 		if ( $$line =~ m/^-(.*)$/ ) {
-			my $token = $1 || "";
+			my $token = $1 // $EMPTY;
 			$token =~ s/\s+$//; ## No trailing whitespace/lines!
 			$r_start > -1 or $r_start = $i;
 			length($token) and $hRemovals{$token} = $i
@@ -2583,17 +2583,16 @@ sub check_useless {
 
 		# --- (2) Check Addition ---
 		if ( $$line =~ m/^[${PLUS}](.*)$/ ) {
-			my $token = $1 || "";
+			my $token = $1 // $EMPTY;
 			$token =~ s/\s+$//; ## No trailing whitespace/lines!
 			$r_offset > -1 or $r_offset = $i - $r_start;
-			if (       ( length($token) && ( defined( $hRemovals{$token} ) && ( $hRemovals{$token} + $r_offset ) == $i ) )
-				|| ( !length($token) && ( defined( $hRemovals{ "empty" . ( $i - $r_offset ) } ) ) ) )
-			{
+			if ( length($token) && ( defined( $hRemovals{$token} ) && ( $hRemovals{$token} + $r_offset ) == $i ) ) {
+
 				# Yep, this has to be reverted.
 				substr( $hHunk->{lines}[ $i - $r_offset ], 0, 1 ) = " ";
 				$hSplices{$i} = 1;
-			} ## end if ( ( length($token) ...))
-			next;
+				next;
+			} ## end if ( length($token) &&...)
 		} ## end if ( $$line =~ m/^[${PLUS}](.*)$/)
 
 		# --- (3) Reset state on the first out-of-block line
