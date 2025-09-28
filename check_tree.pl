@@ -728,15 +728,8 @@ sub change_analyze_hunk_line {
 	}
 
 	# We need a few values...
-	my $i = $pChanges->{$replace_text}{'count'} // 0;  # The count is the next free index
-	my $kind =
-	          ( $replace_text =~ m/.*elogind.*/msxi )                      ? $KIND_ELOGIND
-	        : ( $replace_text =~ m/.*loginctl.*/msxi )                     ? $KIND_LOGINCTL
-	        : ( $replace_text =~ m/.*systemd.*/msxi )                      ? $KIND_SYSTEMD
-	        : ( $replace_text =~ m/.*systemctl.*/msxi )                    ? $KIND_SYSTEMCTL
-	        : ( $replace_text =~ m/.*systemd[-_]sleep[${DOT}]conf.*/msxi ) ? $KIND_SYSTEMD   # The full name is systemd...
-	        : ( $replace_text =~ m/.*sleep[${DOT}]conf.*/msxi )            ? $KIND_ELOGIND   # ... and the short name is elogind...
-	        :                                                                0;
+	my $i      = $pChanges->{$replace_text}{'count'} // 0;                                                 # The count is the next free index
+	my $kind   = change_detect_kind($replace_text);
 	my $type   = ( '-' eq $prefix ) ? $TYPE_REMOVAL : ( '+' eq $prefix ) ? $TYPE_ADDITION : $TYPE_NEUTRAL;
 	my $alttxt = change_find_alt_text( $kind, $replace_text );
 	my $iscomment =
@@ -855,6 +848,19 @@ sub change_check_solo_changes {
 
 	return 1;
 } ## end sub change_check_solo_changes
+
+sub change_detect_kind {
+	my ($text) = @_;
+	my $kind =
+	          ( $text =~ m/.*elogind.*/msxi )                      ? $KIND_ELOGIND
+	        : ( $text =~ m/.*loginctl.*/msxi )                     ? $KIND_LOGINCTL
+	        : ( $text =~ m/.*systemd.*/msxi )                      ? $KIND_SYSTEMD
+	        : ( $text =~ m/.*systemctl.*/msxi )                    ? $KIND_SYSTEMCTL
+	        : ( $text =~ m/.*systemd[-_]sleep[${DOT}]conf.*/msxi ) ? $KIND_SYSTEMD   # The full name is systemd...
+	        : ( $text =~ m/.*sleep[${DOT}]conf.*/msxi )            ? $KIND_ELOGIND   # ... and the short name is elogind...
+	        :                                                        0;
+	return $kind;
+} ## end sub change_detect_kind
 
 sub change_find_alt_text {
 	my ( $source_kind, $source_text ) = @_;
