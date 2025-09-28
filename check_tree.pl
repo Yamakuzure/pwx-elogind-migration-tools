@@ -548,11 +548,14 @@ END {
 # ===        ==> ---- Function Implementations ---- <==        ===
 # ================================================================
 
-# -----------------------------------------------------------------------
-# --- Initializes and fills %hFile. Old values are discarded.         ---
-# --- Adds files, that do not exist upstream, to @only_here.          ---
-# --- Returns 1 on success, 0 otherwise.                              ---
-# -----------------------------------------------------------------------
+## @brief Builds the hFile data structure for a given part.
+#
+#  This subroutine initializes the %hFile hash with information about the file being processed,
+#  including its source, target, patch location, and whether it's a shell or XML file requiring special handling.
+#  It also checks if the target file exists and adds the part to @only_here if it doesn't.
+#
+#  @param part The name of the part/file to process.
+#  @return Returns 1 on success, 0 if the target file does not exist.
 sub build_hFile {
 	my ($part) = @_;
 
@@ -609,9 +612,14 @@ sub build_hFile {
 	return 1;
 } ## end sub build_hFile
 
-# -----------------------------------------------------------------------
-# --- Build a new $hHunk instance and add it to $hFile{hunks}         ---
-# -----------------------------------------------------------------------
+## @brief Builds a hunk object from header and lines data.
+#
+#  This subroutine processes the header line of a hunk to extract source and target
+#  starting line numbers. It then stores the hunk's lines, updating the internal
+#  hunk counter and structure. If the header format is invalid, it logs an error
+#  and returns false.
+#
+#  @return Returns 1 on successful hunk creation, 0 otherwise.
 sub build_hHunk {
 	my ( $head, @lHunk ) = @_;
 	my $pos  = $hFile{count}++;
@@ -648,10 +656,14 @@ sub build_hHunk {
 	return 0;
 } ## end sub build_hHunk
 
-# -----------------------------------------------------------------------
-# --- Writes $hFile{output} from all useful $hFile{hunks}.            ---
-# --- Important: No more checks, just do it!                          ---
-# -----------------------------------------------------------------------
+## @brief Builds output lines for useful hunks and records mask status.
+#
+#  This subroutine iterates through all hunks in the file, processing only those marked as useful.
+#  For each useful hunk, it validates the masked_start value, adds a comment indicating the start mask,
+#  generates the hunk header, and appends all lines from the hunk to the output. It also records
+#  the masked_end status for every hunk, regardless of usefulness.
+#
+#  @return Returns 1 on successful completion, or calls hunk_failed and returns undef if validation fails.
 sub build_output {
 
 	my $offset = 0; ## Count building up target offsets
@@ -706,6 +718,18 @@ sub build_output {
 	return 1;
 } ## end sub build_output
 
+## @brief Analyzes a line from a change hunk to identify systemd-related modifications.
+#
+#  This subroutine processes a line from a diff hunk, extracting relevant information
+#  about changes related to systemd components such as elogind, loginctl, systemctl,
+#  systemd, and sleep. It identifies the type of change (addition, removal, or neutral),
+#  determines if the line is commented, and records the change in the provided data structure.
+#
+#  @param $pChanges Reference to the changes hash containing analysis results.
+#  @param $line_idx Index of the current line being processed.
+#  @param $text The text of the line to analyze.
+#  @param $is_masked Boolean indicating if the line is masked.
+#  @return Returns 1 if the line was successfully analyzed and recorded, 0 otherwise.
 sub change_analyze_hunk_line {
 	my ( $pChanges, $line_idx, $text, $is_masked ) = @_;
 	my $prefix       = $EMPTY;
@@ -763,6 +787,18 @@ sub change_analyze_hunk_line {
 	return 1;
 } ## end sub change_analyze_hunk_line
 
+## @brief Checks if a partner change is valid and sets up previous partner tracking.
+#
+#  This function validates whether the given next partner matches the current change
+#  based on text and alternative text. It also ensures the partner has the correct
+#  kind and type, and hasn't been processed yet. Additionally, it manages the
+#  tracking of previous partners to maintain a chain of relationships.
+#
+#  @param $change The current change object being evaluated.
+#  @param $next_partner The potential partner change to validate.
+#  @param $partner_p Reference to the current partner object.
+#  @param $prev_partner_p Reference to the previous partner object.
+#  @return Returns 1 if the partner is valid and setup is complete, 0 otherwise.
 sub change_check_next_partner {
 	my ( $change, $next_partner, $partner_p, $prev_partner_p ) = @_;
 	my $kind = change_get_partner_kind( $change->{'kind'} );
@@ -802,6 +838,16 @@ sub change_check_next_partner {
 	return 1;
 } ## end sub change_check_next_partner
 
+## @brief Handles solo changes in the check process, managing additions, removals, and protected text.
+#
+#  This subroutine processes individual changes that do not have partners. It skips changes that are already done
+#  or have partners defined. Masked changes are marked as done immediately. Protected text additions are also
+#  marked as done. For additions, if there's an alternative text and the change involves systemd, it replaces
+#  the text with the alternative. For removals, if it's an elogind removal, it reverts the change by adding a space.
+#  All processed changes are marked as done.
+#
+#  @param $pChanges Address of the changees hash
+#  @return Returns 1 to indicate successful completion of the processing.
 sub change_check_solo_changes {
 	my ($pChanges) = @_;
 
@@ -849,6 +895,16 @@ sub change_check_solo_changes {
 	return 1;
 } ## end sub change_check_solo_changes
 
+## @brief Detects the kind of change based on text content.
+#
+#  This subroutine analyzes the provided text to determine the type of system
+#  change being referenced. It uses regular expressions to match keywords
+#  associated with different systemd-related services and returns a corresponding
+#  constant value.
+#
+#  @param text The input text to analyze for change detection.
+#  @return The detected kind of change as one of the predefined constants,
+#          or 0 if no match is found.
 sub change_detect_kind {
 	my ($text) = @_;
 	my $kind =
@@ -862,6 +918,16 @@ sub change_detect_kind {
 	return $kind;
 } ## end sub change_detect_kind
 
+## @brief Converts source kind references to alternative text for mapping purposes.
+#
+#  This subroutine transforms text based on the provided source kind, handling
+#  specific replacements for elogind, loginctl, systemd, and systemctl references.
+#  It supports case-sensitive and case-insensitive replacements, as well as
+#  special handling for man page volume numbers and header file naming conventions.
+#
+#  @param $source_kind The kind of source being processed (e.g., elogind, systemd).
+#  @param $source_text The original text to be transformed.
+#  @return The transformed text if changes were made; otherwise, an empty string.
 sub change_find_alt_text {
 	my ( $source_kind, $source_text ) = @_;
 	my $alt = $source_text;
@@ -922,7 +988,7 @@ sub change_find_alt_text {
 	return $alttxt;
 } ## end sub change_find_alt_text
 
-# @brief Scan the change hash for a partner to the given change
+## @brief Scan the change hash for a partner to the given change
 #
 # For a removal, an'addition is searched and vice versa.
 # for systemd/systemctl, elogind/loginct is searched and vice versa
@@ -998,14 +1064,12 @@ sub change_find_and_set_partner {
 	return 1;
 } ## end sub change_find_and_set_partner
 
-sub change_get_line_index {
-	my ( $pChanges, $line_no, $count ) = @_;
-	for ( my $i = 0 ; ( $i < $count ) ; ++$i ) {
-		( defined $pChanges->[$i] ) and ( defined $pChanges->[$i]{'line'} ) and ( $line_no == $pChanges->[$i]{'line'} ) and return $i;
-	}
-	return -1;
-} ## end sub change_get_line_index
-
+## @brief Returns the partner kind for a given kind.
+#
+#  This function maps one kind to its corresponding partner kind. It is used to
+#  switch between systemd and elogind related constants.
+#
+#  @return The partner kind corresponding to the input kind.
 sub change_get_partner_kind {
 	my ($kind) = @_;
 
@@ -1017,6 +1081,14 @@ sub change_get_partner_kind {
 	croak("change_get_partner_kind() called with invalid kind '$kind'!");
 } ## end sub change_get_partner_kind
 
+## @brief Handles addition changes in a set of file modifications.
+#
+#  This subroutine processes additions to check whether they follow a removal. It ensures that
+#  additions are correctly handled based on their relationship with partner removals. Specifically,
+#  it handles direct renames between elogind and systemd, checks for movement into/out of comments
+#  or masks, and applies appropriate text changes.
+#
+#  @return Returns 1 upon successful completion.
 sub change_handle_additions {
 	my ($pChanges) = @_;
 
@@ -1069,6 +1141,14 @@ sub change_handle_additions {
 	return 1;
 } ## end sub change_handle_additions
 
+## @brief Handles false positives in changes by marking certain modifications as done.
+#
+#  This subroutine filters through a list of changes and identifies modifications that
+#  should not be processed further based on specific patterns. It checks for references
+#  to systemd GitHub or .io sites, protected text phrases, and gettext domain usage,
+#  marking them as done to prevent unnecessary processing.
+#
+#  @return Returns 1 to indicate successful completion of the function.
 sub change_handle_false_positives {
 	my ($pChanges) = @_;
 
@@ -1112,6 +1192,13 @@ sub change_handle_false_positives {
 	return 1;
 } ## end sub change_handle_false_positives
 
+## @brief Handles removal changes in a set of code modifications.
+#
+#  This subroutine processes removal changes to determine whether they follow an addition,
+#  and applies appropriate actions based on the relationship between the removal and its partner.
+#  It handles cases such as direct renames, masked/commented line movements, and protection logic.
+#
+#  @return Returns 1 upon successful completion.
 sub change_handle_removals {
 	my ($pChanges) = @_;
 
@@ -1165,6 +1252,18 @@ sub change_handle_removals {
 	return 1;
 } ## end sub change_handle_removals
 
+## @brief Checks if text contains protected patterns that should not be replaced.
+#
+#  This function evaluates whether a given text contains patterns that are
+#  protected from replacement. These patterns include specific paths like
+#  /run/systemd, systemd website URLs, org.freedesktop.systemd strings,
+#  references to systemd[1], specific systemd services, and various systemd
+#  daemons, keywords, and products. The function logs debug information for
+#  each matched protected pattern.
+#
+#  @param $text The text to check for protected patterns.
+#  @param $is_commented Indicates if the text is within a comment block.
+#  @return Returns 1 if any protected pattern is found, otherwise returns 0.
 sub change_is_protected_text {
 	my ( $text, $is_commented ) = @_;
 
@@ -1207,6 +1306,13 @@ sub change_is_protected_text {
 	return 0;
 } ## end sub change_is_protected_text
 
+## @brief Maps additions and removals in changes to find corresponding partner lines for systemd<->elogind naming changes.
+#
+#  This subroutine processes a list of changes to identify matching additions and removals that represent
+#  moves rather than pure modifications. It specifically handles systemd additions and elogind removals,
+#  mapping them to their counterparts to distinguish real code changes from naming convention adjustments.
+#
+#  @return Returns 1 upon successful completion of the mapping process.
 sub change_map_hunk_lines {
 	my ($pChanges) = @_;
 
@@ -1245,6 +1351,13 @@ sub change_map_hunk_lines {
 	return 1;
 } ## end sub change_map_hunk_lines
 
+## @brief Marks a change and its partner as done.
+#
+#  This subroutine sets the 'done' attribute of the change and its partner to true,
+#  indicating that the change has been processed. It also logs the action for
+#  debugging purposes.
+#
+#  @return Returns 1 to indicate successful completion.
 sub change_mark_as_done {
 	my ($change) = @_;
 	my $partner = $change->{'partner'};
@@ -1257,6 +1370,15 @@ sub change_mark_as_done {
 	return 1;
 } ## end sub change_mark_as_done
 
+## @brief Recursively moves a partner up the changes previous chain.
+#
+#  This function traverses the previous chain of a change to move its partner
+#  up towards the earliest point in the chain. If the end of the chain is
+#  reached, the partner is removed from the chain and becomes a solo.
+#  If an earlier change already has a partner, it is moved up first to make
+#  space for the current partner.
+#
+#  @return Returns $TRUE on success, $FALSE on failure.
 sub change_move_partner_up {
 	my ($change) = @_;
 	( defined $change )              or confess('Serious bug, change is undef!');
@@ -1287,6 +1409,14 @@ sub change_move_partner_up {
 	return $TRUE;
 } ## end sub change_move_partner_up
 
+## @brief Protects lines from removal changes in a hunk.
+#
+#  This subroutine iterates through the provided changes and identifies those of type
+#  TYPE_REMOVAL. For each such change, it marks the corresponding line in the hunk
+#  as protected by adding it to the %hProtected hash. This prevents the line from
+#  being removed during subsequent processing.
+#
+#  @return Returns 1 to indicate successful completion.
 sub change_protect_removals {
 	my ($pChanges) = @_;
 
@@ -1302,6 +1432,16 @@ sub change_protect_removals {
 	return 1;
 } ## end sub change_protect_removals
 
+## @brief Changes a line by reversing its first character and marks it for splicing.
+#
+#  This subroutine modifies a line in the hunk by changing its first character
+#  and then marks the line for splicing. It logs debug information before and
+#  after the change.
+#
+#  @param $to_change Hash reference to the line to be changed.
+#  @param $to_splice Hash reference to the line to be spliced.
+#  @param $at_line Line number where the splice operation will occur.
+#  @return Returns 1 to indicate successful completion.
 sub change_reverse {
 	my ( $to_change, $to_splice, $at_line ) = @_;
 
@@ -1315,6 +1455,13 @@ sub change_reverse {
 	return 1;
 } ## end sub change_reverse
 
+## @brief Removes specified lines from a hunk based on splice markers.
+#
+#  This subroutine processes a list of changes and identifies lines marked for splicing.
+#  It then removes those lines from the hunk in reverse order to maintain correct indexing.
+#  The count of lines in the hunk is adjusted accordingly.
+#
+#  @return Returns 1 to indicate successful completion.
 sub change_splice_the_undone {
 	my ($pChanges) = @_;
 
@@ -1337,6 +1484,16 @@ sub change_splice_the_undone {
 	return 1;
 } ## end sub change_splice_the_undone
 
+## @brief Undoes a change by marking a line to keep and preparing another for splicing.
+#
+#  This function modifies the hunk's lines array to indicate that a line should be kept
+#  (by changing its first character to a space) and prepares another line for splicing
+#  by setting the spliceme attribute. It also logs debug information about both actions.
+#
+#  @param $to_keep Hash reference containing the line number to keep.
+#  @param $to_splice Hash reference containing information about the line to splice.
+#  @param $at_line Line number where the splicing should occur.
+#  @return Returns 1 to indicate successful completion.
 sub change_undo {
 	my ( $to_keep, $to_splice, $at_line ) = @_;
 
@@ -1348,6 +1505,13 @@ sub change_undo {
 	return 1;
 } ## end sub change_undo
 
+## @brief Replaces text in a hunk line with its alternative text.
+#
+#  This subroutine modifies a specific line in the hunk by replacing the old text
+#  with the new alternative text. It logs the change before and after the replacement
+#  for debugging purposes.
+#
+#  @return Returns 1 to indicate successful completion of the text replacement.
 sub change_use_alt {
 	my ($change) = @_;
 	my $lno      = $change->{'line'};
@@ -1361,15 +1525,16 @@ sub change_use_alt {
 	return 1;
 } ## end sub change_use_alt
 
-# -----------------------------------------------------------------------
-# --- Check that useful blank line additions aren't misplaced.        ---
-# ---- Note: Sometimes the masks aren't placed correctly, and the diff---
-# ----       wants to add a missing blank line. As it tried to remove ---
-# ----       our mask first, it'll be added after. That's fine for    ---
-# ----       #endif, but not for #if 0.                               ---
-# ----       At the same time, removal of one blank line after our    ---
-# ----       endif is also not in order.                              ---
-# -----------------------------------------------------------------------
+## @brief Checks for and corrects misplaced blank additions and unpleasant removals in hunks.
+#
+# This subroutine examines each line in a hunk to identify and correct specific
+# patterns of blank lines that may be misplaced or cause issues. It handles two main cases:
+# 1. A blank addition line immediately following a mask or insert start line, which it swaps
+#    with the previous line to maintain proper context.
+# 2. A blank removal line immediately preceding a mask or insert end line, and followed by
+#    a non-blank line, which it converts to a space to avoid disrupting the diff structure.
+#
+# @return Non-zero on successful processing, zero if the hunk is not defined or not useful.
 sub check_blanks {
 
 	# early exits:
@@ -1410,10 +1575,18 @@ sub check_blanks {
 	return 1;
 } ## end sub check_blanks
 
-# -----------------------------------------------------------------------
-# --- Check comments we added for elogind specific information.       ---
-# --- These are all comments, and can be both single and multi line.  ---
-# -----------------------------------------------------------------------
+## @brief Checks for proper comment block formatting in a hunk.
+#
+# This subroutine verifies that comment blocks, specifically those starting
+# with /* or // and containing "elogind", are properly formatted. It ensures
+# that multiline comments are correctly started and ended, and that lines
+# within comment blocks are properly indented. If a line is part of a comment
+# block but not protected, it will be unindented to indicate it's not part
+# of the actual code.
+#
+# @param hHunk A reference to a hash containing information about the hunk,
+#              including lines and count.
+# @return 1 if the comments are correctly formatted, 0 otherwise.
 sub check_comments {
 
 	# early exits:
@@ -1469,13 +1642,15 @@ sub check_comments {
 	return 1;
 } ## end sub check_comments
 
-# -----------------------------------------------------------------------
-# --- Check for debug constructs                                      ---
-# --- Rules: ENABLE_DEBUG_ELOGIND must be taken like #if 1, *but*     ---
-# ---        here an #else is valid and must stay fully.              ---
-# ---        Further there might be multiline calls to                ---
-# ---        log_debug_elogind() that must not be removed either.     ---
-# -----------------------------------------------------------------------
+## @brief Check and process debug constructs in a hunk
+#
+# This subroutine verifies the correct usage of debug constructs within a code hunk,
+# particularly focusing on ENABLE_DEBUG_ELOGIND preprocessor directives. It ensures that
+# #if, #else, and #endif blocks are properly nested and that debug-specific lines
+# (marked with '-') are correctly processed. The function also handles special cases
+# like log_debug_elogind() calls and nested elogind mask/insert blocks.
+#
+# @return Returns 1 on successful processing, 0 otherwise.
 sub check_debug {
 
 	# early exits:
@@ -1553,13 +1728,14 @@ sub check_debug {
 	return 1;
 } ## end sub check_debug
 
-# -----------------------------------------------------------------------
-# --- Check for attempts to remove elogind_*() special function calls. --
-# --- We have some special functions, needed only by elogind.         ---
-# --- One of the most important ones is elogind_set_program_name(),   ---
-# --- which has an important role in musl_libc compatibility.         ---
-# --- These calls must not be removed of course.                      ---
-# -----------------------------------------------------------------------
+## @brief Checks and modifies patch lines that remove elogind_ function calls to prevent accidental deletion
+#
+#  This subroutine processes patch hunks to identify lines that remove calls to functions
+#  prefixed with 'elogind_'. It prevents accidental removal of these function calls,
+#  particularly handling multi-line function calls correctly by tracking continuation lines
+#  and using a protection hash to avoid modifying protected lines.
+#
+# @return None. Modifies input hunk lines in-place.
 sub check_func_removes {
 
 	# early exits:
@@ -1599,13 +1775,19 @@ sub check_func_removes {
 	return 1;
 } ## end sub check_func_removes
 
-# ------------------------------------------------------------------------
-# --- Check for empty masks. These are blocks where the masked sources ---
-# --- are gone. If there is an #else block, it will become and insert  ---
-# --- block. If anything got changed, a message is left as a comment:  ---
-# --- /// elogind empty mask removed            or                     ---
-# --- /// elogind empty mask else converted                            ---
-# ------------------------------------------------------------------------
+## @brief Checks for and removes empty mask blocks, converting relevant else clauses.
+#
+#  This function processes a hunk of code to identify and remove empty elogind mask blocks.
+#  It also handles conversion of certain else clauses that immediately follow mask starts,
+#  and ensures proper handling of #endif lines when needed. The function operates on
+#  the global hHunk hash reference and modifies its contents in-place, without affecting
+#  global values.
+#
+#  The function tracks the state of mask and insert blocks using local variables to avoid
+#  interference with other processing. It ensures that only appropriate conversions are made,
+#  considering spacing constraints within the patch.
+#
+# @return Returns 1 upon completion.
 sub check_empty_masks {
 
 	# early exits:
@@ -1757,28 +1939,14 @@ sub check_empty_masks {
 	return 1;
 } ## end sub check_empty_masks
 
-# -----------------------------------------------------------------------
-# --- Check hunk for include manipulations we must step in            ---
-# --- This is basically read_include(), but this time we actually act ---
-# --- on what we found.                                               ---
-# --- Rules:                                                          ---
-# --- 1) Removals of includes that we commented out:                  ---
-# ---    a) If there is no insertion of this include, let it be       ---
-# ---       removed, it seems to be obsolete.                         ---
-# ---    b) If there is an insertion of the very same include in one  ---
-# ---       of the surrounding lines, mark the insert for splicing    ---
-# ---       and undo the removal.                                     ---
-# --- 2) Insertions of new includes, where 1) does not apply:         ---
-# ---    a) If the include is new, let its be added. (*)              ---
-# ---    b) If the include is part of the "needed by elogind" block   ---
-# ---       already, allow the removal there and accept the regular   ---
-# ---       insertion here.                                           ---
-# --- 3) Removals of includes in "needed by elogind" blocks:          ---
-# ---    As 1) and 2) do not apply, simply undo any removal here.     ---
-# --- (*) : We used to comment out new includes for later checks. But ---
-# ---       big updates became an unbearable workload like that. Do a ---
-# ---       cleanup of the includes later seems to be the better way. ---
-# -----------------------------------------------------------------------
+## @brief Validates and processes include directives within a code hunk.
+#
+#  This subroutine checks for removals and insertions of include directives,
+#  handling cases where includes are commented out, moved, or removed in
+#  elogind blocks. It ensures that valid include directives are preserved
+#  and that undo operations are properly managed.
+#
+#  @return Returns 1 upon successful completion.
 sub check_includes {
 
 	# early exits:
@@ -1954,6 +2122,14 @@ sub check_includes {
 	return 1;
 } ## end sub check_includes
 
+## @brief Validates that the logger name matches expected log message formats.
+#
+#  This subroutine checks if the provided logger name conforms to the allowed
+#  log message prefixes. It ensures that only valid logging functions are called,
+#  preventing misuse of the logging system.
+#
+#  @param logger The logger name to validate.
+#  @return Returns 1 if the logger is valid, otherwise throws an exception.
 sub check_logger {
 	my ($logger) = @_;
 	if ( defined $logger ) {
@@ -1963,29 +2139,15 @@ sub check_logger {
 	return 1;
 } ## end sub check_logger
 
-# -----------------------------------------------------------------------
-# --- Check $hHunk for elogind preprocessor masks and additions       ---
-# --- Rules:                                                          ---
-# --- 1) If we need an alternative for an existing systemd code block,---
-# ---    we do it like this: (*)                                      ---
-# ---      #if 0 /// <some comment with the word "elogind" in it>     ---
-# ---        (... systemd code block, unaltered ...)                  ---
-# ---        -> Any change in this block is okay.                     ---
-# ---      #else                                                      ---
-# ---        (... elogind alternative code ...)                       ---
-# ---        -> Any change in this block is *NOT* okay.               ---
-# ---      #endif // 0                                                ---
-# --- 2) If we need an addition for elogind, we do it like this: (*)  ---
-# ---      #if 1 /// <some comment with the word "elogind" in it>     ---
-# ---        (... elogind additional code ...)                        ---
-# ---        -> Any change in this block is *NOT* okay.               ---
-# ---      #endif // 1                                                ---
-# --- (*) : To be able to handle XML content, masking and unmasking   ---
-# ---       can also be done with :                                   ---
-# ---       Masking : "<!-- 0 /// <comment>" and "// 0 -->"           ---
-# ---       Adding  : "<!-- 1 /// <comment> --> and "<!-- // 1 -->"   ---
-# ---       Else    : "<!-- else // 0 -->"                                 ---
-# -----------------------------------------------------------------------
+## @brief Validates and processes mask and insert blocks within a hunk.
+#
+#  This subroutine ensures that elogind mask and insert blocks are properly handled
+#  within the hunk. It checks for correct block structure, prevents removal of
+#  required empty lines before blocks, and adjusts line positions when additions
+#  or changes occur near block boundaries. It also manages transitions between
+#  mask, insert, and regular code blocks.
+#
+#  @return Returns 1 on success, or calls hunk_failed on error.
 sub check_masks {
 
 	# early exits:
@@ -1993,6 +2155,30 @@ sub check_masks {
 	$hHunk->{useful} or croak("check_masks: Nothing done but hHunk is useless?");
 
 	log_debug("Checking mask flips ...");
+
+	# -----------------------------------------------------------------------
+	# --- Check $hHunk for elogind preprocessor masks and additions       ---
+	# --- Rules:                                                          ---
+	# --- 1) If we need an alternative for an existing systemd code block,---
+	# ---    we do it like this: (*)                                      ---
+	# ---      #if 0 /// <some comment with the word "elogind" in it>     ---
+	# ---        (... systemd code block, unaltered ...)                  ---
+	# ---        -> Any change in this block is okay.                     ---
+	# ---      #else                                                      ---
+	# ---        (... elogind alternative code ...)                       ---
+	# ---        -> Any change in this block is *NOT* okay.               ---
+	# ---      #endif // 0                                                ---
+	# --- 2) If we need an addition for elogind, we do it like this: (*)  ---
+	# ---      #if 1 /// <some comment with the word "elogind" in it>     ---
+	# ---        (... elogind additional code ...)                        ---
+	# ---        -> Any change in this block is *NOT* okay.               ---
+	# ---      #endif // 1                                                ---
+	# --- (*) : To be able to handle XML content, masking and unmasking   ---
+	# ---       can also be done with :                                   ---
+	# ---       Masking : "<!-- 0 /// <comment>" and "// 0 -->"           ---
+	# ---       Adding  : "<!-- 1 /// <comment> --> and "<!-- // 1 -->"   ---
+	# ---       Else    : "<!-- else // 0 -->"                                 ---
+	# -----------------------------------------------------------------------
 
 	# Count non-elogind block #ifs. This is needed, so normal
 	# #if/#else/#/endif constructs can be put inside elogind mask blocks.
@@ -2184,17 +2370,15 @@ sub check_masks {
 	return 1;
 } ## end sub check_masks
 
-# -----------------------------------------------------------------------
-# --- Check for musl_libc compatibility blocks                        ---
-# --- Rules:                                                          ---
-# --- For musl-libc compatibility, there are some                     ---
-# ---   #ifdef __GLIBC__ (...) #else (...) #endif // __GLIBC__        ---
-# --- helpers.                                                        ---
-# --- These can also be "#if defined(__GLIBC__)"                      ---
-# --- Note: We handle them like regular mask blocks, because the      ---
-# ---       __GLIBC__ block is considered to be the original, while   ---
-# ---       the musl_libc compat block is the #else block.            ---
-# -----------------------------------------------------------------------
+## @brief Checks for musl libc compatibility blocks in a hunk.
+#
+#  This function identifies and processes #ifdef __GLIBC__ ... #else ... #endif
+#  constructs within a code hunk. It handles the conversion of musl-specific
+#  blocks by removing the leading '-' from lines that belong to the #else
+#  (musl) portion of such blocks, while ensuring proper nesting and state tracking
+#  for mask blocks and __GLIBC__ conditional compilation.
+#
+#  @return Returns 1 on successful processing, 0 if early exit conditions are met.
 sub check_musl {
 
 	# early exits:
@@ -2202,6 +2386,18 @@ sub check_musl {
 	$hHunk->{useful} or return 0;
 
 	log_debug("Checking musl libc protection ...");
+
+	# -----------------------------------------------------------------------
+	# --- Check for musl_libc compatibility blocks                        ---
+	# --- Rules:                                                          ---
+	# --- For musl-libc compatibility, there are some                     ---
+	# ---   #ifdef __GLIBC__ (...) #else (...) #endif // __GLIBC__        ---
+	# --- helpers.                                                        ---
+	# --- These can also be "#if defined(__GLIBC__)"                      ---
+	# --- Note: We handle them like regular mask blocks, because the      ---
+	# ---       __GLIBC__ block is considered to be the original, while   ---
+	# ---       the musl_libc compat block is the #else block.            ---
+	# -----------------------------------------------------------------------
 
 	# Count non-elogind block #ifs. This is needed, so normal
 	# #if/#else/#/endif constructs can be put inside both the original
@@ -2292,9 +2488,13 @@ sub check_musl {
 	return 1;
 } ## end sub check_musl
 
-# -----------------------------------------------------------------------
-# --- Check for attempts to revert 'elogind' to 'systemd'             ---
-# -----------------------------------------------------------------------
+## @brief Checks for name reversals (elogind<->systemd) within a hunk and handles them appropriately.
+#
+#  This subroutine analyzes changes in a hunk to identify potential name reversals between elogind and systemd,
+#  including tracking mask states, mapping line changes, handling false positives, and processing solo
+#  additions/removals. It also manages splicing of lines and protects certain removals from further checks.
+#
+#  @return Returns 1 on successful completion, 0 if early exit conditions are met (e.g., undefined hunk or not useful).
 sub check_name_reverts {
 
 	# early exits:
@@ -2402,13 +2602,15 @@ sub check_name_reverts {
 	return 1;
 } ## end sub check_name_reverts
 
-# -----------------------------------------------------------------------
-# --- Check for __STDC_VERSION__ guards                               ---
-# --- Rules:                                                          ---
-# ---   In some headers __STDC_VERSION__ is used unconditionally.     ---
-# ---   This causes trouble in C++ builds, as that macro is not set   ---
-# ---   there. In elogind this macro is always guarded.               ---
-# -----------------------------------------------------------------------
+## @brief Checks for and handles __STDC_VERSION__ guards in code hunks.
+#
+#  This function verifies that __STDC_VERSION__ guards are properly handled
+#  within a code hunk. It ensures that such guards are not used unconditionally
+#  in headers, which can cause issues in C++ builds where the macro is not defined.
+#  The function also manages mask block states and handles the removal of guards
+#  when paired with appropriate additions.
+#
+#  @return Returns 1 upon successful completion of the check.
 sub check_stdc_version {
 
 	# early exits:
@@ -2416,6 +2618,14 @@ sub check_stdc_version {
 	$hHunk->{useful} or return 0;
 
 	log_debug("Checking __STDC_VERSION__ guards...");
+
+	# -----------------------------------------------------------------------
+	# --- Check for __STDC_VERSION__ guards                               ---
+	# --- Rules:                                                          ---
+	# ---   In some headers __STDC_VERSION__ is used unconditionally.     ---
+	# ---   This causes trouble in C++ builds, as that macro is not set   ---
+	# ---   there. In elogind this macro is always guarded.               ---
+	# -----------------------------------------------------------------------
 
 	# Remember the final mask state for later reversal
 	# ------------------------------------------------
@@ -2486,19 +2696,29 @@ sub check_stdc_version {
 	return 1;
 } ## end sub check_stdc_version
 
-# -----------------------------------------------------------------------
-# --- Check for attempts to uncomment unsupported API functions       ---
-# --- in .sym files.                                                  ---
-# --- In here we change unsupported function calls from               ---
-# ---        sd_foo_func;                                             ---
-# --- to                                                              ---
-# ---        /* sd_foo_func; */                                       ---
-# -----------------------------------------------------------------------
+## @brief Checks .sym files for unsupported API function uncommenting attempts and corrects them.
+#
+#  This subroutine processes hunks in .sym.pwx files to detect and handle attempts to uncomment
+#  unsupported API function calls. It converts valid function declarations from active to commented
+#  form and vice versa, ensuring that only supported functions are uncommented in the final output.
+#  The function operates on additions and removals within the hunk, tracking changes to maintain
+#  correct line mapping for potential splicing operations.
+#
+#  @return Returns 1 on successful processing, or calls hunk_failed on error conditions.
 sub check_sym_lines {
 
 	# early exits:
 	defined($hHunk)  or return 0;
 	$hHunk->{useful} or return 0;
+
+	# -----------------------------------------------------------------------
+	# --- Check for attempts to uncomment unsupported API functions       ---
+	# --- in .sym files.                                                  ---
+	# --- In here we change unsupported function calls from               ---
+	# ---        sd_foo_func;                                             ---
+	# --- to                                                              ---
+	# ---        /* sd_foo_func; */                                       ---
+	# -----------------------------------------------------------------------
 
 	# Only .sym files are handled here
 	$hFile{source} =~ m/\.sym\.pwx$/ or return 1;
@@ -2555,15 +2775,13 @@ sub check_sym_lines {
 	return 1;
 } ## end sub check_sym_lines
 
-# -----------------------------------------------------------------------
-# --- Check for useless updates that do nothing.                      ---
-# --- The other checks and updates can lead to hunks that effectively ---
-# --- do nothing as they end up like:                                 ---
-# --- -foo                                                            ---
-# --- -bar                                                            ---
-# --- +foo                                                            ---
-# --- +bar                                                            ---
-# -----------------------------------------------------------------------
+## @brief Checks for and removes useless updates in a hunk.
+#
+#  This function identifies hunks that perform no actual changes, such as
+#  removing and immediately adding the same content. It modifies the hunk
+#  in place by splicing out the redundant lines.
+#
+#  @return Returns 1 on successful completion.
 sub check_useless {
 
 	# early exits:
@@ -2571,6 +2789,16 @@ sub check_useless {
 	$hHunk->{useful} or croak("check_useless: Nothing done but hHunk is useless?");
 
 	log_debug("Checking for useless updates...");
+
+	# -----------------------------------------------------------------------
+	# --- Check for useless updates that do nothing.                      ---
+	# --- The other checks and updates can lead to hunks that effectively ---
+	# --- do nothing as they end up like:                                 ---
+	# --- -foo                                                            ---
+	# --- -bar                                                            ---
+	# --- +foo                                                            ---
+	# --- +bar                                                            ---
+	# -----------------------------------------------------------------------
 
 	# Note down removals, and where they start
 	my %hRemovals = ();
@@ -2624,10 +2852,15 @@ sub check_useless {
 	return 1;
 } ## end sub check_useless
 
-# -----------------------------------------------------------------------
-# --- Checkout the given refid on $upstream_path                      ---
-# --- Returns 1 on success, 0 otherwise.                              ---
-# -----------------------------------------------------------------------
+## @brief Checks out a specific commit in the upstream repository.
+#
+#  This subroutine checks out a given commit in the upstream repository. If the
+#  commit is not defined or empty, it returns early with success. It first saves
+#  the current HEAD commit, then retrieves the shortened hash of the target
+#  commit. If the target commit differs from the current one, it performs the
+#  checkout operation. Error handling is included for all Git operations.
+#
+#  @return Returns 1 on successful completion, 0 on failure.
 sub checkout_upstream {
 	my ($commit) = @_;
 
@@ -2671,9 +2904,13 @@ sub checkout_upstream {
 	return 1;
 } ## end sub checkout_upstream
 
-# -----------------------------------------------------------------------
-# --- Completely clean up the current %hFile data structure.          ---
-# -----------------------------------------------------------------------
+## @brief Cleans up the hFile hash by undefining its hunks and resetting counters.
+#
+#  This subroutine clears all entries in the hFile hash's hunks array, resets the count to zero,
+#  and reinitializes the hunks and output arrays to empty references. It ensures that the
+#  hFile structure is properly reset for reuse.
+#
+#  @return Returns 1 to indicate successful completion of the cleanup operation.
 sub clean_hFile {
 	defined( $hFile{count} ) or return 1;
 
@@ -2688,7 +2925,13 @@ sub clean_hFile {
 	return 1;
 } ## end sub clean_hFile
 
-# A die handler that lets perl death notes be printed via log
+## @brief Handles program termination with error logging and exception throwing.
+#
+#  This subroutine sets global variables to indicate program death and logs the
+#  provided error message before throwing a fatal exception using confess.
+#
+#  @param err The error message to be logged.
+#  @return This subroutine does not return as it calls confess which exits the program.
 sub dieHandler {
 	my ($err) = @_;
 
@@ -2700,11 +2943,16 @@ sub dieHandler {
 	confess('Program died');
 } ## end sub dieHandler
 
-# -----------------------------------------------------------------------
-# --- Builds the diff between source and target file, and stores all  ---
-# --- hunks in $hFile{hunks} - if any.                                ---
-# --- Returns 1 on success and 0 if the files are the same.           ---
-# -----------------------------------------------------------------------
+## @brief Generate unified diff for header files with pre-processing support.
+#
+#  This subroutine generates a unified diff between source and target files,
+#  performing necessary preprocessing steps based on file type. It handles
+#  shell scripts and XML files by unmasking special characters and preparing
+#  the files for comparison. For new files, it skips preprocessing steps.
+#  The diff output is formatted to show relative paths and handles creation
+#  of new files appropriately.
+#
+#  @return Returns 1 on successful completion, 0 on error.
 sub diff_hFile {
 
 	# If this is not an attempt to create a new file, a few preparations
@@ -2752,6 +3000,14 @@ sub diff_hFile {
 	return 1;
 } ## end sub diff_hFile
 
+## @brief Performs pre-checks for the tree operation.
+#
+#  This subroutine validates the command-line options and file arguments before proceeding
+#  with the tree operation. It ensures that --create is not used on the full tree,
+#  --stay is used with a commit option, and all specified files exist unless --create
+#  is used to create them.
+#
+#  @return Returns 1 if all pre-checks pass, 0 otherwise.
 sub do_prechecks {
 	my $result = 1;
 
@@ -2787,10 +3043,14 @@ sub format_caller {
 	return $caller;
 } ## end sub format_caller
 
-# -----------------------------------------------------------------------
-# --- Finds all relevant files and store them in @wanted_files        ---
-# --- Returns 1 on success, 0 otherwise.                              ---
-# -----------------------------------------------------------------------
+## @brief Generates a list of files to check by searching predefined directories and handling user-provided files.
+#
+#  This function performs initial cleanup by removing temporary files and builds a hash of wanted files
+#  from the @wanted_files array. It then uses File::Find to traverse specific directories and root files,
+#  ensuring that only relevant files are included in the final list. Files with systemd/elogind alternatives
+#  are handled appropriately, and any manually specified files to be created are added to the list.
+#
+#  @return Returns 1 on success, or 0 if no source files were found.
 sub generate_file_list {
 
 	# Do some cleanup first. Just to be sure.
@@ -2852,11 +3112,15 @@ sub generate_file_list {
 	return 1;
 } ## end sub generate_file_list
 
-# ------------------------------------------------------------------------
-# --- Generate the "@@ -xx,n +yy,m @@" hunk header line out of $hHunk. ---
-# --- Returns the generated string, with 0 values if $hHunk is undef.  ---
-# --- IMPORTANT: This function does *NOT* prune $hHunk->{lines} !      ---
-# ------------------------------------------------------------------------
+## @brief Calculates and returns the hunk header line for a diff.
+#
+#  This function processes the lines within a hunk to determine the start positions
+#  and lengths of the source and target sections. It optionally adjusts an offset
+#  reference based on the difference in line counts between source and target.
+#
+#  @param offset Optional reference to adjust the target start position based on
+#                line count differences.
+#  @return Formatted hunk header string in the format "@@ -src_start,src_len +tgt_start,tgt_len @@"
 sub get_hunk_head {
 	my ($offset) = @_;
 
@@ -2883,6 +3147,15 @@ sub get_hunk_head {
 
 	return sprintf( "%s -%d,%d +%d,%d %s", '@@', $src_start, $src_len, $tgt_start, $tgt_len, '@@' );
 } ## end sub get_hunk_head
+
+## @brief Generates a formatted location string for log messages based on caller information.
+#
+#  This subroutine determines the appropriate caller information to include in a log message,
+#  considering debug mode and whether the log is from a regular logging function. It formats
+#  the caller details using helper functions and returns a string with the location information.
+#
+#  @param lvl The log level of the message the location is for.
+#  @return Formatted location string or empty string if location is not needed.
 
 sub get_location {
 	my ($lvl) = @_;
@@ -2929,6 +3202,15 @@ sub get_location {
 	return sprintf $format_string, @args;
 } ## end sub get_location
 
+## @brief Returns a string representation of the given log level.
+#
+#  This subroutine maps numeric log level constants to their corresponding
+#  string representations for logging purposes. It checks the input level
+#  against predefined constants and returns an appropriate label.
+#
+#  @param level The log level to get the representation string for.
+#  @return A string representing the log level: '--Info--', 'Warning!', 'ERROR !!',
+#          '-status-', '_DEBUG!_', or '=DEBUG='.
 sub get_log_level {
 	my ($level) = @_;
 
@@ -2951,14 +3233,14 @@ sub get_time_now {
 	return sprintf '%04d-%02d-%02d %02d:%02d:%02d', $tLocalTime[5] + 1900, $tLocalTime[4] + 1, $tLocalTime[3], $tLocalTime[2], $tLocalTime[1], $tLocalTime[0];
 }
 
-# -----------------------------------------------------------------------
-# --- Whenever a check finds an illegal situation, it has to call     ---
-# --- this subroutine which terminates the progress line and creates  ---
-# --- an entry in @lFails.                                            ---
-# --- Param: An error message, preferably with the name of the failed ---
-# ---        check.                                                   ---
-# --- Return: Always zero.                                            ---
-# -----------------------------------------------------------------------
+## @brief Records a failed hunk during file processing.
+#
+#  This subroutine logs information about a failed hunk, including its context and error message.
+#  It stores the hunk data, metadata, and the failure reason in the @lFails array for later reporting.
+#  The progress line is updated to indicate the failure.
+#
+#  @param msg The error message describing the hunk failure.
+#  @return Always returns 0 to indicate the operation completed with a failure.
 sub hunk_failed {
 	my ($msg) = @_;
 	my $num = scalar @lFails;
@@ -2991,12 +3273,14 @@ sub hunk_failed {
 	return 0;
 } ## end sub hunk_failed
 
-# -----------------------------------------------------------------------
-# --- Check the current $hHunk whether it still does anything.        ---
-# --- While being at it, prune it to what a diff needs:               ---
-# ---   3 lines before the first and 3 lines after the last change.   ---
-# --- Returns 1 if at least one change was found, 0 otherwise.        ---
-# -----------------------------------------------------------------------
+## @brief Checks whether a hunk is still useful by examining its lines for changes.
+#
+#  This function determines if a hunk remains useful by checking if it contains any
+#  lines that start with '-' or '+', indicating additions or deletions. It also
+#  updates the hunk's 'useful' flag accordingly. Debug information is logged to
+#  track the process and optionally display the lines of useful hunks.
+#
+#  @return Returns 1 if the hunk is still useful (contains changes), 0 otherwise.
 sub hunk_is_useful() {
 
 	# early exits:
@@ -3211,16 +3495,16 @@ sub make_location_fmt {
 	return sprintf $fmtfmt, $len;
 } ## end sub make_location_fmt
 
-# -----------------------------------------------------------------------
-# --- Prepare shell and meson files for our processing.               ---
-# --- If this is a shell or meson file, we have to adapt it first:    ---
-# --- To be able to use our patch building system, the files use the  ---
-# --- same masking technology as the C files. But as these are not    ---
-# --- handled by any preprocessor, it is necessary to comment out all ---
-# --- masked blocks.                                                  ---
-# --- If we do not do this, diff creates patches which move all       ---
-# --- commented blocks behind the #endif and uncomment them.          ---
-# -----------------------------------------------------------------------
+## @brief Prepares shell and meson files for patch processing by commenting out masked blocks.
+#
+#  This subroutine reads a source file and processes it to handle masked blocks
+#  (typically used in C preprocessor contexts) by commenting them out. This is
+#  necessary because the patch building system expects masking syntax to be
+#  handled uniformly across all file types, including shell and meson files which
+#  are not processed by a preprocessor. Without this step, diff may incorrectly
+#  move commented sections and uncomment them in the generated patches.
+#
+#  @return Returns 1 on successful completion.
 sub prepare_shell {
 	my $in   = $hFile{source};
 	my $out  = $in . '.pwx';
@@ -3234,6 +3518,17 @@ sub prepare_shell {
 	} else {
 		croak("$in can not be opened for reading! [$!]");
 	}
+
+	# -----------------------------------------------------------------------
+	# --- Prepare shell and meson files for our processing.               ---
+	# --- If this is a shell or meson file, we have to adapt it first:    ---
+	# --- To be able to use our patch building system, the files use the  ---
+	# --- same masking technology as the C files. But as these are not    ---
+	# --- handled by any preprocessor, it is necessary to comment out all ---
+	# --- masked blocks.                                                  ---
+	# --- If we do not do this, diff creates patches which move all       ---
+	# --- commented blocks behind the #endif and uncomment them.          ---
+	# -----------------------------------------------------------------------
 
 	# Now prepare the output, line by line.
 	my $is_block = 0;
@@ -3299,14 +3594,14 @@ sub prepare_shell {
 	return 1;
 } ## end sub prepare_shell
 
-# -----------------------------------------------------------------------
-# --- The masking of unneeded blocks in XML files is done using a     ---
-# --- comment scheme. Unfortunately the standard forbids double dashes---
-# --- in comments. To be able to process XML files nevertheless, they ---
-# --- are updated by unprepare_xml() so that all double dashes in     ---
-# --- comments are substituted by &#x2D;&#x2D;, which must be reversed---
-# --- here or the further processing would go nuts.                   ---
-# -----------------------------------------------------------------------
+## @brief Prepares an XML file for processing by handling mask blocks and correcting double dash entities.
+#
+#  This function reads an input XML file and processes it to handle special mask blocks denoted by
+#  specific start, else, and end markers. During this process, it also converts &#x2D; entities
+#  back to regular dashes within masked sections to ensure proper XML parsing. The processed output
+#  is written to a temporary file with a ".pwx" extension.
+#
+#  @return Returns 1 on successful processing.
 sub prepare_xml {
 	my $in   = $hFile{source};
 	my $out  = $in . ".pwx";
@@ -3320,6 +3615,15 @@ sub prepare_xml {
 	} else {
 		croak("$in can not be opened for reading! [$!]");
 	}
+
+	# -----------------------------------------------------------------------
+	# --- The masking of unneeded blocks in XML files is done using a     ---
+	# --- comment scheme. Unfortunately the standard forbids double dashes---
+	# --- in comments. To be able to process XML files nevertheless, they ---
+	# --- are updated by unprepare_xml() so that all double dashes in     ---
+	# --- comments are substituted by &#x2D;&#x2D;, which must be reversed---
+	# --- here or the further processing would go nuts.                   ---
+	# -----------------------------------------------------------------------
 
 	# Now prepare the output, line by line.
 	my $is_block = 0;
@@ -3384,10 +3688,14 @@ sub prepare_xml {
 	return 1;
 } ## end sub prepare_xml
 
-# -----------------------------------------------------------------------
-# --- Special function to not let diff add unwanted or remove our     ---
-# --- lines in logind.conf.in (See Issue #2)                          ---
-# -----------------------------------------------------------------------
+## @brief Protects configuration lines from unwanted changes during patch application.
+#
+#  This subroutine processes a hunk of configuration lines to prevent addition of
+#  unnecessary lines and handles special cases for elogind's [Sleep] block. It removes
+#  lines that match specific patterns related to NAutoVTs or ReserveVT, and manages
+#  the deletion of lines within the [Sleep] block by converting deletions to additions.
+#
+#  @return Returns 1 on successful processing.
 sub protect_config() {
 
 	# early exits:
@@ -3432,9 +3740,14 @@ sub protect_config() {
 	return 1;
 } ## end sub protect_config
 
-# -----------------------------------------------------------------------
-# --- Remove unused prefix and postfix lines. Recalculates offsets.   ---
-# -----------------------------------------------------------------------
+## @brief Prunes leading and trailing lines from a hunk if they are not useful.
+#
+#  This function examines the lines within a hunk to determine if leading or
+#  trailing lines can be removed without losing important context. It specifically
+#  tracks masked regions and adjusts the hunk's start position and line count
+#  accordingly. The pruning is limited to at most three lines from each end.
+#
+#  @return Returns 1 on successful pruning, or 0 if the hunk is not defined or not useful.
 sub prune_hunk() {
 
 	# early exits:
@@ -3499,19 +3812,14 @@ sub prune_hunk() {
 	return 1;
 } ## end sub prune_hunk
 
-# -----------------------------------------------------------------------
-# --- Unprepare shell (and meson) files after our processing          ---
-# --- In prepare_shell() we have commented in all content between our ---
-# --- elogind markers, to help diff not to juggle our blocks around.  ---
-# --- Now these blocks must be commented out again.                   ---
-# --- We have an advantage and a disadvantage here. On one hand, we   ---
-# --- can do the changes within $hFile{output}, as that is the final  ---
-# --- patch. On the other hand, we do not know whether really all     ---
-# --- lines in the source where commented out. The latter means, that ---
-# --- if we blindly comment out all block lines, the resulting patch  ---
-# --- may fail. We therefore write the temporary .pwx file back, and  ---
-# --- and ensure that all lines are commented out.                    ---
-# -----------------------------------------------------------------------
+## @brief Unprepares shell and meson files after processing by commenting out content between elogind markers.
+#
+#  This function reverses the actions performed by prepare_shell() by uncommenting
+#  lines that were previously commented out between elogind-specific mask start/end markers.
+#  It handles both temporary .pwx files and the final output patch generation.
+#  The function ensures proper handling of nested blocks and validates marker usage.
+#
+#  @return Returns 1 on successful unpreparation, croaks on file operation errors or illegal marker usage.
 sub unprepare_shell {
 	my $in   = $hFile{source};
 	my $out  = substr( $in, 0, -4 );
@@ -3528,6 +3836,20 @@ sub unprepare_shell {
 	} else {
 		croak("$in can not be opened for reading! [$!]");
 	}
+
+	# -----------------------------------------------------------------------
+	# --- Unprepare shell (and meson) files after our processing          ---
+	# --- In prepare_shell() we have commented in all content between our ---
+	# --- elogind markers, to help diff not to juggle our blocks around.  ---
+	# --- Now these blocks must be commented out again.                   ---
+	# --- We have an advantage and a disadvantage here. On one hand, we   ---
+	# --- can do the changes within $hFile{output}, as that is the final  ---
+	# --- patch. On the other hand, we do not know whether really all     ---
+	# --- lines in the source where commented out. The latter means, that ---
+	# --- if we blindly comment out all block lines, the resulting patch  ---
+	# --- may fail. We therefore write the temporary .pwx file back, and  ---
+	# --- and ensure that all lines are commented out.                    ---
+	# -----------------------------------------------------------------------
 
 	# Now prepare the output, line by line.
 	my $is_block = 0;
@@ -3618,12 +3940,14 @@ sub unprepare_shell {
 	return 1;
 } ## end sub unprepare_shell
 
-# -----------------------------------------------------------------------
-# --- Before we can allow an XML file to live, all double dashes that ---
-# --- happen to reside in one of our mask blocks must be masked.      ---
-# --- The standard forbids double dashes inside comments, so we solve ---
-# --- this by substituting '--' with '&#x2D;&#x2D;'.                  ---
-# -----------------------------------------------------------------------
+## @brief Unprepares an XML file by masking double dashes in mask blocks and handling patch preparation.
+#
+#  This function processes a temporary source file, masking all occurrences of '--' within
+#  mask blocks to prevent issues with XML comment parsing. It also prepares the output for
+#  patching by removing mask-related lines and applying the same masking logic to the
+#  final output buffer.
+#
+#  @return Returns 1 on successful processing, croaks on file access errors or illegal file structures.
 sub unprepare_xml {
 	my $in   = $hFile{source};
 	my $out  = substr( $in, 0, -4 );
@@ -3640,6 +3964,13 @@ sub unprepare_xml {
 	} else {
 		croak("$in can not be opened for reading! [$!]");
 	}
+
+	# -----------------------------------------------------------------------
+	# --- Before we can allow an XML file to live, all double dashes that ---
+	# --- happen to reside in one of our mask blocks must be masked.      ---
+	# --- The standard forbids double dashes inside comments, so we solve ---
+	# --- this by substituting '--' with '&#x2D;&#x2D;'.                  ---
+	# -----------------------------------------------------------------------
 
 	# Now prepare the output, line by line.
 	my $is_block = 0;
@@ -3718,11 +4049,13 @@ sub unprepare_xml {
 	return 1;
 } ## end sub unprepare_xml
 
-# -----------------------------------------------------------------------
-# --- Analyze the hunk and map all include changes                    ---
-# --- The gathered knowledge is used in check_includes(), see there   ---
-# --- for the rules applied.                                          ---
-# -----------------------------------------------------------------------
+## @brief Reads and records include directives from a hunk, tracking additions, removals, and elogind-specific blocks.
+#
+#  This subroutine processes the lines of a hunk to identify include directives that are added or removed.
+#  It tracks comments indicating removals of includes and insertions of new includes. It also identifies
+#  sections of the code that are "needed by elogind" and marks those includes accordingly.
+#
+#  @return Returns 1 to indicate successful completion.
 sub read_includes {
 
 	# early exits:
@@ -3799,6 +4132,17 @@ sub set_log_file {
 	return 1;
 }
 
+## @brief Displays progress information on console or logs it to file.
+#
+#  This subroutine outputs a progress message to either the console or a log file,
+#  depending on the value of $log_as_status. It clears any previous progress line
+#  before printing the new one to ensure clean output. If logging to a file, it
+#  writes the message using log_status() and ensures no empty lines are added.
+#
+#  @param $log_as_status  If positive, logs the message to file; otherwise prints to console.
+#  @param $fmt            Format string for the progress message.
+#  @param @args           Arguments to be formatted into the progress message.
+#  @return               Always returns 1.
 sub show_progress {
 	my ( $log_as_status, $fmt, @args ) = @_;
 	my $progress_str = sprintf $fmt, @args;
@@ -3822,11 +4166,13 @@ sub show_progress {
 	return 1;
 } ## end sub show_progress
 
-# ---------------------------------------------------------
-# A signal handler that sets global vars according to the
-# signal given.
-# Unknown signals are ignored.
-# ---------------------------------------------------------
+## @brief Signal handler to manage specific signals and prevent infinite loops.
+#
+#  This subroutine handles signals by tracking their occurrences. If a signal is caught more than five times,
+#  it logs an error and forcefully terminates the process. Otherwise, it logs a warning and continues execution.
+#  Unknown signals are ignored after logging a warning.
+#
+#  @return Returns 1 to indicate successful handling of the signal.
 sub sigHandler {
 	my ($sig) = @_;
 	if ( exists $SIGS_CAUGHT{$sig} ) {
@@ -3844,13 +4190,14 @@ sub sigHandler {
 	return 1;
 } ## end sub sigHandler
 
-# -----------------------------------------------------------------------
-# --- Splice all includes that were marked for splicing.              ---
-# --- This is not as easy as it seems. It can be, that if we just go  ---
-# --- through the %hIncs keys, that we splice one include that is     ---
-# --- before another. That leads to the wrong line to be spliced, or  ---
-# --- worse, the splicing being attempted out of bounds.              ---
-# -----------------------------------------------------------------------
+## @brief Splices out include additions that were marked for removal.
+#
+#  This subroutine processes the tracked include additions and removes them from
+#  the corresponding hunks in the file. It ensures that the line IDs are valid
+#  and within bounds before performing the splice operation. The splicing is done
+#  in reverse order to maintain correct indices during modification.
+#
+#  @return Returns 1 on successful completion.
 sub splice_includes {
 
 	log_debug('Splicing undone include additions ...');
@@ -3924,6 +4271,16 @@ sub warnHandler {
 	return log_warning( '%s', $warn );
 }
 
+## @brief Writes a message to the console with progress handling.
+#
+#  This subroutine prints a given message to the console. If a progress message
+#  has been previously printed, it adds a newline before the current message
+#  to ensure proper formatting. It also enables autoflush for the output
+#  stream to guarantee immediate display of the message.
+#
+#  @param msg The message to be printed to the console.
+#  @return The return value of the print function, which is the number of
+#          characters printed.
 sub write_to_console {
 	my ($msg) = @_;
 
@@ -3936,6 +4293,14 @@ sub write_to_console {
 	return print "${msg}\n";
 } ## end sub write_to_console
 
+## @brief Appends a message to the log file.
+#
+#  This subroutine opens the global logfile in append mode, writes the provided
+#  message followed by a newline, and then closes the file handle. It uses
+#  lexical filehandle for better resource management and includes error handling
+#  with confess() in case closing the file fails.
+#
+#  @return Returns 1 upon successful completion.
 sub write_to_log {
 	my ($msg) = @_;
 
