@@ -84,6 +84,8 @@ use Try::Tiny;
 #                                        Also check for reversals where the removal is anywhere before the addition. This fixes
 #                                        multiline-comments to magically multiply when patches are applied by migrate_tree.pl..
 # 1.4.2    2024-02-03  sed, EdenWorX   Do not migrate NEWS and TODO. They are elogind files now
+# 1.4.3    2025-09-27  sed, EdenWorX   The name change (systemd<=>elogind) analysis and handling was completely overhauled,
+#                                        and can correctly identify and handle changes over several lines.
 #
 # ========================
 # === Little TODO list ===
@@ -93,7 +95,7 @@ use Try::Tiny;
 #
 # ------------------------
 ## Please keep this current!
-Readonly our $VERSION => "1.4.2";
+Readonly our $VERSION => "1.4.3";
 
 # ---------------------------------------------------------
 # Shared Variables
