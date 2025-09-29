@@ -3,7 +3,8 @@ use strict;
 use warnings FATAL => 'all';
 
 use Carp;
-use Cwd qw( getcwd abs_path );
+use Cwd     qw( getcwd abs_path );
+use English qw( -no_match_vars );
 use File::Basename;
 use File::Find;
 use Getopt::Long;
@@ -109,7 +110,7 @@ my $ret_global = 0;
 # ================================================================
 # ===        ==> ------ Help Text and Version ----- <==        ===
 # ================================================================
-Readonly my $PROGDIR => dirname($0);
+Readonly my $PROGDIR => dirname(__FILE__);
 Readonly my $WORKDIR => getcwd();
 
 # ================================================================
