@@ -568,7 +568,7 @@ sub build_hFile {
 	my $isNew = defined( $hToCreate{$part} ) ? 1 : 0;
 
 	# We only prefixed './' to unify things. Now it is no longer needed:
-	$part =~ s,^\./,,;
+	$part =~ s/^[${DOT}][${SLASH}]//mx;
 
 	# Pre: erase current $hFile, as that is what is expected.
 	clean_hFile();
@@ -576,7 +576,7 @@ sub build_hFile {
 	# Check the target file
 	my $tgt = "$upstream_path/$part";
 	$tgt =~ s/elogind/systemd/msg;
-	$tgt =~ s/\.pwx$//;
+	$tgt =~ s/\.pwx$//m;
 	-f $tgt
 	        or push( @only_here, $part )
 	        and return 0;
@@ -1522,7 +1522,7 @@ sub change_use_alt {
 	my $oldText  = $change->{'text'};
 
 	log_debug( "     => Change  % 3d: '%s'", $lno + 1, $hHunk->{lines}[$lno] );
-	$hHunk->{lines}[$lno] =~ s{\Q$oldText\E}{$newText};
+	$hHunk->{lines}[$lno] =~ s{\Q$oldText\E}{$newText}m;
 	log_debug( "     =>   To    % 3d: '%s'", $lno + 1, $hHunk->{lines}[$lno] );
 
 	return 1;
@@ -2717,7 +2717,7 @@ sub check_useless {
 		# --- (1) Note down removal ---
 		if ( $$line =~ m/^-(.*)$/ ) {
 			my $token = $1 // $EMPTY;
-			$token =~ s/\s+$//; ## No trailing whitespace/lines!
+			$token =~ s/\s+$//m; ## No trailing whitespace/lines!
 			$r_start > -1 or $r_start = $i;
 			length($token) and $hRemovals{$token} = $i
 			        or $hRemovals{ "empty" . $i } = $i;
@@ -2727,7 +2727,7 @@ sub check_useless {
 		# --- (2) Check Addition ---
 		if ( $$line =~ m/^[${PLUS}](.*)$/ ) {
 			my $token = $1 // $EMPTY;
-			$token =~ s/\s+$//; ## No trailing whitespace/lines!
+			$token =~ s/\s+$//m; ## No trailing whitespace/lines!
 			$r_offset > -1 or $r_offset = $i - $r_start;
 			if ( length($token) && ( defined( $hRemovals{$token} ) && ( $hRemovals{$token} + $r_offset ) == $i ) ) {
 
@@ -2884,12 +2884,12 @@ sub diff_hFile {
 
 	# ... the head of the output can be generated ...
 	@{ $hFile{output} } = splice( @lDiff, 0, 2 );
-	chomp $hFile{output}[0];                            # These now have absolute paths, and source meson files have a
-	chomp $hFile{output}[1];                            # .pwx extensions. That is not what the result shall look like.
-	$hFile{create}                                      # But we have $hFile{part}, which is already the
-	        and $hFile{output}[0] =~ s,$src,/dev/null,  # relative file name of the file we are
-	        or $hFile{output}[0]  =~ s,$src,a/$prt,;    # processing, and we know if a file is
-	$hFile{output}[1] =~ s,$tgt,b/$prt,;                # to be created.
+	chomp $hFile{output}[0];                                                 # These now have absolute paths, and source meson files have a
+	chomp $hFile{output}[1];                                                 # .pwx extensions. That is not what the result shall look like.
+	$hFile{create}                                                           # But we have $hFile{part}, which is already the
+	        and $hFile{output}[0] =~ s/$src/[${SLASH}]dev[${SLASH}]null/msx  # relative file name of the file we are
+	        or $hFile{output}[0]  =~ s/$src/a[${SLASH}]$prt/msx;             # processing, and we know if a file is
+	$hFile{output}[1] =~ s/$tgt/b[${SLASH}]$prt/m;                           # to be created.
 
 	# ... and the raw hunks can be stored.
 	for ( my $line_no = 1 ; $line_no < scalar @lDiff ; ++$line_no ) {
@@ -3800,7 +3800,7 @@ sub prune_hunk() {
 
 	for ( my $i = 0 ; $i < $hHunk->{count} ; ++$i ) {
 		my $line = $hHunk->{lines}[$i]; ## Shortcut
-		if ( $line =~ m/^[-+]/ ) {
+		if ( $line =~ m/^[-+]/m ) {
 			$changed = 1;
 			$postfix = 0;
 		} else {
@@ -4301,12 +4301,12 @@ sub wanted {
 	my $f         = $File::Find::name;
 	my $is_wanted = 0;
 
-	$f =~ m,^\./, or $f = "./$f";
+	$f =~ m/^[${DOT}][${SLASH}]/mx or $f = "./$f";
 
 	-f $_
 	        and ( ( 0 == $have_wanted ) or defined( $hWanted{$f} ) )
-	        and ( !( $_                =~ m/\.pwx$/ ) )
-	        and ( !( $File::Find::name =~ m,man/rules/, ) ) ## Protect generated man rules (Issue #3)
+	        and ( !( $_                =~ m/${DOT}]pwx$/m ) )
+	        and ( !( $File::Find::name =~ m/man[${SLASH}]rules[${SLASH}]/mx ) ) ## Protect generated man rules (Issue #3)
 	        and push @source_files, $File::Find::name
 	        and $is_wanted = 1;
 
