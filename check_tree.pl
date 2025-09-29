@@ -1861,8 +1861,8 @@ sub check_empty_masks {
 			if ( $i && ( $i == ( $mask_block_start + 1 ) ) && ( $i < ( $hHunk->{count} - 2 ) ) ) {
 
 				# Re-enable the removal of the "#if 0" and of the "#else" line
-				substr( $hHunk->{lines}[ $i - 1 ], 0, 1 ) = "-";
-				substr( $hHunk->{lines}[$i],       0, 1 ) = "-";
+				substr( $hHunk->{lines}[ $i - 1 ], 0, 1, "${DASH}" );
+				substr( $hHunk->{lines}[$i],       0, 1, "${DASH}" );
 
 				# Add a note that we converted this and add an insert mask
 				splice( @{ $hHunk->{lines} }, $i + 1, 0, ( "+/// elogind empty mask else converted", "+#if 1 /// $mask_message" ) );
@@ -1886,8 +1886,8 @@ sub check_empty_masks {
 				if ( $i && ( $i == ( $mask_block_start + 1 ) ) ) {
 
 					# Re-enable the removal of the "#if 0" and of the "#endif" line
-					substr( $hHunk->{lines}[ $i - 1 ], 0, 1 ) = "-";
-					substr( $hHunk->{lines}[$i],       0, 1 ) = "-";
+					substr( $hHunk->{lines}[ $i - 1 ], 0, 1, "${DASH}" );
+					substr( $hHunk->{lines}[$i],       0, 1, "${DASH}" );
 
 					# Add a note that we converted this
 					splice( @{ $hHunk->{lines} },
@@ -1900,7 +1900,7 @@ sub check_empty_masks {
 				elsif ( $need_endif_conversion > 0 ) {
 
 					# First re-enable the removal:
-					substr( $hHunk->{lines}[$i], 0, 1 ) = "-";
+					substr( $hHunk->{lines}[$i], 0, 1, "${DASH}" );
 
 					# Add the correct endif
 					splice( @{ $hHunk->{lines} }, $i + 1, 0, ("+#endif // 1") );
