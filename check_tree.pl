@@ -2216,7 +2216,7 @@ sub check_masks {
 				# Case 1 ; The keeper: Copy the offending line back above the else/insert
 				# -----------------------------------------------------------------------
 				if ( $$line =~ m,^ , ) {
-					substr( $cpy_line, 0, 1 ) = "+"; ## Above, this is an addition.
+					substr( $cpy_line, 0, 1, "${PLUS}" ); ## Above, this is an addition.
 					splice( @{ $hHunk->{lines} }, $move_to_line++, 0, $cpy_line );
 					$hHunk->{count} += 1;
 					$i++; ## We have to advance i, or the next iteration puts as back here.
