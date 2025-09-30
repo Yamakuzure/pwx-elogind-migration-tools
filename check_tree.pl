@@ -3213,6 +3213,21 @@ sub hunk_is_useful() {
 	return $is_useful;
 } ## end sub hunk_is_useful
 
+## @brief Handles "needed by elogind" blocks in include lines.
+#
+#  This subroutine processes a specific line to handle include directives that
+#  are marked as needed by elogind. It checks if the current line matches an
+#  expected pattern, and if so, it ensures that the include is not removed.
+#  If the include has already been handled or doesn't match the pattern, it returns
+#  appropriate values to indicate success or failure in processing.
+#
+#  The function works by checking if the line contains a specific include pattern,
+#  then verifying if this include has been marked for elogind. If the include is
+#  found and not previously handled, it removes any marking that would cause it
+#  to be removed, ensuring the include remains in the final output.
+#
+#  @return Returns 0 if the line is not handled by this subroutine or if an error occurs,
+#          otherwise returns 1 indicating successful processing of the include insertion.
 sub include_handle_elogind {
 	my ( $line_no, $line ) = @_;
 	my ( $pre, $inc, $post ) = ( $EMPTY, $EMPTY, $EMPTY );
@@ -3238,6 +3253,22 @@ sub include_handle_elogind {
 	return 1;
 } ## end sub include_handle_elogind
 
+## @brief Handles the insertion of include statements in a line.
+#
+#  This subroutine processes lines that contain include statement insertions not handled by another ruleset. It checks if an include is present and processes it accordingly.
+#  If the include is valid, it marks it as applied and returns success. Otherwise, it handles errors appropriately.
+#
+#  The subroutine first checks if a line contains a specific pattern of include insertion.
+#  If found, it extracts the relevant parts (pre, include path, post).
+#  It verifies that the extracted include is non-empty and hasn't been processed before.
+#  A debug log entry is made for tracking purposes.
+#  The subroutine then performs sanity checks to ensure the inclusion has been recorded properly,
+#  marks the include as applied in the hash table, and returns success.
+#
+#  @param line_no Line number of the current line being checked.
+#  @param line Reference to a string containing the current line content.
+#  @return Returns 0 if the line is not handled by this subroutine or if an error occurs,
+#          otherwise returns 1 indicating successful processing of the include insertion.
 sub include_handle_insertion {
 	my ( $line_no, $line ) = @_;
 	my ( $pre, $inc, $post ) = ( $EMPTY, $EMPTY, $EMPTY );
@@ -3262,6 +3293,21 @@ sub include_handle_insertion {
 	return 1;
 } ## end sub include_handle_insertion
 
+## @brief Processes removal of include statements from source code.
+#
+#  This subroutine handles various scenarios for removing include statements
+#  that were previously commented out. It checks if an include has been
+#  removed, whether it was originally inserted by the script or manually,
+#  and takes appropriate actions based on its findings:
+#
+#  - Verifies if the removal is of an obsolete include.
+#  - Checks if the removal undoes a previous comment-out action.
+#  - Handles cases where includes might have moved or changed type.
+#
+#  @param $line_no Current line number being processed
+#  @param $line Content of the current line
+#  @param $undos Reference to hash storing undo actions for lines
+#  @return Returns 1 on successful processing, 0 otherwise
 sub include_handle_removal {
 	my ( $line_no, $line, $undos ) = @_;
 	my ( $pre,     $inc,  $post )  = ( $EMPTY, $EMPTY, $EMPTY );
