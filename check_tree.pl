@@ -487,7 +487,7 @@ for my $file_part (@source_files) {
 			$hFile{pwxfile} and $line =~ s/([+ -][${HASH}])\s+$/$1/msgx;
 			print $fOut "$line\n";
 		} ## end for my $line ( @{ $hFile...})
-		close($fOut);
+		close($fOut) or croak "Closing '$fOut' FAILED: $!\n";
 	} else {
 		log_error( "ERROR: %s could not be opened for writing!\n%s\n", $hFile{patch}, $! );
 		confess("Please fix this first!");
@@ -3596,7 +3596,7 @@ sub prepare_shell {
 	# Leech the source file
 	if ( open( my $fIn, "<", $in ) ) {
 		@lIn = <$fIn>;
-		close($fIn);
+		close($fIn) or croak "Closing '$fIn' FAILED: $!\n";
 	} else {
 		croak("$in can not be opened for reading! [$!]");
 	}
@@ -3665,7 +3665,7 @@ sub prepare_shell {
 		for my $line (@lOut) {
 			print $fOut "$line\n";
 		}
-		close($fOut);
+		close($fOut) or croak "Closing '$fOut' FAILED: $!\n";
 	} else {
 		croak("$out can not be opened for writing! [$!]");
 	}
@@ -3693,7 +3693,7 @@ sub prepare_xml {
 	# Leech the source file
 	if ( open( my $fIn, "<", $in ) ) {
 		@lIn = <$fIn>;
-		close($fIn);
+		close($fIn) or croak "Closing '$fIn' FAILED: $!\n";
 	} else {
 		croak("$in can not be opened for reading! [$!]");
 	}
@@ -3759,7 +3759,7 @@ sub prepare_xml {
 		for my $line (@lOut) {
 			print $fOut "$line\n";
 		}
-		close($fOut);
+		close($fOut) or croak "Closing '$fOut' FAILED: $!\n";
 	} else {
 		croak("$out can not be opened for writing! [$!]");
 	}
@@ -3914,7 +3914,7 @@ sub unprepare_shell {
 	# Leech the temporary file
 	if ( open( my $fIn, "<", $in ) ) {
 		@lIn = <$fIn>;
-		close($fIn);
+		close($fIn) or croak "Closing '$fIn' FAILED: $!\n";
 	} else {
 		croak("$in can not be opened for reading! [$!]");
 	}
@@ -3981,7 +3981,7 @@ sub unprepare_shell {
 		for my $line (@lOut) {
 			print $fOut "$line\n";
 		}
-		close($fOut);
+		close($fOut) or croak "Closing '$fOut' FAILED: $!\n";
 	} else {
 		croak("$out can not be opened for writing! [$!]");
 	}
@@ -4042,7 +4042,7 @@ sub unprepare_xml {
 	# Leech the temporary file
 	if ( open( my $fIn, "<", $in ) ) {
 		@lIn = <$fIn>;
-		close($fIn);
+		close($fIn) or croak "Closing '$fIn' FAILED: $!\n";
 	} else {
 		croak("$in can not be opened for reading! [$!]");
 	}
@@ -4094,7 +4094,7 @@ sub unprepare_xml {
 		for my $line (@lOut) {
 			print $fOut "$line\n";
 		}
-		close($fOut);
+		close($fOut) or croak "Closing '$fOut' FAILED: $!\n";
 	} else {
 		croak("$out can not be opened for writing! [$!]");
 	}
