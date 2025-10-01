@@ -3,7 +3,7 @@
 severity        = 1
 only            = 0
 force           = 0
-top             = 10
+top             = 20
 theme           = bugs+certrec+certrule+complexity+core+maintenance+nits+pbp+performance+security+unicode
 criticism-fatal = 1
 color           = 0
