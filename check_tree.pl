@@ -1550,28 +1550,28 @@ sub check_blanks {
 		my $line = \$hHunk->{lines}[$i]; ## Shortcut
 
 		# Check for misplaced addition
-		if (       ( $$line =~ m/^[${PLUS}]\s*$/msx )
+		if (       ( ${$line} =~ m/^[${PLUS}]\s*$/msx )
 			&& ( $i > 0 )
 			&& ( ( is_mask_start( $hHunk->{lines}[ $i - 1 ] ) || is_insert_start( $hHunk->{lines}[ $i - 1 ] ) ) ) )
 		{
 			# Simply swap the lines
-			my $tmp = $$line;
-			$$line = $hHunk->{lines}[ $i - 1 ];
+			my $tmp = ${$line};
+			${$line} = $hHunk->{lines}[ $i - 1 ];
 			$hHunk->{lines}[ $i - 1 ] = $tmp;
 			next;
-		} ## end if ( ( $$line =~ m/^[${PLUS}]\s*$/msx...))
+		} ## end if ( ( ${$line} =~ m/^[${PLUS}]\s*$/msx...))
 
 		# Check for unpleasant removals
-		if (       ( $$line =~ m/^[${DASH}]\s*$/msx )
+		if (       ( ${$line} =~ m/^[${DASH}]\s*$/msx )
 			&& ( $i > 0 )
 			&& ( ( is_mask_end( $hHunk->{lines}[ $i - 1 ] ) || is_insert_end( $hHunk->{lines}[ $i - 1 ] ) ) )
 			&& ( $i < ( $hHunk->{count} - 1 ) )
 			&& ( !( $hHunk->{lines}[ $i + 1 ] =~ m/^[${DASH}${PLUS}${SPACE}]\s*$/msx ) ) )
 		{
 			# Revert the removal
-			substr( $$line, 0, 1, $SPACE );
+			substr( ${$line}, 0, 1, $SPACE );
 			next;
-		} ## end if ( ( $$line =~ m/^[${DASH}]\s*$/msx...))
+		} ## end if ( ( ${$line} =~ m/^[${DASH}]\s*$/msx...))
 
 	} ## end for ( my $i = 0 ; $i < ...)
 
@@ -1605,36 +1605,36 @@ sub check_comments {
 
 		# Check for comment block start
 		# -----------------------------
-		if ( $$line =~ m/^[${DASH}]\s*(\/\*+|\/\/+)\s+.*elogind/msx ) {
+		if ( ${$line} =~ m/^[${DASH}]\s*(\/\*+|\/\/+)\s+.*elogind/msx ) {
 
 			# Sanity check:
 			$in_comment_block
 			        and return hunk_failed("check_comments: Comment block start found in comment block!");
 
 			# Only start the comment block if this is really a multiline comment
-			( ( $$line =~ m/^[${DASH}]\s*\/\*+/msx ) && !( $$line =~ m/\*\/[^\/]*$/msx ) )
+			( ( ${$line} =~ m/^[${DASH}]\s*\/\*+/msx ) && !( ${$line} =~ m/\*\/[^\/]*$/msx ) )
 			        and $in_comment_block = 1;
 
 			# Revert the substract *if* this is not in a mask block, but only if the name reversal checker has not marked this as protected
-			$in_mask_block and ( 1 > $in_else_block ) or defined( $hProtected{$$line} ) or substr( $$line, 0, 1, $SPACE );
+			$in_mask_block and ( 1 > $in_else_block ) or defined( $hProtected{ ${$line} } ) or substr( ${$line}, 0, 1, $SPACE );
 
 			next;
-		} ## end if ( $$line =~ m/^[${DASH}]\s*(\/\*+|\/\/+)\s+.*elogind/msx)
+		} ## end if ( ${$line} =~ m/^[${DASH}]\s*(\/\*+|\/\/+)\s+.*elogind/msx)
 
 		# Check for comment block end
 		# -----------------------------
-		if ( $in_comment_block && ( $$line =~ m/^[${DASH}].*\*\/\s*$/msx ) ) {
-			defined( $hProtected{$$line} ) or substr( $$line, 0, 1, $SPACE );
+		if ( $in_comment_block && ( ${$line} =~ m/^[${DASH}].*\*\/\s*$/msx ) ) {
+			defined( $hProtected{ ${$line} } ) or substr( ${$line}, 0, 1, $SPACE );
 			$in_comment_block = 0;
 			next;
 		}
 
 		# Check for comment block line
 		# -----------------------------
-		if ( $in_comment_block && ( $$line =~ m/^[${DASH}]/msx ) ) {
+		if ( $in_comment_block && ( ${$line} =~ m/^[${DASH}]/msx ) ) {
 
 			# Note: We do not check for anything else, as empty lines must be allowed.
-			defined( $hProtected{$$line} ) or substr( $$line, 0, 1, $SPACE );
+			defined( $hProtected{ ${$line} } ) or substr( ${$line}, 0, 1, $SPACE );
 			next;
 		} ## end if ( $in_comment_block...)
 
@@ -1673,58 +1673,58 @@ sub check_debug {
 
 		# entering a debug construct block
 		# ---------------------------------------
-		if ( $$line =~ m/^-[${HASH}]if.+ENABLE_DEBUG_ELOGIND/msx ) {
+		if ( ${$line} =~ m/^-[${HASH}]if.+ENABLE_DEBUG_ELOGIND/msx ) {
 			## Note: Here it is perfectly fine to be in an elogind mask or insert block.
-			substr( $$line, 0, 1, $SPACE ); ## Remove '-'
+			substr( ${$line}, 0, 1, $SPACE ); ## Remove '-'
 			$in_insert_block++; ## Increase instead of setting this to 1.
 			next;
-		} ## end if ( $$line =~ m/^-[${HASH}]if.+ENABLE_DEBUG_ELOGIND/msx)
+		} ## end if ( ${$line} =~ m/^-[${HASH}]if.+ENABLE_DEBUG_ELOGIND/msx)
 
 		# Count regular #if
-		$$line =~ m/^-[${HASH}]if/msx and ++$regular_ifs;
+		${$line} =~ m/^-[${HASH}]if/msx and ++$regular_ifs;
 
 		# Switching to the release variant.
 		# ---------------------------------------
-		if ( ( $$line =~ m/^-[${HASH}]else/msx ) && $in_insert_block && !$regular_ifs ) {
-			substr( $$line, 0, 1, $SPACE ); ## Remove '-'
+		if ( ( ${$line} =~ m/^-[${HASH}]else/msx ) && $in_insert_block && !$regular_ifs ) {
+			substr( ${$line}, 0, 1, $SPACE ); ## Remove '-'
 			$in_else_block++; ## Increase instead of setting this to 1.
 			next;
 		}
 
 		# ending a debug construct block
 		# ---------------------------------------
-		if ( $$line =~ m/^[${DASH}][${HASH}]endif\s*\/\/\/?.*ENABLE_DEBUG_/msx ) {
+		if ( ${$line} =~ m/^[${DASH}][${HASH}]endif\s*\/\/\/?.*ENABLE_DEBUG_/msx ) {
 			( !$in_insert_block )
 			        and return hunk_failed("check_debug: #endif // ENABLE_DEBUG_* found outside any debug construct");
-			substr( $$line, 0, 1, $SPACE ); ## Remove '-'
+			substr( ${$line}, 0, 1, $SPACE ); ## Remove '-'
 			$in_insert_block--; ## Decrease instead of setting to 0. This allows such
 			$in_else_block--; ## blocks to reside in regular elogind mask/insert blocks.
 			next;
-		} ## end if ( $$line =~ m/^[${DASH}][${HASH}]endif\s*\/\/\/?.*ENABLE_DEBUG_/msx)
+		} ## end if ( ${$line} =~ m/^[${DASH}][${HASH}]endif\s*\/\/\/?.*ENABLE_DEBUG_/msx)
 
 		# end regular #if
 		# ---------------------------------------
-		$$line =~ m/^[${DASH}][${HASH}]endif/msx and --$regular_ifs;
+		${$line} =~ m/^[${DASH}][${HASH}]endif/msx and --$regular_ifs;
 
 		# Check for log_debug_elogind()
 		# ---------------------------------------
-		if ( $$line =~ m/^[${DASH}].*log_debug_elogind\s*[(]/msx ) {
-			substr( $$line, 0, 1, $SPACE ); ## Remove '-'
-			$$line =~ m/[)]\s*;/smx or ++$is_debug_func;
+		if ( ${$line} =~ m/^[${DASH}].*log_debug_elogind\s*[(]/msx ) {
+			substr( ${$line}, 0, 1, $SPACE ); ## Remove '-'
+			${$line} =~ m/[)]\s*;/smx or ++$is_debug_func;
 			next;
 		}
 
 		# Remove '-' prefixes in all lines within the debug construct block
 		# -------------------------------------------------------------------
-		if ( ( $$line =~ m/^[${DASH}]/msx ) && ( $in_insert_block || $is_debug_func ) ) {
-			substr( $$line, 0, 1, $SPACE ); ## Remove '-'
+		if ( ( ${$line} =~ m/^[${DASH}]/msx ) && ( $in_insert_block || $is_debug_func ) ) {
+			substr( ${$line}, 0, 1, $SPACE ); ## Remove '-'
 
 			# Note: Everything in *any* insert block must not be removed anyway.
 		}
 
 		# Check for the end of a multiline log_debug_elogind() call
 		# ---------------------------------------------------------
-		$is_debug_func and $$line =~ m/[)]\s*;/msx and --$is_debug_func;
+		$is_debug_func and ${$line} =~ m/[)]\s*;/msx and --$is_debug_func;
 
 	} ## end for ( my $i = 0 ; $i < ...)
 
@@ -1758,21 +1758,21 @@ sub check_func_removes {
 
 		# Check for elogind_*() call
 		# -------------------------------------------------------------------
-		if ( $$line =~ m/^[${DASH}].*elogind_\S+\s*\(/msx ) {
-			( defined $hProtected{$$line} ) or substr( $$line, 0, 1, $SPACE ); ## Remove '-'
-			$$line =~ m/[)]\s*;/msx or ++$is_func_call;
+		if ( ${$line} =~ m/^[${DASH}].*elogind_\S+\s*\(/msx ) {
+			( defined $hProtected{ ${$line} } ) or substr( ${$line}, 0, 1, $SPACE ); ## Remove '-'
+			${$line} =~ m/[)]\s*;/msx or ++$is_func_call;
 			next;
 		}
 
 		# Remove '-' prefixes in all lines that belong to an elogind_*() call
 		# -------------------------------------------------------------------
-		if ( ( $$line =~ m/^[${DASH}]/msx ) && $is_func_call && !( defined $hProtected{$$line} ) ) {
-			substr( $$line, 0, 1, $SPACE ); ## Remove '-'
+		if ( ( ${$line} =~ m/^[${DASH}]/msx ) && $is_func_call && !( defined $hProtected{ ${$line} } ) ) {
+			substr( ${$line}, 0, 1, $SPACE ); ## Remove '-'
 		}
 
 		# Check for the end of a multiline elogind_*() call
 		# -------------------------------------------------------------------
-		$is_func_call and $$line =~ m/\)\s*;/msx and --$is_func_call;
+		$is_func_call and ${$line} =~ m/\)\s*;/msx and --$is_func_call;
 	} ## end for ( my $i = 0 ; $i < ...)
 
 	return 1;
@@ -1823,7 +1823,7 @@ sub check_empty_masks {
 
 		# entering an elogind mask
 		# ---------------------------------------
-		if ( is_mask_start($$line) ) {
+		if ( is_mask_start( ${$line} ) ) {
 
 			# No checks needed, check_masks() already did that, and later pruning might make
 			# checks here fail, if large else block removals got reverted and the hunk(s) pruned.
@@ -1833,30 +1833,30 @@ sub check_empty_masks {
 			$mask_block_start = $i;
 
 			# Note down mask message in case we leave a message
-			$$line =~ m,///\s*(.+)\s*$,msx and $mask_message = $1;
+			${$line} =~ m,///\s*(.+)\s*$,msx and $mask_message = $1;
 
 			next;
-		} ## end if ( is_mask_start($$line...))
+		} ## end if ( is_mask_start( ${...}))
 
 		# entering an elogind insert
 		# ---------------------------------------
-		if ( is_insert_start($$line) ) {
+		if ( is_insert_start( ${$line} ) ) {
 			$local_iib = 1;
 			$local_ieb = 0;
 
 			# Note down mask message in case we leave a message
-			$$line =~ m,///\s*(.+)\s*$,msx and $mask_message = $1;
+			${$line} =~ m,///\s*(.+)\s*$,msx and $mask_message = $1;
 
 			next;
-		} ## end if ( is_insert_start($$line...))
+		} ## end if ( is_insert_start( ...))
 
 		# Count regular #if
-		$$line =~ m/^-[${HASH}]if/msx and ++$regular_ifs;
+		${$line} =~ m/^-[${HASH}]if/msx and ++$regular_ifs;
 
 		# Switching from Mask to else.
 		# Note: Inserts have no #else, they make no sense.
 		# ---------------------------------------
-		if ( is_mask_else($$line) ) {
+		if ( is_mask_else( ${$line} ) ) {
 			$local_ieb = 1;
 
 			# If the else starts right after a mask start, we have to do something about it, if there is enough space left in the patch
@@ -1878,11 +1878,11 @@ sub check_empty_masks {
 			$mask_block_start = -1;
 
 			next;
-		} ## end if ( is_mask_else($$line...))
+		} ## end if ( is_mask_else( ${$line...}))
 
 		# ending a Mask block
 		# ---------------------------------------
-		if ( is_mask_end($$line) ) {
+		if ( is_mask_end( ${$line} ) ) {
 
 			# If the endif is right after the mask start, we have to do something about it, but only if we have enough space left in the patch
 			if ( $i < ( $hHunk->{count} - 2 ) ) {
@@ -1921,11 +1921,11 @@ sub check_empty_masks {
 			$need_endif_conversion = 0;
 
 			next;
-		} ## end if ( is_mask_end($$line...))
+		} ## end if ( is_mask_end( ${$line...}))
 
 		# ending an insert block
 		# ---------------------------------------
-		if ( is_insert_end($$line) ) {
+		if ( is_insert_end( ${$line} ) ) {
 			$local_iib             = 0;
 			$local_ieb             = 0;
 			$mask_block_start      = -1;
@@ -1933,10 +1933,10 @@ sub check_empty_masks {
 			$need_endif_conversion = 0;
 
 			next;
-		} ## end if ( is_insert_end($$line...))
+		} ## end if ( is_insert_end( ${...}))
 
 		# end regular #if
-		$$line =~ m/^-[${HASH}]endif/msx and --$regular_ifs;
+		${$line} =~ m/^-[${HASH}]endif/msx and --$regular_ifs;
 
 	} ## end for ( my $i = 0 ; $i < ...)
 
@@ -1969,18 +1969,18 @@ sub check_includes {
 	for ( my $i = 0 ; $i < $hHunk->{count} ; ++$i ) {
 		my $line = \$hHunk->{lines}[$i]; ## Shortcut
 
-		include_handle_removal( $i + 1, $$line, \%undos ) and next;                       # 1) Handling of removals of includes we commented out
-		include_handle_insertion( $i + 1, $$line ) and next;                              # 2) Handling of insertions, not handled by 1)
-		( $in_elogind_block > 0 ) and include_handle_elogind( $i + 1, $$line ) and next;  # 3) Handling of "needed by elogind" blocks
+		include_handle_removal( $i + 1, ${$line}, \%undos ) and next;                       # 1) Handling of removals of includes we commented out
+		include_handle_insertion( $i + 1, ${$line} ) and next;                              # 2) Handling of insertions, not handled by 1)
+		( $in_elogind_block > 0 ) and include_handle_elogind( $i + 1, ${$line} ) and next;  # 3) Handling of "needed by elogind" blocks
 
 		# === Other 1 : Look for "needed by elogind" block starts           ===
 		# =====================================================================
-		if ( $$line =~ m/^[${DASH}${SPACE}]\s*\/\/+.*needed\s+(?:by|for)\s+elogind.*/misx ) {
+		if ( ${$line} =~ m/^[${DASH}${SPACE}]\s*\/\/+.*needed\s+(?:by|for)\s+elogind.*/misx ) {
 			log_debug( 'Entering elogind include block at line %d', $i + 1 );
 			$in_elogind_block = 1;
 
 			# Never remove the block start
-			( $$line =~ m/^[${DASH}]/msx ) and substr( $$line, 0, 1, $SPACE );
+			( ${$line} =~ m/^[${DASH}]/msx ) and substr( ${$line}, 0, 1, $SPACE );
 
 			# While we are here, we can see to it, that the additional empty
 			# line above our marker does not get removed:
@@ -1989,16 +1989,16 @@ sub check_includes {
 			        and substr( $hHunk->{lines}[ $i - 1 ], 0, 1, $SPACE );
 
 			next;
-		} ## end if ( $$line =~ m/^[${DASH}${SPACE}]\s*\/\/+.*needed\s+(?:by|for)\s+elogind.*/misx)
+		} ## end if ( ${$line} =~ m/^[${DASH}${SPACE}]\s*\/\/+.*needed\s+(?:by|for)\s+elogind.*/misx)
 
 		# === Other 2 : elogind include blocks end, when the first line is  ===
 		# ===           found that does not starts with #include            ===
 		# =====================================================================
-		if ( $in_elogind_block && !( $$line =~ m,^[${DASH}${PLUS}${SPACE}]\s*[${HASH}]include\s*,misx ) ) {
+		if ( $in_elogind_block && !( ${$line} =~ m,^[${DASH}${PLUS}${SPACE}]\s*[${HASH}]include\s*,misx ) ) {
 			log_debug( 'Leaving elogind include block at line %d', $i + 1 );
 
 			# diff may want to remove the first empty line after our block.
-			( $$line =~ m/^[${DASH}]\s*$/msx ) and substr( $$line, 0, 1, $SPACE );
+			( ${$line} =~ m/^[${DASH}]\s*$/msx ) and substr( ${$line}, 0, 1, $SPACE );
 
 			# Done now...
 			$in_elogind_block = 0;
@@ -2007,7 +2007,7 @@ sub check_includes {
 
 		# === Other 3 : Undo all other removals in elogind include blocks   ===
 		# =====================================================================
-		$in_elogind_block and ( $$line =~ m/^[${DASH}]/msx ) and substr( $$line, 0, 1, $SPACE );
+		$in_elogind_block and ( ${$line} =~ m/^[${DASH}]/msx ) and substr( ${$line}, 0, 1, $SPACE );
 
 		# Note: Although it looks like all rules are out the window here, all
 		#       elogind includes that are handled above, end in a 'next', so
@@ -2107,11 +2107,11 @@ sub check_masks {
 
 		# entering an elogind mask
 		# ---------------------------------------
-		if ( is_mask_start($$line) ) {
+		if ( is_mask_start( ${$line} ) ) {
 			$in_mask_block and return hunk_failed("check_masks: Mask start found while being in a mask block!");
 			$in_insert_block
 			        and return hunk_failed("check_masks: Mask start found while being in an insert block!");
-			substr( $$line, 0, 1, $SPACE ); ## Remove '-'
+			substr( ${$line}, 0, 1, $SPACE ); ## Remove '-'
 			$in_insert_block  = 0;
 			$in_mask_block    = 1;
 			$mask_block_start = $i;
@@ -2126,14 +2126,14 @@ sub check_masks {
 			        and substr( $hHunk->{lines}[ $i - 1 ], 0, 1, $SPACE );
 
 			next;
-		} ## end if ( is_mask_start($$line...))
+		} ## end if ( is_mask_start( ${...}))
 
 		# entering an elogind insert
 		# ---------------------------------------
-		if ( is_insert_start($$line) ) {
+		if ( is_insert_start( ${$line} ) ) {
 			$in_mask_block   and return hunk_failed("check_masks: Insert start found while being in a mask block!");
 			$in_insert_block and return hunk_failed("check_masks: Insert start found while being in an insert block!");
-			substr( $$line, 0, 1, $SPACE ); ## Remove '-'
+			substr( ${$line}, 0, 1, $SPACE ); ## Remove '-'
 			$in_insert_block  = 1;
 			$in_mask_block    = 0;
 			$mask_block_start = -1;
@@ -2148,49 +2148,49 @@ sub check_masks {
 			        and substr( $hHunk->{lines}[ $i - 1 ], 0, 1, $SPACE );
 
 			next;
-		} ## end if ( is_insert_start($$line...))
+		} ## end if ( is_insert_start( ...))
 
 		# Count regular #if
-		$$line =~ m/^-[${HASH}]if/msx and ++$regular_ifs;
+		${$line} =~ m/^-[${HASH}]if/msx and ++$regular_ifs;
 
 		# Switching from Mask to else.
 		# Note: Inserts have no #else, they make no sense.
 		# ---------------------------------------
-		if ( is_mask_else($$line) ) {
+		if ( is_mask_else( ${$line} ) ) {
 			$in_mask_block
 			        or return hunk_failed("check_masks: Mask else found outside any mask block!");
 
-			substr( $$line, 0, 1, $SPACE ); ## Remove '-'
+			substr( ${$line}, 0, 1, $SPACE ); ## Remove '-'
 			$in_else_block = 1;
 			$move_to_line  = $i;
 			next;
-		} ## end if ( is_mask_else($$line...))
+		} ## end if ( is_mask_else( ${$line...}))
 
 		# ending a Mask block
 		# ---------------------------------------
-		if ( is_mask_end($$line) ) {
+		if ( is_mask_end( ${$line} ) ) {
 			$in_mask_block or return hunk_failed("check_masks: #endif // 0 found outside any mask block");
-			substr( $$line, 0, 1, $SPACE ); ## Remove '-'
+			substr( ${$line}, 0, 1, $SPACE ); ## Remove '-'
 			$in_mask_block    = 0;
 			$in_else_block    = 0;
 			$mask_block_start = -1;
 			$mask_end_line    = $i;
 			next;
-		} ## end if ( is_mask_end($$line...))
+		} ## end if ( is_mask_end( ${$line...}))
 
 		# ending an insert block
 		# ---------------------------------------
-		if ( is_insert_end($$line) ) {
+		if ( is_insert_end( ${$line} ) ) {
 			$in_insert_block or return hunk_failed("check_masks: #endif // 1 found outside any insert block");
-			substr( $$line, 0, 1, $SPACE ); ## Remove '-'
+			substr( ${$line}, 0, 1, $SPACE ); ## Remove '-'
 			$in_insert_block  = 0;
 			$mask_block_start = -1;
 			$mask_end_line    = $i;
 			next;
-		} ## end if ( is_insert_end($$line...))
+		} ## end if ( is_insert_end( ${...}))
 
 		# end regular #if
-		$$line =~ m/^-[${HASH}]endif/msx and --$regular_ifs;
+		${$line} =~ m/^-[${HASH}]endif/msx and --$regular_ifs;
 
 		# Special treatment for all mask-else and insert blocks.
 		# (Well, that's what this function is all about, isn't it?)
@@ -2198,8 +2198,8 @@ sub check_masks {
 
 			# Remove '-' prefixes in all lines within insert and mask-else blocks
 			# -------------------------------------------------------------------
-			if ( $$line =~ m/^[${DASH}]/msx ) {
-				substr( $$line, 0, 1, $SPACE ); ## Remove '-'
+			if ( ${$line} =~ m/^[${DASH}]/msx ) {
+				substr( ${$line}, 0, 1, $SPACE ); ## Remove '-'
 			}
 
 			# Special check for additions/keepers that might (will!) wreak havoc:
@@ -2215,16 +2215,16 @@ sub check_masks {
 				#    kept common line inside our domain.
 				# All these cases can be handled with two simple solutions.
 				# ------------------------------------------------------------------------------------
-				my $cpy_line = $$line;
+				my $cpy_line = ${$line};
 
 				# Case 1 ; The keeper: Copy the offending line back above the else/insert
 				# -----------------------------------------------------------------------
-				if ( $$line =~ m/^[${SPACE}]/msx ) {
+				if ( ${$line} =~ m/^[${SPACE}]/msx ) {
 					substr( $cpy_line, 0, 1, "${PLUS}" ); ## Above, this is an addition.
 					splice( @{ $hHunk->{lines} }, $move_to_line++, 0, $cpy_line );
 					$hHunk->{count} += 1;
 					$i++; ## We have to advance i, or the next iteration puts as back here.
-				} ## end if ( $$line =~ m/^[${SPACE}]/msx)
+				} ## end if ( ${$line} =~ m/^[${SPACE}]/msx)
 
 				# Case 2 ; The addition: move the offending line back above the else/insert
 				# -----------------------------------------------------------------------
@@ -2233,7 +2233,7 @@ sub check_masks {
 					splice( @{ $hHunk->{lines} }, $move_to_line++, 0, $cpy_line );
 
 					# Note: No change to $hHunk->{count} here, as the lines are moved.
-				} ## end else [ if ( $$line =~ m/^[${SPACE}]/msx)]
+				} ## end else [ if ( ${$line} =~ m/^[${SPACE}]/msx)]
 
 				# No matter whether we have copied or moved, the if/else moved down.
 				$mask_end_line > -1 and ++$mask_end_line or ++$mask_block_start;
@@ -2250,8 +2250,8 @@ sub check_masks {
 		# right after that. So anything added the very next lines after we have
 		# exited our domain must be moved up.
 		if ( 0 == $in_mask_block ) {
-			if ( ( $move_to_line > -1 ) && ( $$line =~ m/^[${PLUS}]/msx ) ) {
-				my $cpy_line = $$line;
+			if ( ( $move_to_line > -1 ) && ( ${$line} =~ m/^[${PLUS}]/msx ) ) {
+				my $cpy_line = ${$line};
 				splice( @{ $hHunk->{lines} }, $i, 1 ); ## Order matters here.
 				splice( @{ $hHunk->{lines} }, $move_to_line++, 0, $cpy_line );
 
@@ -2322,8 +2322,8 @@ sub check_musl {
 
 		# Quick mask checks, we must have the intermediate states
 		# -------------------------------------------------------
-		is_mask_start($$line) and ++$in_mask_block and next;
-		if ( is_mask_end($$line) ) {
+		is_mask_start( ${$line} ) and ++$in_mask_block and next;
+		if ( is_mask_end( ${$line} ) ) {
 			$in_mask_block--;
 			$in_else_block--;
 			next;
@@ -2331,55 +2331,55 @@ sub check_musl {
 
 		# entering a __GLIBC__ block as mask
 		# ---------------------------------------
-		if ( $$line =~ m/^-[${HASH}]if(?:def|\s+defined).+__GLIBC__/msx ) {
+		if ( ${$line} =~ m/^-[${HASH}]if(?:def|\s+defined).+__GLIBC__/msx ) {
 			## Note: Here it is perfectly fine to be in an elogind mask block.
-			substr( $$line, 0, 1, $SPACE ); ## Remove '-'
+			substr( ${$line}, 0, 1, $SPACE ); ## Remove '-'
 			$in_glibc_block = 1;
 			next;
-		} ## end if ( $$line =~ m/^-[${HASH}]if(?:def|\s+defined).+__GLIBC__/msx)
+		} ## end if ( ${$line} =~ m/^-[${HASH}]if(?:def|\s+defined).+__GLIBC__/msx)
 
 		# entering a __GLIBC__ block as insert
 		# ---------------------------------------
-		if ( $$line =~ m/^-[${HASH}]if(?:ndef|\s+!defined).+__GLIBC__/msx ) {
-			substr( $$line, 0, 1, $SPACE ); ## Remove '-'
+		if ( ${$line} =~ m/^-[${HASH}]if(?:ndef|\s+!defined).+__GLIBC__/msx ) {
+			substr( ${$line}, 0, 1, $SPACE ); ## Remove '-'
 			$in_glibc_block = 1;
 			$in_else_block++;
 			next;
-		} ## end if ( $$line =~ m/^-[${HASH}]if(?:ndef|\s+!defined).+__GLIBC__/msx)
+		} ## end if ( ${$line} =~ m/^-[${HASH}]if(?:ndef|\s+!defined).+__GLIBC__/msx)
 
 		# Count regular #if
-		$$line =~ m/^-[${HASH}]if/msx and ++$regular_ifs;
+		${$line} =~ m/^-[${HASH}]if/msx and ++$regular_ifs;
 
 		# Switching from __GLIBC__ to else
 		# ---------------------------------------
-		if ( $$line =~ m/^[-${SPACE}]?[${HASH}]else\s+[\/]+\s+__GLIBC__/msx ) {
+		if ( ${$line} =~ m/^[-${SPACE}]?[${HASH}]else\s+[\/]+\s+__GLIBC__/msx ) {
 			++$in_else_block;
-			substr( $$line, 0, 1, $SPACE );
+			substr( ${$line}, 0, 1, $SPACE );
 			next;
 		}
 
 		# ending a __GLBC__ block
 		# ---------------------------------------
-		if ( $$line =~ m/^[${DASH}][${HASH}]endif\s*\/\/\/?.*__GLIBC__/msx ) {
+		if ( ${$line} =~ m/^[${DASH}][${HASH}]endif\s*\/\/\/?.*__GLIBC__/msx ) {
 			( !$in_glibc_block )
 			        and return hunk_failed("check_musl: #endif // __GLIBC__ found outside any __GLIBC__ block");
-			substr( $$line, 0, 1, $SPACE ); ## Remove '-'
+			substr( ${$line}, 0, 1, $SPACE ); ## Remove '-'
 			$in_glibc_block = 0;
 			$in_else_block--;
 			next;
-		} ## end if ( $$line =~ m/^[${DASH}][${HASH}]endif\s*\/\/\/?.*__GLIBC__/msx)
+		} ## end if ( ${$line} =~ m/^[${DASH}][${HASH}]endif\s*\/\/\/?.*__GLIBC__/msx)
 
 		# end regular #if
-		$$line =~ m/^-[${HASH}]endif/msx and --$regular_ifs;
+		${$line} =~ m/^-[${HASH}]endif/msx and --$regular_ifs;
 
 		# Remove '-' prefixes in all lines within the musl (#else) blocks
 		# -------------------------------------------------------------------
-		if (       ( $$line =~ m/^[${DASH}]/msx )
+		if (       ( ${$line} =~ m/^[${DASH}]/msx )
 			&& ( $in_glibc_block > 0 )
 			&& ( $in_else_block > $in_mask_block ) )
 		{
-			substr( $$line, 0, 1, $SPACE ); ## Remove '-'
-		} ## end if ( ( $$line =~ m/^[${DASH}]/msx...))
+			substr( ${$line}, 0, 1, $SPACE ); ## Remove '-'
+		} ## end if ( ( ${$line} =~ m/^[${DASH}]/msx...))
 	} ## end for ( my $i = 0 ; $i < ...)
 
 	# Revert the final mask state remembered above
@@ -2441,14 +2441,14 @@ sub check_name_reverts {
 
 	for ( my $i = 0 ; $i < $hHunk->{count} ; ++$i ) {
 		my $line_p = \$hHunk->{lines}[$i]; ## Shortcut
-		defined($$line_p)
+		defined( ${$line_p} )
 		        or return hunk_failed( "check_name_reverts: Line " . ( $i + 1 ) . "/$hHunk->{count} is undef?" );
 
 		# Quick mask checks, we must have the intermediate states
 		# -------------------------------------------------------
-		is_mask_start($$line_p) and ++$in_mask_block and next;
-		is_mask_else($$line_p)  and ++$in_else_block and next;
-		if ( is_mask_end($$line_p) ) {
+		is_mask_start( ${$line_p} ) and ++$in_mask_block and next;
+		is_mask_else( ${$line_p} )  and ++$in_else_block and next;
+		if ( is_mask_end( ${$line_p} ) ) {
 			$in_mask_block = 0;
 			$in_else_block = 0;
 			next;
@@ -2457,7 +2457,7 @@ sub check_name_reverts {
 
 		# Analyze basic status of the line
 		# -----------------------------------------------------------
-		change_analyze_hunk_line( \%hChanges, $i, $$line_p, $is_masked_now );
+		change_analyze_hunk_line( \%hChanges, $i, ${$line_p}, $is_masked_now );
 	} ## end for ( my $i = 0 ; $i < ...)
 
 	# Generally there are three types of changes:
@@ -2550,8 +2550,8 @@ sub check_stdc_version {
 
 		# Quick mask checks, we must have the intermediate states
 		# -------------------------------------------------------
-		is_mask_start($$line) and ++$in_mask_block and next;
-		if ( is_mask_end($$line) ) {
+		is_mask_start( ${$line} ) and ++$in_mask_block and next;
+		if ( is_mask_end( ${$line} ) ) {
 			$in_mask_block--;
 			$in_else_block--;
 			next;
@@ -2559,18 +2559,18 @@ sub check_stdc_version {
 
 		# Having a removal of a guardian
 		# ---------------------------------------
-		if ( $$line =~ m/^[${DASH}][${HASH}]\s*if\s+defined\(__STDC_VERSION__\)\s+&&\s+/msx ) {
+		if ( ${$line} =~ m/^[${DASH}][${HASH}]\s*if\s+defined\(__STDC_VERSION__\)\s+&&\s+/msx ) {
 			## Note: Here it is perfectly fine to be in an elogind mask block.
 			$line_del_num = $i;
-			$line_del_str = $$line;
+			$line_del_str = ${$line};
 			next;
-		} ## end if ( $$line =~ m/^[${DASH}][${HASH}]\s*if\s+defined\(__STDC_VERSION__\)\s+&&\s+/msx)
+		} ## end if ( ${$line} =~ m/^[${DASH}][${HASH}]\s*if\s+defined\(__STDC_VERSION__\)\s+&&\s+/msx)
 
 		# Having the line without guardian added
 		# ---------------------------------------
-		if ( $$line =~ m/^[${PLUS}][${HASH}]\s*if\s+/msx ) {
+		if ( ${$line} =~ m/^[${PLUS}][${HASH}]\s*if\s+/msx ) {
 			$line_rep_num = $i;
-			$line_rep_str = $$line;
+			$line_rep_str = ${$line};
 		}
 
 		# If we have a deletion and a fitting addition in the next line,
@@ -2637,19 +2637,19 @@ sub check_sym_lines {
 	for ( my $i = 0 ; $i < $hHunk->{count} ; ++$i ) {
 		my $line = \$hHunk->{lines}[$i]; ## Shortcut
 
-		defined($$line)
+		defined( ${$line} )
 		        or return hunk_failed( "check_sym_files: Line " . ( $i + 1 ) . "/$hHunk->{count} is undef?" );
 
 		# Note down removals
 		# ---------------------------------
-		if ( $$line =~ m/^[${DASH}]\s*\/\*\s+(\S.+;)\s+\*\/\s*$/msx ) {
+		if ( ${$line} =~ m/^[${DASH}]\s*\/\*\s+(\S.+;)\s+\*\/\s*$/msx ) {
 			$hRemovals{$1}{line} = $i;
 			next;
 		}
 
 		# Check Additions
 		# ---------------------------------
-		if ( $$line =~ m/^[${PLUS}]\s*([^${SPACE}\/].+;)\s*$/msx ) {
+		if ( ${$line} =~ m/^[${PLUS}]\s*([^${SPACE}\/].+;)\s*$/msx ) {
 			$hAdditions{$1}{line}    = $i;
 			$hAdditions{$1}{handled} = 0;
 			$hAddMap{$i}             = $1;
@@ -2715,17 +2715,17 @@ sub check_useless {
 		my $line = \$hHunk->{lines}[$i]; ## Shortcut
 
 		# --- (1) Note down removal ---
-		if ( $$line =~ m/^[${DASH}](.*)$/msx ) {
+		if ( ${$line} =~ m/^[${DASH}](.*)$/msx ) {
 			my $token = $1 // $EMPTY;
 			$token =~ s/\s+$//ms; ## No trailing whitespace/lines!
 			$r_start > -1 or $r_start = $i;
 			length($token) and $hRemovals{$token} = $i
 			        or $hRemovals{ "empty" . $i } = $i;
 			next;
-		} ## end if ( $$line =~ m/^[${DASH}](.*)$/msx)
+		} ## end if ( ${$line} =~ m/^[${DASH}](.*)$/msx)
 
 		# --- (2) Check Addition ---
-		if ( $$line =~ m/^[${PLUS}](.*)$/msx ) {
+		if ( ${$line} =~ m/^[${PLUS}](.*)$/msx ) {
 			my $token = $1 // $EMPTY;
 			$token =~ s/\s+$//ms; ## No trailing whitespace/lines!
 			$r_offset > -1 or $r_offset = $i - $r_start;
@@ -2736,7 +2736,7 @@ sub check_useless {
 				$hSplices{$i} = 1;
 				next;
 			} ## end if ( length($token) &&...)
-		} ## end if ( $$line =~ m/^[${PLUS}](.*)$/msx)
+		} ## end if ( ${$line} =~ m/^[${PLUS}](.*)$/msx)
 
 		# --- (3) Reset state on the first out-of-block line
 		$r_start   = -1;
@@ -3234,7 +3234,7 @@ sub include_handle_elogind {
 
 	# === Ruleset 3 : Handling of "needed by elogind" blocks            ===
 	# =====================================================================
-	if ( $$line =~ m/^[${DASH}]\s*[${HASH}]include\s+([<"'])([^>"']+)([>"'])/msx ) {
+	if ( ${$line} =~ m/^[${DASH}]\s*[${HASH}]include\s+([<"'])([^>"']+)([>"'])/msx ) {
 		( $pre, $inc, $post ) = ( $1, $2, $3 );
 	}
 
@@ -3247,7 +3247,7 @@ sub include_handle_elogind {
 	defined( $hIncs{$inc}{elogind}{hunkid} ) and $hIncs{$inc}{elogind}{hunkid} > -1 or return hunk_failed("check_includes: Unrecorded elogind include found!");
 
 	# As 1 and 2 do not apply, simply undo the removal.
-	substr( $$line, 0, 1, $SPACE );
+	substr( ${$line}, 0, 1, $SPACE );
 	$hIncs{$inc}{applied} = 1;
 
 	return 1;
@@ -3275,7 +3275,7 @@ sub include_handle_insertion {
 
 	# === Ruleset 2 : Handling of insertions, not handled by 1          ===
 	# =====================================================================
-	if ( $$line =~ m/^[${PLUS}]\s*[${HASH}]include\s+([<"'])([^>"']+)([>"'])/msx ) {
+	if ( ${$line} =~ m/^[${PLUS}]\s*[${HASH}]include\s+([<"'])([^>"']+)([>"'])/msx ) {
 		( $pre, $inc, $post ) = ( $1, $2, $3 );
 	}
 
@@ -3790,7 +3790,7 @@ sub protect_config() {
 
 		# Kill addition of lines we do not need
 		# ---------------------------------------
-		if ( $$line =~ m/^[${PLUS}][${HASH}]?(?:NAutoVTs|ReserveVT)/msx ) {
+		if ( ${$line} =~ m/^[${PLUS}][${HASH}]?(?:NAutoVTs|ReserveVT)/msx ) {
 			splice( @{ $hHunk->{lines} }, $i--, 1 );
 			--$hHunk->{count};
 			next;
@@ -3798,20 +3798,20 @@ sub protect_config() {
 
 		# enter elogind specific [Sleep] block
 		# ------------------------------------------
-		if ( $$line =~ m/^[${DASH}]\[Sleep\]/msx ) {
-			substr( $$line, 0, 1, $SPACE ); ## Remove '-'
+		if ( ${$line} =~ m/^[${DASH}]\[Sleep\]/msx ) {
+			substr( ${$line}, 0, 1, $SPACE ); ## Remove '-'
 
 			# The previous line is probably the deletion of the blank line before the block
 			( $i > 0 ) and ( $hHunk->{lines}[ $i - 1 ] =~ /^[${DASH}]/ms ) and $hHunk->{lines}[ $i - 1 ] = $SPACE;
 
 			$is_sleep_block = 1;
 			next;
-		} ## end if ( $$line =~ m/^[${DASH}]\[Sleep\]/msx)
+		} ## end if ( ${$line} =~ m/^[${DASH}]\[Sleep\]/msx)
 
 		# Remove deletions of lines in our [Sleep] block
 		$is_sleep_block
-		        and ( $$line =~ m/^[${DASH}]/ms )
-		        and substr( $$line, 0, 1, $SPACE ) ## Remove '-'
+		        and ( ${$line} =~ m/^[${DASH}]/ms )
+		        and substr( ${$line}, 0, 1, $SPACE ) ## Remove '-'
 		        and next;
 
 		# No sleep block
@@ -4152,7 +4152,7 @@ sub read_includes {
 		my $line = \$hHunk->{lines}[$i]; ## Shortcut
 
 		# Note down removals of includes we commented out
-		if ( $$line =~ m/^[${DASH}]\s*\/[\/*]+\s*[${HASH}]include\s+([<"'])([^>"']+)([>"'])/msx ) {
+		if ( ${$line} =~ m/^[${DASH}]\s*\/[\/*]+\s*[${HASH}]include\s+([<"'])([^>"']+)([>"'])/msx ) {
 			( defined $hIncs{$2}{remove} )
 			        and log_debug( 'Line % 3d Include %s removal first in line %d', $i + 1, $2, $hIncs{$2}{remove}{lineid} + 1 )
 			        and next;
@@ -4163,10 +4163,10 @@ sub read_includes {
 				sysinc => $1 eq "<"
 			};
 			next;
-		} ## end if ( $$line =~ m/^[${DASH}]\s*\/[\/*]+\s*[${HASH}]include\s+([<"'])([^>"']+)([>"'])/msx)
+		} ## end if ( ${$line} =~ m/^[${DASH}]\s*\/[\/*]+\s*[${HASH}]include\s+([<"'])([^>"']+)([>"'])/msx)
 
 		# Note down inserts of possibly new includes we might want commented out
-		if ( $$line =~ m/^[${PLUS}]\s*[${HASH}]include\s+([<"'])([^>"']+)([>"'])/msx ) {
+		if ( ${$line} =~ m/^[${PLUS}]\s*[${HASH}]include\s+([<"'])([^>"']+)([>"'])/msx ) {
 			( defined $hIncs{$2}{insert} )
 			        and log_debug( 'Line % 3d Include %s insertion first in line %d', $i + 1, $2, $hIncs{$2}{insert}{lineid} + 1 )
 			        and next;
@@ -4179,10 +4179,10 @@ sub read_includes {
 				sysinc   => $1 eq "<"
 			};
 			next;
-		} ## end if ( $$line =~ m/^[${PLUS}]\s*[${HASH}]include\s+([<"'])([^>"']+)([>"'])/msx)
+		} ## end if ( ${$line} =~ m/^[${PLUS}]\s*[${HASH}]include\s+([<"'])([^>"']+)([>"'])/msx)
 
 		# Note down removals of includes we explicitly added for elogind
-		if ( $in_elogind_block && ( $$line =~ m/^[${DASH}]\s*[${HASH}]include\s+([<"'])([^>"']+)([>"'])/msx ) ) {
+		if ( $in_elogind_block && ( ${$line} =~ m/^[${DASH}]\s*[${HASH}]include\s+([<"'])([^>"']+)([>"'])/msx ) ) {
 			( defined $hIncs{$2}{elogind} )
 			        and log_debug( 'Line % 3d elogind Include %s first in line %d', $i + 1, $2, $hIncs{$2}{elogind}{lineid} + 1 )
 			        and next;
@@ -4192,14 +4192,14 @@ sub read_includes {
 		} ## end if ( $in_elogind_block...)
 
 		# elogind include blocks are started by a comment featuring "needed by elogind"
-		if ( $$line =~ m,^[ -]\s*/+.*needed\s+(?:by|for)\s+elogind.*,msxi ) {
+		if ( ${$line} =~ m,^[ -]\s*/+.*needed\s+(?:by|for)\s+elogind.*,msxi ) {
 			log_debug( 'Entering elogind include block at line %d', $i + 1 );
 			$in_elogind_block = 1;
 			next;
 		}
 
 		# elogind include blocks end, when the first non-include line is found
-		if ( $in_elogind_block && !( $$line =~ m,^[${DASH}${PLUS}${SPACE}]\s*[${HASH}]include\s*,misx ) ) {
+		if ( $in_elogind_block && !( ${$line} =~ m,^[${DASH}${PLUS}${SPACE}]\s*[${HASH}]include\s*,misx ) ) {
 			log_debug( 'Leaving elogind include block at line %d', $i + 1 );
 			$in_elogind_block = 0;
 		}
