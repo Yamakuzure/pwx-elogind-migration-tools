@@ -568,7 +568,7 @@ sub build_hFile {
 	my $isNew = defined( $hToCreate{$part} ) ? 1 : 0;
 
 	# We only prefixed './' to unify things. Now it is no longer needed:
-	$part =~ s/^[${DOT}][${SLASH}]//mx;
+	$part =~ s/^[${DOT}][${SLASH}]//msx;
 
 	# Pre: erase current $hFile, as that is what is expected.
 	clean_hFile();
@@ -576,7 +576,7 @@ sub build_hFile {
 	# Check the target file
 	my $tgt = "$upstream_path/$part";
 	$tgt =~ s/elogind/systemd/msg;
-	$tgt =~ s/\.pwx$//m;
+	$tgt =~ s/[${DOT}]pwx$//ms;
 	-f $tgt
 	        or push( @only_here, $part )
 	        and return 0;
@@ -589,11 +589,11 @@ sub build_hFile {
 	my $is_sh  = 0;
 	my $is_xml = 0;
 	for my $pat ( @{ $FILE_NAME_PATTERNS{"xml"} } ) {
-		$part =~ m/$pat/ and $is_xml = 1 and last;
+		$part =~ m/$pat/ms and $is_xml = 1 and last;
 	}
 	if ( 0 == $is_xml ) {
 		for my $pat ( @{ $FILE_NAME_PATTERNS{"shell"} } ) {
-			$part =~ m/$pat/ and $is_sh = 1 and last;
+			$part =~ m/$pat/msx and $is_sh = 1 and last;
 		}
 	}
 
@@ -760,9 +760,9 @@ sub change_analyze_hunk_line {
 	my $type   = ( ${DASH} eq $prefix ) ? $TYPE_REMOVAL : ( ${PLUS} eq $prefix ) ? $TYPE_ADDITION : $TYPE_NEUTRAL;
 	my $alttxt = change_find_alt_text( $kind, $replace_text );
 	my $iscomment =
-	          ( ( $comment_str =~ m/^[$HASH]+$/msx ) && $hFile{'is_sh'} )  ? $TRUE
-	        : ( ( $comment_str =~ m/^[\/*]+$/ )      && !$hFile{'is_sh'} ) ? $TRUE
-	        :                                                                $FALSE;
+	          ( ( $comment_str =~ m/^[$HASH]+$/msx )     && $hFile{'is_sh'} )  ? $TRUE
+	        : ( ( $comment_str =~ m/^[${SLASH}*]+$/msx ) && !$hFile{'is_sh'} ) ? $TRUE
+	        :                                                                    $FALSE;
 
 	# Now record our findings
 	$pChanges->{$replace_text}{'texts'}{'count'} += 1;
@@ -1522,7 +1522,7 @@ sub change_use_alt {
 	my $oldText  = $change->{'text'};
 
 	log_debug( "     => Change  % 3d: '%s'", $lno + 1, $hHunk->{lines}[$lno] );
-	$hHunk->{lines}[$lno] =~ s{\Q$oldText\E}{$newText}m;
+	$hHunk->{lines}[$lno] =~ s{\Q$oldText\E}{$newText}ms;
 	log_debug( "     =>   To    % 3d: '%s'", $lno + 1, $hHunk->{lines}[$lno] );
 
 	return 1;
@@ -1550,7 +1550,7 @@ sub check_blanks {
 		my $line = \$hHunk->{lines}[$i]; ## Shortcut
 
 		# Check for misplaced addition
-		if (       ( $$line =~ m/^[${PLUS}]\s*$/ )
+		if (       ( $$line =~ m/^[${PLUS}]\s*$/msx )
 			&& ( $i > 0 )
 			&& ( ( is_mask_start( $hHunk->{lines}[ $i - 1 ] ) || is_insert_start( $hHunk->{lines}[ $i - 1 ] ) ) ) )
 		{
@@ -1559,19 +1559,19 @@ sub check_blanks {
 			$$line = $hHunk->{lines}[ $i - 1 ];
 			$hHunk->{lines}[ $i - 1 ] = $tmp;
 			next;
-		} ## end if ( ( $$line =~ m/^[${PLUS}]\s*$/...))
+		} ## end if ( ( $$line =~ m/^[${PLUS}]\s*$/msx...))
 
 		# Check for unpleasant removals
-		if (       ( $$line =~ m/^\-\s*$/ )
+		if (       ( $$line =~ m/^[${DASH}]\s*$/msx )
 			&& ( $i > 0 )
 			&& ( ( is_mask_end( $hHunk->{lines}[ $i - 1 ] ) || is_insert_end( $hHunk->{lines}[ $i - 1 ] ) ) )
 			&& ( $i < ( $hHunk->{count} - 1 ) )
-			&& ( !( $hHunk->{lines}[ $i + 1 ] =~ m/^[-+ ]\s*$/ ) ) )
+			&& ( !( $hHunk->{lines}[ $i + 1 ] =~ m/^[${DASH}${PLUS}${SPACE}]\s*$/msx ) ) )
 		{
 			# Revert the removal
 			substr( $$line, 0, 1, $SPACE );
 			next;
-		} ## end if ( ( $$line =~ m/^\-\s*$/...))
+		} ## end if ( ( $$line =~ m/^[${DASH}]\s*$/msx...))
 
 	} ## end for ( my $i = 0 ; $i < ...)
 
@@ -1704,19 +1704,19 @@ sub check_debug {
 
 		# end regular #if
 		# ---------------------------------------
-		$$line =~ m/^-[${HASH}]endif/msx and --$regular_ifs;
+		$$line =~ m/^[${DASH}][${HASH}]endif/msx and --$regular_ifs;
 
 		# Check for log_debug_elogind()
 		# ---------------------------------------
-		if ( $$line =~ m/^-.*log_debug_elogind\s*\(/msx ) {
+		if ( $$line =~ m/^[${DASH}].*log_debug_elogind\s*[(]/msx ) {
 			substr( $$line, 0, 1, $SPACE ); ## Remove '-'
-			$$line =~ m/\)\s*;/ or ++$is_debug_func;
+			$$line =~ m/[)]\s*;/smx or ++$is_debug_func;
 			next;
 		}
 
 		# Remove '-' prefixes in all lines within the debug construct block
 		# -------------------------------------------------------------------
-		if ( ( $$line =~ m,^[${DASH}], ) && ( $in_insert_block || $is_debug_func ) ) {
+		if ( ( $$line =~ m/^[${DASH}]/msx ) && ( $in_insert_block || $is_debug_func ) ) {
 			substr( $$line, 0, 1, $SPACE ); ## Remove '-'
 
 			# Note: Everything in *any* insert block must not be removed anyway.
@@ -1724,7 +1724,7 @@ sub check_debug {
 
 		# Check for the end of a multiline log_debug_elogind() call
 		# ---------------------------------------------------------
-		$is_debug_func and $$line =~ m/\)\s*;/ and --$is_debug_func;
+		$is_debug_func and $$line =~ m/[)]\s*;/msx and --$is_debug_func;
 
 	} ## end for ( my $i = 0 ; $i < ...)
 
@@ -1760,19 +1760,19 @@ sub check_func_removes {
 		# -------------------------------------------------------------------
 		if ( $$line =~ m/^[${DASH}].*elogind_\S+\s*\(/msx ) {
 			( defined $hProtected{$$line} ) or substr( $$line, 0, 1, $SPACE ); ## Remove '-'
-			$$line =~ m/\)\s*;/ or ++$is_func_call;
+			$$line =~ m/[)]\s*;/msx or ++$is_func_call;
 			next;
 		}
 
 		# Remove '-' prefixes in all lines that belong to an elogind_*() call
 		# -------------------------------------------------------------------
-		if ( ( $$line =~ m,^[${DASH}], ) && $is_func_call && !( defined $hProtected{$$line} ) ) {
+		if ( ( $$line =~ m/^[${DASH}]/msx ) && $is_func_call && !( defined $hProtected{$$line} ) ) {
 			substr( $$line, 0, 1, $SPACE ); ## Remove '-'
 		}
 
 		# Check for the end of a multiline elogind_*() call
 		# -------------------------------------------------------------------
-		$is_func_call and $$line =~ m/\)\s*;/ and --$is_func_call;
+		$is_func_call and $$line =~ m/\)\s*;/msx and --$is_func_call;
 	} ## end for ( my $i = 0 ; $i < ...)
 
 	return 1;
@@ -1833,7 +1833,7 @@ sub check_empty_masks {
 			$mask_block_start = $i;
 
 			# Note down mask message in case we leave a message
-			$$line =~ m,///\s*(.+)\s*$, and $mask_message = $1;
+			$$line =~ m,///\s*(.+)\s*$,msx and $mask_message = $1;
 
 			next;
 		} ## end if ( is_mask_start($$line...))
@@ -1845,7 +1845,7 @@ sub check_empty_masks {
 			$local_ieb = 0;
 
 			# Note down mask message in case we leave a message
-			$$line =~ m,///\s*(.+)\s*$, and $mask_message = $1;
+			$$line =~ m,///\s*(.+)\s*$,msx and $mask_message = $1;
 
 			next;
 		} ## end if ( is_insert_start($$line...))
@@ -1980,12 +1980,12 @@ sub check_includes {
 			$in_elogind_block = 1;
 
 			# Never remove the block start
-			( $$line =~ m,^[${DASH}], ) and substr( $$line, 0, 1, $SPACE );
+			( $$line =~ m/^[${DASH}]/msx ) and substr( $$line, 0, 1, $SPACE );
 
 			# While we are here, we can see to it, that the additional empty
 			# line above our marker does not get removed:
 			( $i > 0 )
-			        and ( $hHunk->{lines}[ $i - 1 ] =~ m/^[${DASH}]\s*$/ )
+			        and ( $hHunk->{lines}[ $i - 1 ] =~ m/^[${DASH}]\s*$/msx )
 			        and substr( $hHunk->{lines}[ $i - 1 ], 0, 1, $SPACE );
 
 			next;
@@ -1998,7 +1998,7 @@ sub check_includes {
 			log_debug( 'Leaving elogind include block at line %d', $i + 1 );
 
 			# diff may want to remove the first empty line after our block.
-			( $$line =~ m,^[${DASH}]\s*$, ) and substr( $$line, 0, 1, $SPACE );
+			( $$line =~ m/^[${DASH}]\s*$/msx ) and substr( $$line, 0, 1, $SPACE );
 
 			# Done now...
 			$in_elogind_block = 0;
@@ -2007,7 +2007,7 @@ sub check_includes {
 
 		# === Other 3 : Undo all other removals in elogind include blocks   ===
 		# =====================================================================
-		$in_elogind_block and ( $$line =~ m,^[${DASH}], ) and substr( $$line, 0, 1, $SPACE );
+		$in_elogind_block and ( $$line =~ m/^[${DASH}]/msx ) and substr( $$line, 0, 1, $SPACE );
 
 		# Note: Although it looks like all rules are out the window here, all
 		#       elogind includes that are handled above, end in a 'next', so
@@ -2122,7 +2122,7 @@ sub check_masks {
 			# All masks shall be preceded by an empty line to enhance readability.
 			# So any attempt to remove them must be stopped.
 			( $i > 0 )
-			        and ( $hHunk->{lines}[ $i - 1 ] =~ m/^-\s*$/ )
+			        and ( $hHunk->{lines}[ $i - 1 ] =~ m/^[${DASH}]\s*$/msx )
 			        and substr( $hHunk->{lines}[ $i - 1 ], 0, 1, $SPACE );
 
 			next;
@@ -2144,7 +2144,7 @@ sub check_masks {
 			# All inserts shall be preceded by an empty line to enhance readability.
 			# So any attempt to remove them must be stopped.
 			( $i > 0 )
-			        and ( $hHunk->{lines}[ $i - 1 ] =~ m/^-\s*$/ )
+			        and ( $hHunk->{lines}[ $i - 1 ] =~ m/^[${DASH}]\s*$/msx )
 			        and substr( $hHunk->{lines}[ $i - 1 ], 0, 1, $SPACE );
 
 			next;
@@ -2198,7 +2198,7 @@ sub check_masks {
 
 			# Remove '-' prefixes in all lines within insert and mask-else blocks
 			# -------------------------------------------------------------------
-			if ( $$line =~ m,^[${DASH}], ) {
+			if ( $$line =~ m/^[${DASH}]/msx ) {
 				substr( $$line, 0, 1, $SPACE ); ## Remove '-'
 			}
 
@@ -2219,12 +2219,12 @@ sub check_masks {
 
 				# Case 1 ; The keeper: Copy the offending line back above the else/insert
 				# -----------------------------------------------------------------------
-				if ( $$line =~ m,^ , ) {
+				if ( $$line =~ m/^[${SPACE}]/msx ) {
 					substr( $cpy_line, 0, 1, "${PLUS}" ); ## Above, this is an addition.
 					splice( @{ $hHunk->{lines} }, $move_to_line++, 0, $cpy_line );
 					$hHunk->{count} += 1;
 					$i++; ## We have to advance i, or the next iteration puts as back here.
-				} ## end if ( $$line =~ m,^ , )
+				} ## end if ( $$line =~ m/^[${SPACE}]/msx)
 
 				# Case 2 ; The addition: move the offending line back above the else/insert
 				# -----------------------------------------------------------------------
@@ -2233,7 +2233,7 @@ sub check_masks {
 					splice( @{ $hHunk->{lines} }, $move_to_line++, 0, $cpy_line );
 
 					# Note: No change to $hHunk->{count} here, as the lines are moved.
-				} ## end else [ if ( $$line =~ m,^ , )]
+				} ## end else [ if ( $$line =~ m/^[${SPACE}]/msx)]
 
 				# No matter whether we have copied or moved, the if/else moved down.
 				$mask_end_line > -1 and ++$mask_end_line or ++$mask_block_start;
@@ -2250,7 +2250,7 @@ sub check_masks {
 		# right after that. So anything added the very next lines after we have
 		# exited our domain must be moved up.
 		if ( 0 == $in_mask_block ) {
-			if ( ( $move_to_line > -1 ) && ( $$line =~ m,^[${PLUS}], ) ) {
+			if ( ( $move_to_line > -1 ) && ( $$line =~ m/^[${PLUS}]/msx ) ) {
 				my $cpy_line = $$line;
 				splice( @{ $hHunk->{lines} }, $i, 1 ); ## Order matters here.
 				splice( @{ $hHunk->{lines} }, $move_to_line++, 0, $cpy_line );
@@ -2374,12 +2374,12 @@ sub check_musl {
 
 		# Remove '-' prefixes in all lines within the musl (#else) blocks
 		# -------------------------------------------------------------------
-		if (       ( $$line =~ m,^[${DASH}], )
+		if (       ( $$line =~ m/^[${DASH}]/msx )
 			&& ( $in_glibc_block > 0 )
 			&& ( $in_else_block > $in_mask_block ) )
 		{
 			substr( $$line, 0, 1, $SPACE ); ## Remove '-'
-		} ## end if ( ( $$line =~ m,^[${DASH}],...))
+		} ## end if ( ( $$line =~ m/^[${DASH}]/msx...))
 	} ## end for ( my $i = 0 ; $i < ...)
 
 	# Revert the final mask state remembered above
@@ -2623,7 +2623,7 @@ sub check_sym_lines {
 	# -----------------------------------------------------------------------
 
 	# Only .sym files are handled here
-	$hFile{source} =~ m/\.sym\.pwx$/ or return 1;
+	$hFile{source} =~ m/[${DOT}]sym[${DOT}]pwx$/msx or return 1;
 
 	log_debug("Checking .sym file sanity...");
 
@@ -2715,19 +2715,19 @@ sub check_useless {
 		my $line = \$hHunk->{lines}[$i]; ## Shortcut
 
 		# --- (1) Note down removal ---
-		if ( $$line =~ m/^-(.*)$/ ) {
+		if ( $$line =~ m/^[${DASH}](.*)$/msx ) {
 			my $token = $1 // $EMPTY;
-			$token =~ s/\s+$//m; ## No trailing whitespace/lines!
+			$token =~ s/\s+$//ms; ## No trailing whitespace/lines!
 			$r_start > -1 or $r_start = $i;
 			length($token) and $hRemovals{$token} = $i
 			        or $hRemovals{ "empty" . $i } = $i;
 			next;
-		} ## end if ( $$line =~ m/^-(.*)$/)
+		} ## end if ( $$line =~ m/^[${DASH}](.*)$/msx)
 
 		# --- (2) Check Addition ---
-		if ( $$line =~ m/^[${PLUS}](.*)$/ ) {
+		if ( $$line =~ m/^[${PLUS}](.*)$/msx ) {
 			my $token = $1 // $EMPTY;
-			$token =~ s/\s+$//m; ## No trailing whitespace/lines!
+			$token =~ s/\s+$//ms; ## No trailing whitespace/lines!
 			$r_offset > -1 or $r_offset = $i - $r_start;
 			if ( length($token) && ( defined( $hRemovals{$token} ) && ( $hRemovals{$token} + $r_offset ) == $i ) ) {
 
@@ -2736,7 +2736,7 @@ sub check_useless {
 				$hSplices{$i} = 1;
 				next;
 			} ## end if ( length($token) &&...)
-		} ## end if ( $$line =~ m/^[${PLUS}](.*)$/)
+		} ## end if ( $$line =~ m/^[${PLUS}](.*)$/msx)
 
 		# --- (3) Reset state on the first out-of-block line
 		$r_start   = -1;
@@ -2889,7 +2889,7 @@ sub diff_hFile {
 	$hFile{create}                                                           # But we have $hFile{part}, which is already the
 	        and $hFile{output}[0] =~ s/$src/[${SLASH}]dev[${SLASH}]null/msx  # relative file name of the file we are
 	        or $hFile{output}[0]  =~ s/$src/a[${SLASH}]$prt/msx;             # processing, and we know if a file is
-	$hFile{output}[1] =~ s/$tgt/b[${SLASH}]$prt/m;                           # to be created.
+	$hFile{output}[1] =~ s/$tgt/b[${SLASH}]$prt/ms;                          # to be created.
 
 	# ... and the raw hunks can be stored.
 	for ( my $line_no = 1 ; $line_no < scalar @lDiff ; ++$line_no ) {
@@ -2962,9 +2962,9 @@ sub generate_file_list {
 
 	# Build wanted files hash
 	while ( my $want = shift @wanted_files ) {
-		$have_wanted              = 1;
-		$want =~ m,^\./, or $want = "./$want";
-		$hWanted{$want}           = 1;
+		$have_wanted                                = 1;
+		$want =~ m/^[${DOT}][${SLASH}]/msx or $want = "./$want";
+		$hWanted{$want}                             = 1;
 		$want =~ s/elogind/systemd/msg;
 		$hWanted{$want} = 1;
 	} ## end while ( my $want = shift ...)
@@ -3033,9 +3033,9 @@ sub get_hunk_head {
 	my $tgt_start = defined($offset) ? $src_start + $$offset : $hHunk->{tgt_start};
 
 	for ( my $i = 0 ; $i < $lCount ; ++$i ) {
-		if ( $hHunk->{lines}[$i] =~ m/^[${PLUS}]/ ) {
+		if ( $hHunk->{lines}[$i] =~ m/^[${PLUS}]/msx ) {
 			$tgt_len++;
-		} elsif ( $hHunk->{lines}[$i] =~ m/^\-/ ) {
+		} elsif ( $hHunk->{lines}[$i] =~ m/^[${DASH}]/msx ) {
 			$src_len++;
 		} else {
 			$src_len++;
@@ -3196,7 +3196,7 @@ sub hunk_is_useful() {
 	my $is_useful = 0;
 
 	for ( my $i = 0 ; ( 0 == $is_useful ) && ( $i < $hHunk->{count} ) ; ++$i ) {
-		if ( $hHunk->{lines}[$i] =~ m/^[-+]/ ) {
+		if ( $hHunk->{lines}[$i] =~ m/^[${DASH}${PLUS}]/msx ) {
 			$is_useful = 1;
 		}
 	}
@@ -3798,19 +3798,19 @@ sub protect_config() {
 
 		# enter elogind specific [Sleep] block
 		# ------------------------------------------
-		if ( $$line =~ m,^\-\[Sleep\], ) {
+		if ( $$line =~ m/^[${DASH}]\[Sleep\]/msx ) {
 			substr( $$line, 0, 1, $SPACE ); ## Remove '-'
 
 			# The previous line is probably the deletion of the blank line before the block
-			( $i > 0 ) and ( $hHunk->{lines}[ $i - 1 ] =~ /^-/ ) and $hHunk->{lines}[ $i - 1 ] = $SPACE;
+			( $i > 0 ) and ( $hHunk->{lines}[ $i - 1 ] =~ /^[${DASH}]/ms ) and $hHunk->{lines}[ $i - 1 ] = $SPACE;
 
 			$is_sleep_block = 1;
 			next;
-		} ## end if ( $$line =~ m,^\-\[Sleep\],)
+		} ## end if ( $$line =~ m/^[${DASH}]\[Sleep\]/msx)
 
 		# Remove deletions of lines in our [Sleep] block
 		$is_sleep_block
-		        and ( $$line =~ m,^[${DASH}], )
+		        and ( $$line =~ m/^[${DASH}]/ms )
 		        and substr( $$line, 0, 1, $SPACE ) ## Remove '-'
 		        and next;
 
@@ -3846,7 +3846,7 @@ sub prune_hunk() {
 
 	for ( my $i = 0 ; $i < $hHunk->{count} ; ++$i ) {
 		my $line = $hHunk->{lines}[$i]; ## Shortcut
-		if ( $line =~ m/^[-+]/m ) {
+		if ( $line =~ m/^[${DASH}${PLUS}]/msx ) {
 			$changed = 1;
 			$postfix = 0;
 		} else {
@@ -4344,15 +4344,16 @@ sub strempty {
 #
 #  @return Returns 1 to continue File::Find traversal. No other values returned.
 sub wanted {
+	my $filepath  = $_;
 	my $f         = $File::Find::name;
 	my $is_wanted = 0;
 
-	$f =~ m/^[${DOT}][${SLASH}]/mx or $f = "./$f";
+	$f =~ m/^[${DOT}][${SLASH}]/msx or $f = "./$f";
 
-	-f $_
+	-f $filepath
 	        and ( ( 0 == $have_wanted ) or defined( $hWanted{$f} ) )
-	        and ( !( $_                =~ m/${DOT}]pwx$/m ) )
-	        and ( !( $File::Find::name =~ m/man[${SLASH}]rules[${SLASH}]/mx ) ) ## Protect generated man rules (Issue #3)
+	        and ( !( $filepath         =~ m/${DOT}]pwx$/ms ) )
+	        and ( !( $File::Find::name =~ m/man[${SLASH}]rules[${SLASH}]/msx ) ) ## Protect generated man rules (Issue #3)
 	        and push @source_files, $File::Find::name
 	        and $is_wanted = 1;
 
