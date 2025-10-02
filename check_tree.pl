@@ -97,7 +97,7 @@ use Try::Tiny;
 #
 # ------------------------
 ## Please keep this current!
-Readonly our $VERSION => "1.4.3";
+Readonly our $VERSION => '1.4.3';
 
 # ---------------------------------------------------------
 # Shared Variables
@@ -168,12 +168,12 @@ $SIG{__DIE__} = \&dieHandler;
 # ===       ==> -------- File name patterns -------- <==       ===
 # ================================================================
 Readonly my %FILE_NAME_PATTERNS => (
-	"shell" => [
+	'shell' => [
 		'LINGUAS',           'Makefile',    'meson', '\.gitignore$', '\.gperf$', '\.in$',       '\.m4$',         '\.pl$',
 		'\.po$',             '\.pot$',      '\.py$', '\.sh$',        '\.sym$',   'bash/busctl', 'bash/loginctl', 'pam.d/other',
 		'pam.d/system-auth', 'zsh/_busctl', 'zsh/_loginctl'
 	],
-	"xml" => [ '\.xml$', '\.ent\.in$', '\.policy\.in$/' ] ## no critic(ValuesAndExpressions::RequireInterpolationOfMetachars)
+	'xml' => [ '\.xml$', '\.ent\.in$', '\.policy\.in$/' ] ## no critic(ValuesAndExpressions::RequireInterpolationOfMetachars)
 );
 
 # And some protected website URLs
@@ -331,7 +331,7 @@ $show_help > 0 and pod2usage( { -exitval => 0, -verbose => 1, -noperldoc => 1 } 
 
 do_prechecks() or pod2usage( { -exitval => 3, -verbose => 2, -noperldoc => 1 } );
 set_log_file( basename($upstream_path) );
-log_status("Program Start");
+log_status('Program Start');
 if ( ( length $wanted_commit ) > 0 ) {
 	checkout_upstream($wanted_commit) ## Note: Does nothing if $wanted_commit is already checked out.
 	        or exit 1;
@@ -371,7 +371,7 @@ for my $file_part (@source_files) {
 		# Break off if a signal was caught
 		( $death_note > 0 ) and ( $pos = $hFile{count} ) and next;
 
-		log_debug( "Checking Hunk %d", $pos + 1 );
+		log_debug( 'Checking Hunk %d', $pos + 1 );
 		$hHunk = $hFile{hunks}[$pos]; ## Global shortcut
 
 		# === Special 1) protect src/login/logind.conf.in =================
@@ -491,7 +491,7 @@ for my $file_part (@source_files) {
 		close($fOut) or croak "Closing '$fOut' FAILED: $!\n";
 	} else {
 		log_error( "ERROR: %s could not be opened for writing!\n%s\n", $hFile{patch}, $! );
-		confess("Please fix this first!");
+		confess('Please fix this first!');
 	}
 } ## end for my $file_part (@source_files)
 
@@ -529,7 +529,7 @@ END {
 		for my $i ( 0 .. $count - 1 ) {
 			log_warning("=== $lFails[$i]{part} ===");
 			log_warning(" => $lFails[$i]{msg} <=");
-			log_warning("---------------------------");
+			log_warning('---------------------------');
 			log_warning( " {count}        : ${QUOT}" . $lFails[$i]{info}{count} . $QUOT );
 			log_warning( " {idx}          : ${QUOT}" . $lFails[$i]{info}{idx} . $QUOT );
 			log_warning( " {masked_end}   : ${QUOT}" . $lFails[$i]{info}{masked_end} . $QUOT );
@@ -538,14 +538,14 @@ END {
 			log_warning( " {src_start}    : ${QUOT}" . $lFails[$i]{info}{src_start} . $QUOT );
 			log_warning( " {tgt_start}    : ${QUOT}" . $lFails[$i]{info}{tgt_start} . $QUOT );
 			log_warning( " {useful}       : ${QUOT}" . $lFails[$i]{info}{useful} . $QUOT );
-			log_warning("---------------------------");
+			log_warning('---------------------------');
 			foreach ( @{ $lFails[$i]{hunk} } ) { log_warning("$_\n") }
 		} ## end for my $i ( 0 .. $count...)
 	} ## end if ( scalar @lFails )
 
 	$do_stay or length($previous_commit) and checkout_upstream($previous_commit);
 
-	log_status("Program End");
+	log_status('Program End');
 } ## end END
 
 # ================================================================
@@ -563,7 +563,7 @@ END {
 sub build_hFile {
 	my ($part) = @_;
 
-	defined($part) and length($part) or log_error("ERROR") and confess("build_hfile: part is empty ???");
+	defined($part) and length($part) or log_error('ERROR') and confess('build_hfile: part is empty ???');
 
 	# Is this a new file?
 	my $isNew = defined( $hToCreate{$part} ) ? 1 : 0;
@@ -589,11 +589,11 @@ sub build_hFile {
 	# Determine whether this is a shell or xml file needing preparations.
 	my $is_sh  = 0;
 	my $is_xml = 0;
-	for my $pat ( @{ $FILE_NAME_PATTERNS{"xml"} } ) {
+	for my $pat ( @{ $FILE_NAME_PATTERNS{'xml'} } ) {
 		$part =~ m/$pat/ms and $is_xml = 1 and last;
 	}
 	if ( 0 == $is_xml ) {
-		for my $pat ( @{ $FILE_NAME_PATTERNS{"shell"} } ) {
+		for my $pat ( @{ $FILE_NAME_PATTERNS{'shell'} } ) {
 			$part =~ m/$pat/msx and $is_sh = 1 and last;
 		}
 	}
@@ -682,15 +682,15 @@ sub build_output {
 			# ---------------------------------------------------
 			defined( $hHunk->{masked_start} ) and ( 1 == length("$hHunk->{masked_start}") )
 			        or return hunk_failed(
-				"build_output: Hunk "
+				'build_output: Hunk '
 				        . (
 					defined( $hHunk->{masked_start} )
 					? "with ${QUOT}" . $hHunk->{masked_start} . $QUOT
-					: "without"
+					: 'without'
 				        )
-				        . " masked_start key found!"
+				        . ' masked_start key found!'
 			        );
-			$hFile{pwxfile} and push( @{ $hFile{output} }, "# masked_start " . $hHunk->{masked_start} );
+			$hFile{pwxfile} and push( @{ $hFile{output} }, '# masked_start ' . $hHunk->{masked_start} );
 
 			# --- Add the header line ---------------------------
 			# ---------------------------------------------------
@@ -707,15 +707,15 @@ sub build_output {
 		# ---------------------------------------------------
 		defined( $hHunk->{masked_end} ) and ( 1 == length("$hHunk->{masked_end}") )
 		        or return hunk_failed(
-			"build_output: Hunk "
+			'build_output: Hunk '
 			        . (
 				defined( $hHunk->{masked_end} )
 				? "with ${QUOT}" . $hHunk->{masked_end} . $QUOT
-				: "without"
+				: 'without'
 			        )
-			        . " masked_end key found!"
+			        . ' masked_end key found!'
 		        );
-		$hFile{pwxfile} and push( @{ $hFile{output} }, "# masked_end " . $hHunk->{masked_end} );
+		$hFile{pwxfile} and push( @{ $hFile{output} }, '# masked_end ' . $hHunk->{masked_end} );
 
 	} ## end for my $pos ( 0 .. $hFile...)
 
@@ -936,7 +936,7 @@ sub change_find_alt_text {
 	my ( $source_kind, $source_text ) = @_;
 	my $alt = $source_text;
 
-	log_debug( "Searching alt text for source kind %d:", $source_kind );
+	log_debug( 'Searching alt text for source kind %d:', $source_kind );
 	log_debug( " txt: '%s'",                             $source_text );
 
 	# 1) 'elogind' => 'systemd'
@@ -1545,7 +1545,7 @@ sub check_blanks {
 	defined($hHunk)  or return 0;
 	$hHunk->{useful} or return 0;
 
-	log_debug("Checking useful blank additions ...");
+	log_debug('Checking useful blank additions ...');
 
 	for my $i ( 0 .. $hHunk->{count} - 1 ) {
 		my $line = \$hHunk->{lines}[$i]; ## Shortcut
@@ -1597,7 +1597,7 @@ sub check_comments {
 	defined($hHunk)  or return 0;
 	$hHunk->{useful} or return 0;
 
-	log_debug("Checking comments...");
+	log_debug('Checking comments...');
 
 	my $in_comment_block = 0;
 
@@ -1610,7 +1610,7 @@ sub check_comments {
 
 			# Sanity check:
 			$in_comment_block
-			        and return hunk_failed("check_comments: Comment block start found in comment block!");
+			        and return hunk_failed('check_comments: Comment block start found in comment block!');
 
 			# Only start the comment block if this is really a multiline comment
 			( ( ${$line} =~ m/^[${DASH}]\s*\/\*+/msx ) && !( ${$line} =~ m/\*\/[^\/]*$/msx ) )
@@ -1661,7 +1661,7 @@ sub check_debug {
 	defined($hHunk)  or return 0;
 	$hHunk->{useful} or return 0;
 
-	log_debug("Checking debug constructs ...");
+	log_debug('Checking debug constructs ...');
 
 	# Count non-elogind block #ifs. This is needed, so normal
 	# #if/#else/#/endif constructs can be put inside both the
@@ -1696,7 +1696,7 @@ sub check_debug {
 		# ---------------------------------------
 		if ( ${$line} =~ m/^[${DASH}][${HASH}]endif\s*\/\/\/?.*ENABLE_DEBUG_/msx ) {
 			( !$in_insert_block )
-			        and return hunk_failed("check_debug: #endif // ENABLE_DEBUG_* found outside any debug construct");
+			        and return hunk_failed('check_debug: #endif // ENABLE_DEBUG_* found outside any debug construct');
 			substr( ${$line}, 0, 1, $SPACE ); ## Remove '-'
 			$in_insert_block--; ## Decrease instead of setting to 0. This allows such
 			$in_else_block--; ## blocks to reside in regular elogind mask/insert blocks.
@@ -1749,7 +1749,7 @@ sub check_func_removes {
 	# Not used in pwx files (meson, xml, sym)
 	$hFile{pwxfile} and return 1;
 
-	log_debug("Checking function removals ...");
+	log_debug('Checking function removals ...');
 
 	# Needed for multi-line calls
 	my $is_func_call = 0;
@@ -1798,7 +1798,7 @@ sub check_empty_masks {
 	defined($hHunk)  or return 1;
 	$hHunk->{useful} or return 1;
 
-	log_debug("Checking empty mask removals ...");
+	log_debug('Checking empty mask removals ...');
 
 	# We must not touch the global values!
 	# Note: We search for two successive lines, so this should be easy enough.
@@ -1869,7 +1869,7 @@ sub check_empty_masks {
 				substr( $hHunk->{lines}[$i],       0, 1, "${DASH}" );
 
 				# Add a note that we converted this and add an insert mask
-				splice( @{ $hHunk->{lines} }, $i + 1, 0, ( "+/// elogind empty mask else converted", "+#if 1 /// $mask_message" ) );
+				splice( @{ $hHunk->{lines} }, $i + 1, 0, ( '+/// elogind empty mask else converted', "+#if 1 /// $mask_message" ) );
 
 				$hHunk->{count} += 2;
 				$need_endif_conversion = 1;
@@ -1908,7 +1908,7 @@ sub check_empty_masks {
 					substr( $hHunk->{lines}[$i], 0, 1, "${DASH}" );
 
 					# Add the correct endif
-					splice( @{ $hHunk->{lines} }, $i + 1, 0, ("+#endif // 1") );
+					splice( @{ $hHunk->{lines} }, $i + 1, 0, ('+#endif // 1') );
 
 					$hHunk->{count} += 1;
 					$i += 1; ## Already known...
@@ -1958,7 +1958,7 @@ sub check_includes {
 	defined($hHunk)  or return 1;
 	$hHunk->{useful} or return 1;
 
-	log_debug("Checking includes ...");
+	log_debug('Checking includes ...');
 
 	# We must know when "needed by elogind blocks" start
 	my $in_elogind_block = 0;
@@ -2054,10 +2054,10 @@ sub check_logger {
 sub check_masks {
 
 	# early exits:
-	defined($hHunk)  or croak("check_masks: hHunk is undef");
-	$hHunk->{useful} or croak("check_masks: Nothing done but hHunk is useless?");
+	defined($hHunk)  or croak('check_masks: hHunk is undef');
+	$hHunk->{useful} or croak('check_masks: Nothing done but hHunk is useless?');
 
-	log_debug("Checking mask flips ...");
+	log_debug('Checking mask flips ...');
 
 	# -----------------------------------------------------------------------
 	# --- Check $hHunk for elogind preprocessor masks and additions       ---
@@ -2109,9 +2109,9 @@ sub check_masks {
 		# entering an elogind mask
 		# ---------------------------------------
 		if ( is_mask_start( ${$line} ) ) {
-			$in_mask_block and return hunk_failed("check_masks: Mask start found while being in a mask block!");
+			$in_mask_block and return hunk_failed('check_masks: Mask start found while being in a mask block!');
 			$in_insert_block
-			        and return hunk_failed("check_masks: Mask start found while being in an insert block!");
+			        and return hunk_failed('check_masks: Mask start found while being in an insert block!');
 			substr( ${$line}, 0, 1, $SPACE ); ## Remove '-'
 			$in_insert_block  = 0;
 			$in_mask_block    = 1;
@@ -2132,8 +2132,8 @@ sub check_masks {
 		# entering an elogind insert
 		# ---------------------------------------
 		if ( is_insert_start( ${$line} ) ) {
-			$in_mask_block   and return hunk_failed("check_masks: Insert start found while being in a mask block!");
-			$in_insert_block and return hunk_failed("check_masks: Insert start found while being in an insert block!");
+			$in_mask_block   and return hunk_failed('check_masks: Insert start found while being in a mask block!');
+			$in_insert_block and return hunk_failed('check_masks: Insert start found while being in an insert block!');
 			substr( ${$line}, 0, 1, $SPACE ); ## Remove '-'
 			$in_insert_block  = 1;
 			$in_mask_block    = 0;
@@ -2159,7 +2159,7 @@ sub check_masks {
 		# ---------------------------------------
 		if ( is_mask_else( ${$line} ) ) {
 			$in_mask_block
-			        or return hunk_failed("check_masks: Mask else found outside any mask block!");
+			        or return hunk_failed('check_masks: Mask else found outside any mask block!');
 
 			substr( ${$line}, 0, 1, $SPACE ); ## Remove '-'
 			$in_else_block = 1;
@@ -2170,7 +2170,7 @@ sub check_masks {
 		# ending a Mask block
 		# ---------------------------------------
 		if ( is_mask_end( ${$line} ) ) {
-			$in_mask_block or return hunk_failed("check_masks: #endif // 0 found outside any mask block");
+			$in_mask_block or return hunk_failed('check_masks: #endif // 0 found outside any mask block');
 			substr( ${$line}, 0, 1, $SPACE ); ## Remove '-'
 			$in_mask_block    = 0;
 			$in_else_block    = 0;
@@ -2182,7 +2182,7 @@ sub check_masks {
 		# ending an insert block
 		# ---------------------------------------
 		if ( is_insert_end( ${$line} ) ) {
-			$in_insert_block or return hunk_failed("check_masks: #endif // 1 found outside any insert block");
+			$in_insert_block or return hunk_failed('check_masks: #endif // 1 found outside any insert block');
 			substr( ${$line}, 0, 1, $SPACE ); ## Remove '-'
 			$in_insert_block  = 0;
 			$mask_block_start = -1;
@@ -2288,7 +2288,7 @@ sub check_musl {
 	defined($hHunk)  or return 0;
 	$hHunk->{useful} or return 0;
 
-	log_debug("Checking musl libc protection ...");
+	log_debug('Checking musl libc protection ...');
 
 	# -----------------------------------------------------------------------
 	# --- Check for musl_libc compatibility blocks                        ---
@@ -2363,7 +2363,7 @@ sub check_musl {
 		# ---------------------------------------
 		if ( ${$line} =~ m/^[${DASH}][${HASH}]endif\s*\/\/\/?.*__GLIBC__/msx ) {
 			( !$in_glibc_block )
-			        and return hunk_failed("check_musl: #endif // __GLIBC__ found outside any __GLIBC__ block");
+			        and return hunk_failed('check_musl: #endif // __GLIBC__ found outside any __GLIBC__ block');
 			substr( ${$line}, 0, 1, $SPACE ); ## Remove '-'
 			$in_glibc_block = 0;
 			$in_else_block--;
@@ -2404,7 +2404,7 @@ sub check_name_reverts {
 	defined($hHunk)  or return 0;
 	$hHunk->{useful} or return 0;
 
-	log_debug("Checking name reversals elogind->systemd ...");
+	log_debug('Checking name reversals elogind->systemd ...');
 
 	# Note down what is changed, so we can have inline updates
 	my %hChanges = ();
@@ -2443,7 +2443,7 @@ sub check_name_reverts {
 	for my $i ( 0 .. $hHunk->{count} - 1 ) {
 		my $line_p = \$hHunk->{lines}[$i]; ## Shortcut
 		defined( ${$line_p} )
-		        or return hunk_failed( "check_name_reverts: Line " . ( $i + 1 ) . "/$hHunk->{count} is undef?" );
+		        or return hunk_failed( 'check_name_reverts: Line ' . ( $i + 1 ) . "/$hHunk->{count} is undef?" );
 
 		# Quick mask checks, we must have the intermediate states
 		# -------------------------------------------------------
@@ -2520,7 +2520,7 @@ sub check_stdc_version {
 	defined($hHunk)  or return 0;
 	$hHunk->{useful} or return 0;
 
-	log_debug("Checking __STDC_VERSION__ guards...");
+	log_debug('Checking __STDC_VERSION__ guards...');
 
 	# -----------------------------------------------------------------------
 	# --- Check for __STDC_VERSION__ guards                               ---
@@ -2626,7 +2626,7 @@ sub check_sym_lines {
 	# Only .sym files are handled here
 	$hFile{source} =~ m/[${DOT}]sym[${DOT}]pwx$/msx or return 1;
 
-	log_debug("Checking .sym file sanity...");
+	log_debug('Checking .sym file sanity...');
 
 	# Note down what is changed, so we can have inline updates
 	my %hAdditions = ();
@@ -2639,7 +2639,7 @@ sub check_sym_lines {
 		my $line = \$hHunk->{lines}[$i]; ## Shortcut
 
 		defined( ${$line} )
-		        or return hunk_failed( "check_sym_files: Line " . ( $i + 1 ) . "/$hHunk->{count} is undef?" );
+		        or return hunk_failed( 'check_sym_files: Line ' . ( $i + 1 ) . "/$hHunk->{count} is undef?" );
 
 		# Note down removals
 		# ---------------------------------
@@ -2663,7 +2663,7 @@ sub check_sym_lines {
 
 		# First a sanity check against double insertions.
 		$hAdditions{$item}{handled}
-		        and return hunk_failed( "check_sym_files: Line" . ( $i + 1 ) . ": Double addition of '$item' found!" );
+		        and return hunk_failed( 'check_sym_files: Line' . ( $i + 1 ) . ": Double addition of '$item' found!" );
 
 		# New stuff is in order:
 		defined( $hRemovals{$item} ) or ++$hAdditions{$item}{handled} and next;
@@ -2688,10 +2688,10 @@ sub check_sym_lines {
 sub check_useless {
 
 	# early exits:
-	defined($hHunk)  or croak("check_useless: hHunk is undef");
-	$hHunk->{useful} or croak("check_useless: Nothing done but hHunk is useless?");
+	defined($hHunk)  or croak('check_useless: hHunk is undef');
+	$hHunk->{useful} or croak('check_useless: Nothing done but hHunk is useless?');
 
-	log_debug("Checking for useless updates...");
+	log_debug('Checking for useless updates...');
 
 	# -----------------------------------------------------------------------
 	# --- Check for useless updates that do nothing.                      ---
@@ -2721,7 +2721,7 @@ sub check_useless {
 			$token =~ s/\s+$//ms; ## No trailing whitespace/lines!
 			$r_start > -1 or $r_start = $i;
 			length($token) and $hRemovals{$token} = $i
-			        or $hRemovals{ "empty" . $i } = $i;
+			        or $hRemovals{ 'empty' . $i } = $i;
 			next;
 		} ## end if ( ${$line} =~ m/^[${DASH}](.*)$/msx)
 
@@ -2776,7 +2776,7 @@ sub checkout_upstream {
 
 	# Save the previous commit
 	try {
-		@lOut = $git->rev_parse( { short => 1 }, "HEAD" );
+		@lOut = $git->rev_parse( { short => 1 }, 'HEAD' );
 	} catch {
 		log_error( "Couldn't rev-parse $upstream_path HEAD\nExit Code : %s\nMessage   : %s", $_->status, $_->error );
 		return 0;
@@ -2794,14 +2794,14 @@ sub checkout_upstream {
 
 	# Now check it out, unless we are already there:
 	if ( $previous_commit ne $new_commit ) {
-		show_progress( 0, "Checking out %s in upstream tree...", $new_commit );
+		show_progress( 0, 'Checking out %s in upstream tree...', $new_commit );
 		try {
 			$git->checkout($new_commit);
 		} catch {
 			log_error( "Couldn't checkout '%s' in %s\nExit Code : %s\nMessage   : %s", $new_commit, $upstream_path, $_->status, $_->error );
 			return 0;
 		};
-		show_progress( 1, "Checking out %s in upstream tree... done!", $new_commit );
+		show_progress( 1, 'Checking out %s in upstream tree... done!', $new_commit );
 	} ## end if ( $previous_commit ...)
 
 	return 1;
@@ -2974,14 +2974,14 @@ sub generate_file_list {
 	# in all legal directories this program allows. Checking against
 	# the built %hWanted ensures that a user provided list of files
 	# is heeded.
-	for my $xDir ( "doc", "docs", "factory", "m4", "man", "po", "shell-completion", "src", "tools" ) {
+	for my $xDir ( 'doc', 'docs', 'factory', 'm4', 'man', 'po', 'shell-completion', 'src', 'tools' ) {
 		if ( -d "$xDir" ) {
 			find( \&wanted, "$xDir" );
 		}
 	}
 
 	# There are a few root files we need to check, too
-	for my $xFile ( "configure", "Makefile", "meson.build", "meson_options.txt" ) {
+	for my $xFile ( 'configure', 'Makefile', 'meson.build', 'meson_options.txt' ) {
 		if ( -f "$xFile" ) {
 			find( \&wanted, "$xFile" );
 		}
@@ -3002,7 +3002,7 @@ sub generate_file_list {
 
 	# Just to be sure...
 	scalar @source_files
-	        or log_error("No source files found? Where the hell are we?")
+	        or log_error('No source files found? Where the hell are we?')
 	        and return 0;
 
 	# Get the maximum file length and build $file_fmt
@@ -3010,7 +3010,7 @@ sub generate_file_list {
 	for my $f (@source_files) {
 		length($f) > $mlen and $mlen = length($f);
 	}
-	$file_fmt = sprintf( "%%-%d%s", $mlen, "s" );
+	$file_fmt = sprintf( '%%-%d%s', $mlen, 's' );
 
 	return 1;
 } ## end sub generate_file_list
@@ -3048,7 +3048,7 @@ sub get_hunk_head {
 	defined($offset)
 	        and $$offset += $tgt_len - $src_len;
 
-	return sprintf( "%s -%d,%d +%d,%d %s", $ATAT, $src_start, $src_len, $tgt_start, $tgt_len, $ATAT );
+	return sprintf( '%s -%d,%d +%d,%d %s', $ATAT, $src_start, $src_len, $tgt_start, $tgt_len, $ATAT );
 } ## end sub get_hunk_head
 
 ## @brief Generates a formatted location string for log messages based on caller information.
@@ -3191,17 +3191,17 @@ sub hunk_is_useful() {
 	defined($hHunk)  or return 0;
 	$hHunk->{useful} or return 0;
 
-	log_debug("Checking whether the hunk is still useful ...");
+	log_debug('Checking whether the hunk is still useful ...');
 
 	# See whether at least one change is still present
 	my $is_useful = ( defined first { m/^[${DASH}${PLUS}]/msx } @{ $hHunk->{lines} } ) ? 1 : 0;
 
 	$hHunk->{useful} = $is_useful;
-	log_debug( "  => Hunk is %s useful", ( $is_useful > 0 ) ? "still" : "no longer" );
+	log_debug( '  => Hunk is %s useful', ( $is_useful > 0 ) ? 'still' : 'no longer' );
 
 	if ( ( $do_debug > 0 ) && ( $is_useful > 0 ) ) {
 		for my $i ( 0 .. $hHunk->{count} - 1 ) {
-			log_info( "% 3d: %s", $i + 1, $hHunk->{lines}[$i] );
+			log_info( '% 3d: %s', $i + 1, $hHunk->{lines}[$i] );
 		}
 	}
 
@@ -3239,7 +3239,7 @@ sub include_handle_elogind {
 	log_debug( 'Checking remove elogind   at % 3d: %s%s%s', $line_no, $pre, $inc, $post );
 
 	# Pre: Sanity check:
-	defined( $hIncs{$inc}{elogind}{hunkid} ) and $hIncs{$inc}{elogind}{hunkid} > -1 or return hunk_failed("check_includes: Unrecorded elogind include found!");
+	defined( $hIncs{$inc}{elogind}{hunkid} ) and $hIncs{$inc}{elogind}{hunkid} > -1 or return hunk_failed('check_includes: Unrecorded elogind include found!');
 
 	# As 1 and 2 do not apply, simply undo the removal.
 	substr( ${$line}, 0, 1, $SPACE );
@@ -3280,7 +3280,7 @@ sub include_handle_insertion {
 	log_debug( 'Checking adding new       at % 3d: %s%s%s', $line_no, $pre, $inc, $post );
 
 	# Pre: Sanity check:
-	( defined $hIncs{$inc}{insert}{hunkid} ) and ( $hIncs{$inc}{insert}{hunkid} > -1 ) or return hunk_failed("check_includes: Unrecorded insertion found!");
+	( defined $hIncs{$inc}{insert}{hunkid} ) and ( $hIncs{$inc}{insert}{hunkid} > -1 ) or return hunk_failed('check_includes: Unrecorded insertion found!');
 
 	# Nicely enough we are already set here.
 	$hIncs{$inc}{applied} = 1;
@@ -3324,7 +3324,7 @@ sub include_handle_removal {
 	my $hRem = $hInc->{remove};                  # Shortcut, three
 
 	defined( $hRem->{hunkid} ) and $hRem->{hunkid} > -1
-	        or return hunk_failed("check_includes: Unrecorded removal found!");
+	        or return hunk_failed('check_includes: Unrecorded removal found!');
 
 	# a) Check for removals of obsolete includes.
 	#    If no insert was found, then the include was removed by systemd devs for good.
@@ -3684,7 +3684,7 @@ sub prepare_shell {
 #  @return Returns 1 on successful processing.
 sub prepare_xml {
 	my $in   = $hFile{source};
-	my $out  = $in . ".pwx";
+	my $out  = $in . '.pwx';
 	my @lIn  = ();
 	my @lOut = ();
 
@@ -3779,8 +3779,8 @@ sub prepare_xml {
 sub protect_config() {
 
 	# early exits:
-	defined($hHunk)  or croak("check_masks: hHunk is undef");
-	$hHunk->{useful} or croak("check_masks: Nothing done but hHunk is useless?");
+	defined($hHunk)  or croak('check_masks: hHunk is undef');
+	$hHunk->{useful} or croak('check_masks: Nothing done but hHunk is useless?');
 
 	my $is_sleep_block = 0;
 	for my $i ( 0 .. $hHunk->{count} - 1 ) {
@@ -3834,7 +3834,7 @@ sub prune_hunk() {
 	defined($hHunk)  or return 0;
 	$hHunk->{useful} or return 0;
 
-	log_debug("Pruning Hunk ...");
+	log_debug('Pruning Hunk ...');
 
 	# Go through the lines and see what we've got.
 	my @mask_info = ( $hHunk->{masked_start} );
@@ -3869,7 +3869,7 @@ sub prune_hunk() {
 	# Now let's prune it:
 	if ( $prefix > 3 ) {
 		$prefix -= 3;
-		log_debug( "  => Splicing first %d lines", $prefix );
+		log_debug( '  => Splicing first %d lines', $prefix );
 		splice( @{ $hHunk->{lines} }, 0, $prefix );
 		$hHunk->{src_start} += $prefix;
 		$hHunk->{count}     -= $prefix;
@@ -3884,7 +3884,7 @@ sub prune_hunk() {
 	} ## end if ( $prefix > 3 )
 	if ( $postfix > 3 ) {
 		$postfix -= 3;
-		log_debug( "  => Splicing last %d lines", $postfix );
+		log_debug( '  => Splicing last %d lines', $postfix );
 		splice( @{ $hHunk->{lines} }, $hHunk->{count} - $postfix, $postfix );
 		$hHunk->{count} -= $postfix;
 	} ## end if ( $postfix > 3 )
