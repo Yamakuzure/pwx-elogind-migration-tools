@@ -3946,20 +3946,32 @@ sub unprepare_shell {
 				croak('Illegal file');
 			}
 			$is_block = 1;
-		} elsif ( is_mask_else($line) ) {
+			push @lOut, $line;
+			next;
+		} ## end if ( is_mask_start($line...))
+
+		if ( is_mask_else($line) ) {
 			if ( 0 == $is_block ) {
 				log_error( '%s:%d : Mask else outside mask!', $in, $line_no );
 				croak('Illegal file');
 			}
 			$is_else = 1;
-		} elsif ( is_mask_end($line) ) {
+			push @lOut, $line;
+			next;
+		} ## end if ( is_mask_else($line...))
+
+		if ( is_mask_end($line) ) {
 			if ( 0 == $is_block ) {
 				log_error( '%s:%d : Mask end outside mask!', $in, $line_no );
 				croak('Illegal file');
 			}
 			$is_block = 0;
 			$is_else  = 0;
-		} elsif (  $is_block
+			push @lOut, $line;
+			next;
+		} ## end if ( is_mask_end($line...))
+
+		if (       $is_block
 			&& !$is_else
 			&& ( '# #' ne ( substr $line, 0, 3 ) )
 			&& ( '  * ' ne ( substr $line, 0, 4 ) ) )
@@ -3969,7 +3981,7 @@ sub unprepare_shell {
 
 			# Do not create empty comment lines with trailing spaces.
 			$line =~ s/([${HASH}])\s+$/$1/msgx;
-		} ## end elsif ( $is_block && !$is_else...)
+		} ## end if ( $is_block && !$is_else...)
 
 		push @lOut, $line;
 	} ## end for my $line (@lIn)
@@ -4067,20 +4079,32 @@ sub unprepare_xml {
 				croak('Illegal file');
 			}
 			$is_block = 1;
-		} elsif ( is_mask_else($line) ) {
+			push @lOut, $line;
+			next;
+		} ## end if ( is_mask_start($line...))
+
+		if ( is_mask_else($line) ) {
 			if ( 0 == $is_block ) {
 				log_error( '%s:%d : Mask else outside mask!', $in, $line_no );
 				croak('Illegal file');
 			}
 			$is_else = 1;
-		} elsif ( is_mask_end($line) ) {
+			push @lOut, $line;
+			next;
+		} ## end if ( is_mask_else($line...))
+
+		if ( is_mask_end($line) ) {
 			if ( 0 == $is_block ) {
 				log_error( '%s:%d : Mask end outside mask!', $in, $line_no );
 				croak('Illegal file');
 			}
 			$is_block = 0;
 			$is_else  = 0;
-		} elsif ( $is_block && !$is_else ) {
+			push @lOut, $line;
+			next;
+		} ## end if ( is_mask_end($line...))
+
+		if ( $is_block && !$is_else ) {
 			$line =~ s/--/&#x2D;&#x2D;/msg;
 		}
 
