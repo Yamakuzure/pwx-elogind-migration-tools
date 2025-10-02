@@ -3031,7 +3031,7 @@ sub get_hunk_head {
 	my $tgt_len   = 0;
 	my $lCount    = $hHunk->{count};
 	my $src_start = $hHunk->{src_start};
-	my $tgt_start = defined($offset) ? $src_start + $$offset : $hHunk->{tgt_start};
+	my $tgt_start = defined($offset) ? $src_start + ${$offset} : $hHunk->{tgt_start};
 
 	for my $i ( 0 .. $lCount - 1 ) {
 		if ( $hHunk->{lines}[$i] =~ m/^[${PLUS}]/msx ) {
@@ -3046,7 +3046,7 @@ sub get_hunk_head {
 
 	# If an offset reference was given, add back the size diff
 	defined($offset)
-	        and $$offset += $tgt_len - $src_len;
+	        and ${$offset} += $tgt_len - $src_len;
 
 	return sprintf( '%s -%d,%d +%d,%d %s', $ATAT, $src_start, $src_len, $tgt_start, $tgt_len, $ATAT );
 } ## end sub get_hunk_head
