@@ -4499,7 +4499,7 @@ markings.
 
 =head1 REQUIRED ARGUMENTS
 
-The path to the upstream tree tro compare with is the only mandatory argument.
+The path to the upstream tree to compare with is the only mandatory argument.
 
 
 =head1 EXIT STATUS

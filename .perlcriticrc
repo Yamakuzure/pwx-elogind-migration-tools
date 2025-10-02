@@ -11,6 +11,7 @@ allow-unsafe    = 0
 
 [Documentation::PodSpelling]
 spell_command = aspell --lang=en list
+stop_words = elogind systemd perldoc patchset EdenWorX MERCHANTABILITY
 
 [InputOutput::ProhibitBacktickOperators]
 only_in_void_context = 1
