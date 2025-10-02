@@ -855,7 +855,7 @@ sub change_check_next_partner {
 sub change_check_solo_changes {
 	my ($pChanges) = @_;
 
-	foreach my $change ( grep { defined $_ } @{ $pChanges->{'lines'} } ) {
+	foreach my $change ( grep { defined } @{ $pChanges->{'lines'} } ) {
 
 		# change is now a reference into $pChange, explicitly at
 		#    $pChanges->{string}{'texts'}{'changes'}[no]
@@ -1156,7 +1156,7 @@ sub change_handle_additions {
 sub change_handle_false_positives {
 	my ($pChanges) = @_;
 
-	foreach my $change ( grep { defined $_ } @{ $pChanges->{'lines'} } ) {
+	foreach my $change ( grep { defined } @{ $pChanges->{'lines'} } ) {
 
 		# change is now a reference into $pChange, explicitly at
 		#    $pChanges->{string}{'texts'}{'changes'}[no]
@@ -1322,7 +1322,7 @@ sub change_map_hunk_lines {
 
 	# 1) Loop over additions to find previous matching removals
 	# -----------------------------------------------------------------------------------------------------------------
-	foreach my $change ( grep { defined $_ } @{ $pChanges->{'lines'} } ) {
+	foreach my $change ( grep { defined } @{ $pChanges->{'lines'} } ) {
 
 		# change is now a reference into $pChange, explicitly at
 		#    $pChanges->{string}{'texts'}{'changes'}[no]
@@ -1339,7 +1339,7 @@ sub change_map_hunk_lines {
 
 	# 2) Loop over removals to find previous matching additions
 	# -----------------------------------------------------------------------------------------------------------------
-	foreach my $change ( grep { defined $_ } @{ $pChanges->{'lines'} } ) {
+	foreach my $change ( grep { defined } @{ $pChanges->{'lines'} } ) {
 		log_change( 'Scanning Removals ; Considering Change', $change, 0 );
 		( $FALSE == $change->{'done'} ) and ( $TYPE_REMOVAL == $change->{'type'} ) or next; ## Already handled or not a removal
 		( 1 == $change->{'elogind'} ) or next; ## only elogind removals are relevant
@@ -1426,7 +1426,7 @@ sub change_protect_removals {
 
 	# Loop over lines and note down those to be protected
 	# -----------------------------------------------------------------------------------------------------------------
-	foreach my $change ( grep { defined $_ } @{ $pChanges->{'lines'} } ) {
+	foreach my $change ( grep { defined } @{ $pChanges->{'lines'} } ) {
 		( $TYPE_REMOVAL == $change->{'type'} ) or next;
 		my $line = $hHunk->{lines}[ $change->{'line'} ];
 		$hProtected{$line} = 1;
@@ -1472,7 +1472,7 @@ sub change_splice_the_undone {
 	# 1) Loop over lines and note down those to be spliced
 	# -----------------------------------------------------------------------------------------------------------------
 	my %hSplices = ();
-	foreach my $change ( grep { defined $_ } @{ $pChanges->{'lines'} } ) {
+	foreach my $change ( grep { defined } @{ $pChanges->{'lines'} } ) {
 		( $change->{'spliceme'} > 0 ) or next;
 		$hSplices{ $change->{'spliceme'} } = 1;
 		log_debug( "Splice line % 3d: '%s'", $change->{'spliceme'} + 1, $change->{'text'} );
