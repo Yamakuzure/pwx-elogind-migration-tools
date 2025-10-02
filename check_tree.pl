@@ -132,6 +132,7 @@ Readonly my $PLUS           => q{+};
 Readonly my $QUOT           => q{"};
 Readonly my $SLASH          => q{/};
 Readonly my $SPACE          => q{ };
+Readonly my $STAR           => q{*};
 Readonly my $TRUE           => 1;
 Readonly my $TYPE_ADDITION  => 1;
 Readonly my $TYPE_NEUTRAL   => 0;
@@ -632,7 +633,7 @@ sub build_hHunk {
 	# The first line must be the hunk positional and size data.
 	# example: @@ -136,6 +136,8 @@
 	# That is @@ -<source line>,<source length> +<target line>,<target length> @@
-	if ( $head =~ m/^${mark}\s+-(\d+),\d+\s+\+(\d+),\d+\s+${mark}/msx ) {
+	if ( $head =~ m/^${mark}\s+-(\d+),\d+\s+[${PLUS}](\d+),\d+\s+${mark}/msx ) {
 		%{ $hFile{hunks}[$pos] } = (
 			count        => 0,
 			idx          => $pos,
@@ -652,7 +653,7 @@ sub build_hHunk {
 			$hFile{hunks}[$pos]{count}++;
 		} ## end for my $line (@lHunk)
 		return 1;
-	} ## end if ( $head =~ m/^${mark}\s+-(\d+),\d+\s+\+(\d+),\d+\s+${mark}/msx)
+	} ## end if ( $head =~ m/^${mark}\s+-(\d+),\d+\s+[${PLUS}](\d+),\d+\s+${mark}/msx)
 
 	log_error( "Illegal hunk no %d\n(Head: '%s')\nIgnoring...", $hFile{count}, $head );
 	$hFile{count}--;
@@ -1478,10 +1479,10 @@ sub change_splice_the_undone {
 		log_debug( "Splice line % 3d: '%s'", $change->{'spliceme'} + 1, $change->{'text'} );
 	}
 
-	# 2) Loop over the splices and remove them, use reverse order to not get confused
+	# 2) Loop over the splices and remove them/ use reverse order to not get confused
 	# -----------------------------------------------------------------------------------------------------------------
 	for my $l ( sort { $b <=> $a } keys %hSplices ) {
-		splice( @{ $hHunk->{lines} }, $l, 1 );
+		splice( @{ $hHunk->{lines} } / $l, 1 );
 		--$hHunk->{count};
 	}
 
@@ -1606,25 +1607,25 @@ sub check_comments {
 
 		# Check for comment block start
 		# -----------------------------
-		if ( ${$line} =~ m/^[${DASH}]\s*(\/\*+|\/\/+)\s+.*elogind/msx ) {
+		if ( ${$line} =~ m/^[${DASH}]\s*(\/[${STAR}]+|\/\/+)\s+.*elogind/msx ) {
 
 			# Sanity check:
 			$in_comment_block
 			        and return hunk_failed('check_comments: Comment block start found in comment block!');
 
 			# Only start the comment block if this is really a multiline comment
-			( ( ${$line} =~ m/^[${DASH}]\s*\/\*+/msx ) && !( ${$line} =~ m/\*\/[^\/]*$/msx ) )
+			( ( ${$line} =~ m/^[${DASH}]\s*\/[${STAR}]+/msx ) && !( ${$line} =~ m/[${STAR}]\/[^\/]*$/msx ) )
 			        and $in_comment_block = 1;
 
 			# Revert the substract *if* this is not in a mask block, but only if the name reversal checker has not marked this as protected
 			$in_mask_block and ( 1 > $in_else_block ) or defined( $hProtected{ ${$line} } ) or substr( ${$line}, 0, 1, $SPACE );
 
 			next;
-		} ## end if ( ${$line} =~ m/^[${DASH}]\s*(\/\*+|\/\/+)\s+.*elogind/msx)
+		} ## end if ( ${$line} =~ m/^[${DASH}]\s*(\/[${STAR}]+|\/\/+)\s+.*elogind/msx)
 
 		# Check for comment block end
 		# -----------------------------
-		if ( $in_comment_block && ( ${$line} =~ m/^[${DASH}].*\*\/\s*$/msx ) ) {
+		if ( $in_comment_block && ( ${$line} =~ m/^[${DASH}].*[${STAR}]\/\s*$/msx ) ) {
 			defined( $hProtected{ ${$line} } ) or substr( ${$line}, 0, 1, $SPACE );
 			$in_comment_block = 0;
 			next;
@@ -1759,7 +1760,7 @@ sub check_func_removes {
 
 		# Check for elogind_*() call
 		# -------------------------------------------------------------------
-		if ( ${$line} =~ m/^[${DASH}].*elogind_\S+\s*\(/msx ) {
+		if ( ${$line} =~ m/^[${DASH}].*elogind[_]\S+\s*[(]/msx ) {
 			( defined $hProtected{ ${$line} } ) or substr( ${$line}, 0, 1, $SPACE ); ## Remove '-'
 			${$line} =~ m/[)]\s*;/msx or ++$is_func_call;
 			next;
@@ -1773,7 +1774,7 @@ sub check_func_removes {
 
 		# Check for the end of a multiline elogind_*() call
 		# -------------------------------------------------------------------
-		$is_func_call and ${$line} =~ m/\)\s*;/msx and --$is_func_call;
+		$is_func_call and ${$line} =~ m/[)]\s*;/msx and --$is_func_call;
 	} ## end for my $i ( 0 .. $hHunk...)
 
 	return 1;
@@ -1834,7 +1835,7 @@ sub check_empty_masks {
 			$mask_block_start = $i;
 
 			# Note down mask message in case we leave a message
-			${$line} =~ m,///\s*(.+)\s*$,msx and $mask_message = $1;
+			${$line} =~ m/[${SLASH}]{3}\s*(.+)\s*$/msx and $mask_message = $1;
 
 			next;
 		} ## end if ( is_mask_start( ${...}))
@@ -1846,7 +1847,7 @@ sub check_empty_masks {
 			$local_ieb = 0;
 
 			# Note down mask message in case we leave a message
-			${$line} =~ m,///\s*(.+)\s*$,msx and $mask_message = $1;
+			${$line} =~ m/[${SLASH}]{3}\s*(.+)\s*$/msx and $mask_message = $1;
 
 			next;
 		} ## end if ( is_insert_start( ...))
@@ -1995,7 +1996,7 @@ sub check_includes {
 		# === Other 2 : elogind include blocks end, when the first line is  ===
 		# ===           found that does not starts with #include            ===
 		# =====================================================================
-		if ( $in_elogind_block && !( ${$line} =~ m,^[${DASH}${PLUS}${SPACE}]\s*[${HASH}]include\s*,misx ) ) {
+		if ( $in_elogind_block && !( ${$line} =~ m/^[${DASH}${PLUS}${SPACE}]\s*[${HASH}]include\s*/misx ) ) {
 			log_debug( 'Leaving elogind include block at line %d', $i + 1 );
 
 			# diff may want to remove the first empty line after our block.
@@ -2560,12 +2561,12 @@ sub check_stdc_version {
 
 		# Having a removal of a guardian
 		# ---------------------------------------
-		if ( ${$line} =~ m/^[${DASH}][${HASH}]\s*if\s+defined\(__STDC_VERSION__\)\s+&&\s+/msx ) {
+		if ( ${$line} =~ m/^[${DASH}][${HASH}]\s*if\s+defined[(][_]{2}STDC[_]VERSION[_]{2}[)]\s+&&\s+/msx ) {
 			## Note: Here it is perfectly fine to be in an elogind mask block.
 			$line_del_num = $i;
 			$line_del_str = ${$line};
 			next;
-		} ## end if ( ${$line} =~ m/^[${DASH}][${HASH}]\s*if\s+defined\(__STDC_VERSION__\)\s+&&\s+/msx)
+		} ## end if ( ${$line} =~ m/^[${DASH}][${HASH}]\s*if\s+defined[(][_]{2}STDC[_]VERSION[_]{2}[)]\s+&&\s+/msx)
 
 		# Having the line without guardian added
 		# ---------------------------------------
@@ -2583,7 +2584,7 @@ sub check_stdc_version {
 				# Yes, the just want to take out the guard.
 				# Let's revert that
 				substr( $hHunk->{lines}[$line_del_num], 0, 1, $SPACE );
-				splice( @{ $hHunk->{lines} }, $line_rep_num, 1 );
+				splice( @{ $hHunk->{lines} }, $line_rep_num / 1 );
 				--$hHunk->{count};
 			} ## end if ( $alt_line eq $line_del_str)
 			$line_del_num = -1;
@@ -2603,7 +2604,7 @@ sub check_stdc_version {
 #
 #  This subroutine processes hunks in .sym.pwx files to detect and handle attempts to uncomment
 #  unsupported API function calls. It converts valid function declarations from active to commented
-#  form and vice versa, ensuring that only supported functions are uncommented in the final output.
+#  form and vice versa/ ensuring that only supported functions are uncommented in the final output.
 #  The function operates on additions and removals within the hunk, tracking changes to maintain
 #  correct line mapping for potential splicing operations.
 #
@@ -2643,7 +2644,7 @@ sub check_sym_lines {
 
 		# Note down removals
 		# ---------------------------------
-		if ( ${$line} =~ m/^[${DASH}]\s*\/\*\s+(\S.+;)\s+\*\/\s*$/msx ) {
+		if ( ${$line} =~ m/^[${DASH}]\s*\/[${STAR}]\s+(\S.+;)\s+[${STAR}]\/\s*$/msx ) {
 			$hRemovals{$1}{line} = $i;
 			next;
 		}
@@ -3348,7 +3349,7 @@ sub include_handle_removal {
 		while ( ( $all_same > 0 ) && ( abs($j) < abs($ins_diff) ) ) {
 			$all_same = 0;
 
-			if (       ( $hHunk->{lines}[ $i + $j ] =~ m/^[${DASH}]\s*\/[\/*]+\s*[${HASH}]include\s+[<"']([^>"']+)[>"']\s*(?:\*\/)?/msx )
+			if (       ( $hHunk->{lines}[ $i + $j ] =~ m/^[${DASH}]\s*\/[\/*]+\s*[${HASH}]include\s+[<"']([^>"']+)[>"']\s*(?:[${STAR}]\/)?/msx )
 				|| ( $hHunk->{lines}[ $i + $j ] =~ m/^[${PLUS}]\s*[${HASH}]include\s+[<"']([^>"']+)[>"']/msx ) )
 			{
 
@@ -3401,7 +3402,7 @@ sub is_insert_end {
 
 	if (       ( $line =~ m/^[-${SPACE}]?[${HASH}]endif\s*\/(?:[*\/]+)\s*1/msx )
 		|| ( $line =~ m/\/\/\s+1\s+-->\s*$/msx )
-		|| ( $line =~ m/\*\s+\/\/\s+1\s+\*\*\/\s*$/msx ) )
+		|| ( $line =~ m/[${STAR}]\s+\/\/\s+1\s+[${STAR}]{2}\/\s*$/msx ) )
 	{
 		return 1;
 	} ## end if ( ( $line =~ m/^[-${SPACE}]?[${HASH}]endif\s*\/(?:[*\/]+)\s*1/msx...))
@@ -3436,7 +3437,7 @@ sub is_mask_else {
 
 	if (       ( $line =~ m/^[-${SPACE}]?[${HASH}]else\s+[\/]+\s+0/msx )
 		|| ( $line =~ m/else\s+[\/]+\s+0\s+-->\s*$/msx )
-		|| ( $line =~ m/\*\s+else\s+[\/]+\s+0\s+\*\*\/\s*$/msx ) )
+		|| ( $line =~ m/[${STAR}]\s+else\s+[\/]+\s+0\s+[${STAR}]{2}\/\s*$/msx ) )
 	{
 		return 1;
 	} ## end if ( ( $line =~ m/^[-${SPACE}]?[${HASH}]else\s+[\/]+\s+0/msx...))
@@ -3452,12 +3453,12 @@ sub is_mask_end {
 
 	defined($line) and length($line) or return 0;
 
-	if (       ( $line =~ m,^[- ]?[${HASH}]endif\s*/(?:[*/]+)\s*(?:0),msx )
-		|| ( $line =~ m,//\s+0\s+-->\s*$,msx )
-		|| ( $line =~ m,\*\s+//\s+0\s+\*\*/\s*$,msx ) )
+	if (       ( $line =~ m/^[${DASH}${SPACE}]?[${HASH}]endif\s*[${SLASH}](?:[${STAR}${SLASH}]+)\s*(?:0)/msx )
+		|| ( $line =~ m/[${SLASH}]{2}\s+0\s+[${DASH}]{2}>\s*$/msx )
+		|| ( $line =~ m/[${STAR}]\s+[${SLASH}]{2}\s+0\s+[${STAR}]{2}[${SLASH}]\s*$/msx ) )
 	{
 		return 1;
-	} ## end if ( ( $line =~ m,^[- ]?[${HASH}]endif\s*/(?:[*/]+)\s*(?:0),msx...))
+	} ## end if ( ( $line =~ m/^[${DASH}${SPACE}]?[${HASH}]endif\s*[${SLASH}](?:[${STAR}${SLASH}]+)\s*(?:0)/msx...))
 
 	return 0;
 } ## end sub is_mask_end
@@ -3471,15 +3472,15 @@ sub is_mask_start {
 	defined($line) and length($line) or return 0;
 
 	if (
-		( $line =~ m/^[-${SPACE}]?[${HASH}]if\s+0.+elogind/msx )
+		( $line =~ m/^[${DASH}${SPACE}]?[${HASH}]if\s+0.+elogind/msx )
 		|| ( ( $line =~ m/<!--\s+0.+elogind/msx )
 			&& !( $line =~ m/-->\s*$/msx ) )
-		|| ( ( $line =~ m,/\*\*\s+0.+elogind,msx )
-			&& !( $line =~ m,\*\*/\s*$,msx ) )
+		|| ( ( $line =~ m/[${SLASH}][${STAR}]{2}\s+0.+elogind/msx )
+			&& !( $line =~ m/[${STAR}]{2}[${SLASH}]\s*$/msx ) )
 	   )
 	{
 		return 1;
-	} ## end if ( ( $line =~ m/^[-${SPACE}]?[${HASH}]if\s+0.+elogind/msx...))
+	} ## end if ( ( $line =~ m/^[${DASH}${SPACE}]?[${HASH}]if\s+0.+elogind/msx...))
 
 	return 0;
 } ## end sub is_mask_start
@@ -3602,9 +3603,9 @@ sub prepare_shell {
 	# -----------------------------------------------------------------------
 	# --- Prepare shell and meson files for our processing.               ---
 	# --- If this is a shell or meson file, we have to adapt it first:    ---
-	# --- To be able to use our patch building system, the files use the  ---
+	# --- To be able to use our patch building system/ the files use the  ---
 	# --- same masking technology as the C files. But as these are not    ---
-	# --- handled by any preprocessor, it is necessary to comment out all ---
+	# --- handled by any preprocessor/ it is necessary to comment out all ---
 	# --- masked blocks.                                                  ---
 	# --- If we do not do this, diff creates patches which move all       ---
 	# --- commented blocks behind the #endif and uncomment them.          ---
@@ -3652,7 +3653,7 @@ sub prepare_shell {
 
 		if ( $is_block && !$is_else ) {
 			$line =~ s/^[${HASH}]\s?//msgx;
-			$line =~ s/^\s\s\*\s?//msgx;
+			$line =~ s/^\s\s[${STAR}]\s?//msgx;
 		}
 
 		push @lOut, $line;
@@ -4010,7 +4011,7 @@ sub unprepare_shell {
 		        and ( substr $line, 1, 0, "${HASH}${SPACE}" );
 
 		# Make sure not to demand to add empty comment lines with trailing spaces
-		$line =~ s/^(\+[${HASH}])\s+$/$1/msgx;
+		$line =~ s/^([${PLUS}][${HASH}])\s+$/$1/msgx;
 		push @{ $hFile{output} }, $line;
 	} ## end for my $line (@lIn)
 
@@ -4190,14 +4191,14 @@ sub read_includes {
 		} ## end if ( $in_elogind_block...)
 
 		# elogind include blocks are started by a comment featuring "needed by elogind"
-		if ( ${$line} =~ m,^[ -]\s*/+.*needed\s+(?:by|for)\s+elogind.*,msxi ) {
+		if ( ${$line} =~ m/^[ -]\s*[${SLASH}]+.*needed\s+(?:by|for)\s+elogind.*/msxi ) {
 			log_debug( 'Entering elogind include block at line %d', $i + 1 );
 			$in_elogind_block = 1;
 			next;
 		}
 
 		# elogind include blocks end, when the first non-include line is found
-		if ( $in_elogind_block && !( ${$line} =~ m,^[${DASH}${PLUS}${SPACE}]\s*[${HASH}]include\s*,misx ) ) {
+		if ( $in_elogind_block && !( ${$line} =~ m/^[${DASH}${PLUS}${SPACE}]\s*[${HASH}]include\s*/misx ) ) {
 			log_debug( 'Leaving elogind include block at line %d', $i + 1 );
 			$in_elogind_block = 0;
 		}
