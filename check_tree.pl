@@ -487,7 +487,7 @@ for my $file_part (@source_files) {
 
 			# Do not assume empty comment lines with trailing spaces in shell files
 			$hFile{pwxfile} and $line =~ s/([+ -][${HASH}])\s+$/$1/msgx;
-			print $fOut "$line\n";
+			print {$fOut} "$line\n";
 		} ## end for my $line ( @{ $hFile...})
 		close($fOut) or croak "Closing '$fOut' FAILED: $!\n";
 	} else {
@@ -3662,7 +3662,7 @@ sub prepare_shell {
 	# Now write the outfile:
 	if ( open( my $fOut, '>', $out ) ) {
 		for my $line (@lOut) {
-			print $fOut "$line\n";
+			print {$fOut} "$line\n";
 		}
 		close($fOut) or croak "Closing '$fOut' FAILED: $!\n";
 	} else {
@@ -3756,7 +3756,7 @@ sub prepare_xml {
 	# Now write the outfile:
 	if ( open( my $fOut, '>', $out ) ) {
 		for my $line (@lOut) {
-			print $fOut "$line\n";
+			print {$fOut} "$line\n";
 		}
 		close($fOut) or croak "Closing '$fOut' FAILED: $!\n";
 	} else {
@@ -3978,7 +3978,7 @@ sub unprepare_shell {
 	# Now write the outfile:
 	if ( open( my $fOut, '>', $out ) ) {
 		for my $line (@lOut) {
-			print $fOut "$line\n";
+			print {$fOut} "$line\n";
 		}
 		close($fOut) or croak "Closing '$fOut' FAILED: $!\n";
 	} else {
@@ -4091,7 +4091,7 @@ sub unprepare_xml {
 	# Now write the outfile:
 	if ( open( my $fOut, '>', $out ) ) {
 		for my $line (@lOut) {
-			print $fOut "$line\n";
+			print {$fOut} "$line\n";
 		}
 		close($fOut) or croak "Closing '$fOut' FAILED: $!\n";
 	} else {
