@@ -9,6 +9,7 @@ use File::Basename;
 use File::Find;
 use Getopt::Long;
 use Git::Wrapper;
+use List::Util qw( first );
 use Pod::Usage;
 use Readonly;
 use Try::Tiny;
@@ -365,7 +366,7 @@ for my $file_part (@source_files) {
 	# ---------------------------------------------------------------------
 	# --- Go through all hunks and check them against our various rules ---
 	# ---------------------------------------------------------------------
-	for ( my $pos = 0 ; $pos < $hFile{count} ; ++$pos ) {
+	for my $pos ( 0 .. $hFile{count} - 1 ) {
 
 		# Break off if a signal was caught
 		( $death_note > 0 ) and ( $pos = $hFile{count} ) and next;
@@ -417,7 +418,7 @@ for my $file_part (@source_files) {
 		# === 11) Analyze includes and note their appearance in $hIncs =====
 		read_includes(); ## Never fails, doesn't change anything.
 
-	} ## end for ( my $pos = 0 ; $pos...)
+	} ## end for my $pos ( 0 .. $hFile...)
 
 	# Break off if a signal was caught
 	( $death_note > 0 ) and show_progress( 1, "$file_fmt : cancelled", $file_part ) and next;
@@ -438,7 +439,7 @@ for my $file_part (@source_files) {
 	# ---------------------------------------------------------------------
 	# --- Go through all hunks and apply remaining changes and checks   ---
 	# ---------------------------------------------------------------------
-	for ( my $pos = 0 ; $pos < $hFile{count} ; ++$pos ) {
+	for my $pos ( 0 .. $hFile{count} - 1 ) {
 		$hHunk = $hFile{hunks}[$pos]; ## Global shortcut
 
 		# (pre -> early out)
@@ -447,7 +448,7 @@ for my $file_part (@source_files) {
 		# === 1) Apply what we learned about changed includes =============
 		check_includes() and hunk_is_useful() or next;
 
-	} ## end for ( my $pos = 0 ; $pos...)
+	} ## end for my $pos ( 0 .. $hFile...)
 
 	# ---------------------------------------------------------------------
 	# --- Splice all include insertions that are marked for splicing    ---
@@ -458,14 +459,14 @@ for my $file_part (@source_files) {
 	# --- Go through all hunks for a last prune and check               ---
 	# ---------------------------------------------------------------------
 	my $have_hunk = 0;
-	for ( my $pos = 0 ; $pos < $hFile{count} ; ++$pos ) {
+	for my $pos ( 0 .. $hFile{count} - 1 ) {
 		$hHunk = $hFile{hunks}[$pos]; ## Global shortcut
 
 		# (pre -> early out)
 		hunk_is_useful() or next;
 
 		prune_hunk() and ++$have_hunk;
-	} ## end for ( my $pos = 0 ; $pos...)
+	} ## end for my $pos ( 0 .. $hFile...)
 
 	# If we have at least 1 useful hunk, create the output and tell the user what we've got.
 	$have_hunk
@@ -512,7 +513,7 @@ END {
 
 		log_info( "\n%d file%s only found in $WORKDIR:", $count, $count > 1 ? 's' : $EMPTY );
 
-		for ( my $i = 0 ; $i < $count ; ++$i ) {
+		for my $i ( 0 .. $count - 1 ) {
 			log_info( $fmt, $i + 1, $only_here[$i] );
 		}
 	} ## end if ( scalar @only_here)
@@ -525,7 +526,7 @@ END {
 
 		log_warning( "\n%d file%s %s at least one fishy hunk:", $count, $count > 1 ? 's' : $EMPTY, $count > 1 ? 'have' : 'has' );
 
-		for ( my $i = 0 ; $i < $count ; ++$i ) {
+		for my $i ( 0 .. $count - 1 ) {
 			log_warning("=== $lFails[$i]{part} ===");
 			log_warning(" => $lFails[$i]{msg} <=");
 			log_warning("---------------------------");
@@ -538,8 +539,8 @@ END {
 			log_warning( " {tgt_start}    : ${QUOT}" . $lFails[$i]{info}{tgt_start} . $QUOT );
 			log_warning( " {useful}       : ${QUOT}" . $lFails[$i]{info}{useful} . $QUOT );
 			log_warning("---------------------------");
-			log_warning("$_\n") foreach ( @{ $lFails[$i]{hunk} } );
-		} ## end for ( my $i = 0 ; $i < ...)
+			foreach ( @{ $lFails[$i]{hunk} } ) { log_warning("$_\n") }
+		} ## end for my $i ( 0 .. $count...)
 	} ## end if ( scalar @lFails )
 
 	$do_stay or length($previous_commit) and checkout_upstream($previous_commit);
@@ -671,7 +672,7 @@ sub build_output {
 
 	my $offset = 0; ## Count building up target offsets
 
-	for ( my $pos = 0 ; $pos < $hFile{count} ; ++$pos ) {
+	for my $pos ( 0 .. $hFile{count} - 1 ) {
 		$hHunk = $hFile{hunks}[$pos]; ## Global shortcut
 
 		# The useless are to be skipped, but we need the hunks masked_end
@@ -716,7 +717,7 @@ sub build_output {
 		        );
 		$hFile{pwxfile} and push( @{ $hFile{output} }, "# masked_end " . $hHunk->{masked_end} );
 
-	} ## end for ( my $pos = 0 ; $pos...)
+	} ## end for my $pos ( 0 .. $hFile...)
 
 	return 1;
 } ## end sub build_output
@@ -1546,7 +1547,7 @@ sub check_blanks {
 
 	log_debug("Checking useful blank additions ...");
 
-	for ( my $i = 0 ; $i < $hHunk->{count} ; ++$i ) {
+	for my $i ( 0 .. $hHunk->{count} - 1 ) {
 		my $line = \$hHunk->{lines}[$i]; ## Shortcut
 
 		# Check for misplaced addition
@@ -1573,7 +1574,7 @@ sub check_blanks {
 			next;
 		} ## end if ( ( ${$line} =~ m/^[${DASH}]\s*$/msx...))
 
-	} ## end for ( my $i = 0 ; $i < ...)
+	} ## end for my $i ( 0 .. $hHunk...)
 
 	return 1;
 } ## end sub check_blanks
@@ -1600,7 +1601,7 @@ sub check_comments {
 
 	my $in_comment_block = 0;
 
-	for ( my $i = 0 ; $i < $hHunk->{count} ; ++$i ) {
+	for my $i ( 0 .. $hHunk->{count} - 1 ) {
 		my $line = \$hHunk->{lines}[$i]; ## Shortcut
 
 		# Check for comment block start
@@ -1640,7 +1641,7 @@ sub check_comments {
 
 		# If none of the above applied, the comment block is over.
 		$in_comment_block = 0;
-	} ## end for ( my $i = 0 ; $i < ...)
+	} ## end for my $i ( 0 .. $hHunk...)
 
 	return 1;
 } ## end sub check_comments
@@ -1668,7 +1669,7 @@ sub check_debug {
 	my $regular_ifs   = 0;
 	my $is_debug_func = 0; ## Special for log_debug_elogind()
 
-	for ( my $i = 0 ; $i < $hHunk->{count} ; ++$i ) {
+	for my $i ( 0 .. $hHunk->{count} - 1 ) {
 		my $line = \$hHunk->{lines}[$i]; ## Shortcut
 
 		# entering a debug construct block
@@ -1726,7 +1727,7 @@ sub check_debug {
 		# ---------------------------------------------------------
 		$is_debug_func and ${$line} =~ m/[)]\s*;/msx and --$is_debug_func;
 
-	} ## end for ( my $i = 0 ; $i < ...)
+	} ## end for my $i ( 0 .. $hHunk...)
 
 	return 1;
 } ## end sub check_debug
@@ -1753,7 +1754,7 @@ sub check_func_removes {
 	# Needed for multi-line calls
 	my $is_func_call = 0;
 
-	for ( my $i = 0 ; $i < $hHunk->{count} ; ++$i ) {
+	for my $i ( 0 .. $hHunk->{count} - 1 ) {
 		my $line = \$hHunk->{lines}[$i]; ## Shortcut
 
 		# Check for elogind_*() call
@@ -1773,7 +1774,7 @@ sub check_func_removes {
 		# Check for the end of a multiline elogind_*() call
 		# -------------------------------------------------------------------
 		$is_func_call and ${$line} =~ m/\)\s*;/msx and --$is_func_call;
-	} ## end for ( my $i = 0 ; $i < ...)
+	} ## end for my $i ( 0 .. $hHunk...)
 
 	return 1;
 } ## end sub check_func_removes
@@ -1818,7 +1819,7 @@ sub check_empty_masks {
 	# If we leave a note, add the original mask message
 	my $mask_message = $EMPTY;
 
-	for ( my $i = 0 ; $i < $hHunk->{count} ; ++$i ) {
+	for my $i ( 0 .. $hHunk->{count} - 1 ) {
 		my $line = \$hHunk->{lines}[$i]; ## Shortcut
 
 		# entering an elogind mask
@@ -1938,7 +1939,7 @@ sub check_empty_masks {
 		# end regular #if
 		${$line} =~ m/^-[${HASH}]endif/msx and --$regular_ifs;
 
-	} ## end for ( my $i = 0 ; $i < ...)
+	} ## end for my $i ( 0 .. $hHunk...)
 
 	return 1;
 } ## end sub check_empty_masks
@@ -1966,7 +1967,7 @@ sub check_includes {
 	# Delay the undoing of the removals until after the hunk was checked.
 	my %undos = ();
 
-	for ( my $i = 0 ; $i < $hHunk->{count} ; ++$i ) {
+	for my $i ( 0 .. $hHunk->{count} - 1 ) {
 		my $line = \$hHunk->{lines}[$i]; ## Shortcut
 
 		include_handle_removal( $i + 1, ${$line}, \%undos ) and next;                       # 1) Handling of removals of includes we commented out
@@ -2014,7 +2015,7 @@ sub check_includes {
 		#       those won't reach here. Actually 'Other 3' would be never
 		#       reached with an #include line.
 
-	} ## end for ( my $i = 0 ; $i < ...)
+	} ## end for my $i ( 0 .. $hHunk...)
 
 	# Before we can leave, we have to neutralize the %undo lines:
 	for my $lId ( keys %undos ) {
@@ -2102,7 +2103,7 @@ sub check_masks {
 	# Note down how this hunk starts before first pruning
 	$hHunk->{masked_start} = $in_mask_block && !$in_else_block ? 1 : 0;
 
-	for ( my $i = 0 ; $i < $hHunk->{count} ; ++$i ) {
+	for my $i ( 0 .. $hHunk->{count} - 1 ) {
 		my $line = \$hHunk->{lines}[$i]; ## Shortcut
 
 		# entering an elogind mask
@@ -2264,7 +2265,7 @@ sub check_masks {
 			$mask_end_line = -1;
 			$move_to_line  = -1;
 		} ## end if ( 0 == $in_mask_block)
-	} ## end for ( my $i = 0 ; $i < ...)
+	} ## end for my $i ( 0 .. $hHunk...)
 
 	# Note down how this hunk ends before first pruning
 	$hHunk->{masked_end} = $in_mask_block && !$in_else_block ? 1 : 0;
@@ -2313,7 +2314,7 @@ sub check_musl {
 	$in_else_block = 0;
 	$hHunk->{masked_start} and $in_mask_block = 1 or $in_mask_block = 0;
 
-	for ( my $i = 0 ; $i < $hHunk->{count} ; ++$i ) {
+	for my $i ( 0 .. $hHunk->{count} - 1 ) {
 		my $line = \$hHunk->{lines}[$i]; ## Shortcut
 
 		# The increment/decrement variant can cause negative values:
@@ -2380,7 +2381,7 @@ sub check_musl {
 		{
 			substr( ${$line}, 0, 1, $SPACE ); ## Remove '-'
 		} ## end if ( ( ${$line} =~ m/^[${DASH}]/msx...))
-	} ## end for ( my $i = 0 ; $i < ...)
+	} ## end for my $i ( 0 .. $hHunk...)
 
 	# Revert the final mask state remembered above
 	# ------------------------------------------------
@@ -2439,7 +2440,7 @@ sub check_name_reverts {
 	$in_mask_block < 0 and $in_mask_block = 0;
 	$in_else_block = 0;
 
-	for ( my $i = 0 ; $i < $hHunk->{count} ; ++$i ) {
+	for my $i ( 0 .. $hHunk->{count} - 1 ) {
 		my $line_p = \$hHunk->{lines}[$i]; ## Shortcut
 		defined( ${$line_p} )
 		        or return hunk_failed( "check_name_reverts: Line " . ( $i + 1 ) . "/$hHunk->{count} is undef?" );
@@ -2458,7 +2459,7 @@ sub check_name_reverts {
 		# Analyze basic status of the line
 		# -----------------------------------------------------------
 		change_analyze_hunk_line( \%hChanges, $i, ${$line_p}, $is_masked_now );
-	} ## end for ( my $i = 0 ; $i < ...)
+	} ## end for my $i ( 0 .. $hHunk...)
 
 	# Generally there are three types of changes:
 	# 1) The simple removal, when there is only one change of type -1
@@ -2541,7 +2542,7 @@ sub check_stdc_version {
 	my $line_del_str = $EMPTY;
 	my $line_rep_num = -1;
 	my $line_rep_str = $EMPTY;
-	for ( my $i = 0 ; $i < $hHunk->{count} ; ++$i ) {
+	for my $i ( 0 .. $hHunk->{count} - 1 ) {
 		my $line = \$hHunk->{lines}[$i]; ## Shortcut
 
 		# The increment/decrement variant can cause negative values:
@@ -2588,7 +2589,7 @@ sub check_stdc_version {
 			$line_del_num = -1;
 			$line_rep_num = -1;
 		} ## end if ( ( $line_del_num >...))
-	} ## end for ( my $i = 0 ; $i < ...)
+	} ## end for my $i ( 0 .. $hHunk...)
 
 	# Revert the final mask state remembered above
 	# ------------------------------------------------
@@ -2634,7 +2635,7 @@ sub check_sym_lines {
 	# We need a sortable line map for possible later splicing
 	my %hAddMap = ();
 
-	for ( my $i = 0 ; $i < $hHunk->{count} ; ++$i ) {
+	for my $i ( 0 .. $hHunk->{count} - 1 ) {
 		my $line = \$hHunk->{lines}[$i]; ## Shortcut
 
 		defined( ${$line} )
@@ -2654,7 +2655,7 @@ sub check_sym_lines {
 			$hAdditions{$1}{handled} = 0;
 			$hAddMap{$i}             = $1;
 		}
-	} ## end for ( my $i = 0 ; $i < ...)
+	} ## end for my $i ( 0 .. $hHunk...)
 
 	# Now we go backwards through the lines that got added and revert the reversals.
 	for my $i ( sort { $b <=> $a } keys %hAddMap ) {
@@ -2711,7 +2712,7 @@ sub check_useless {
 	my $r_offset = -1;
 
 	# Now go through the line and find out what is to be done
-	for ( my $i = 0 ; $i < $hHunk->{count} ; ++$i ) {
+	for my $i ( 0 .. $hHunk->{count} - 1 ) {
 		my $line = \$hHunk->{lines}[$i]; ## Shortcut
 
 		# --- (1) Note down removal ---
@@ -2742,7 +2743,7 @@ sub check_useless {
 		$r_start   = -1;
 		$r_offset  = -1;
 		%hRemovals = ();
-	} ## end for ( my $i = 0 ; $i < ...)
+	} ## end for my $i ( 0 .. $hHunk...)
 
 	# Now go through the splice map and splice from back to front
 	for my $line_no ( sort { $b <=> $a } keys %hSplices ) {
@@ -2816,7 +2817,7 @@ sub checkout_upstream {
 sub clean_hFile {
 	defined( $hFile{count} ) or return 1;
 
-	for ( my $i = $hFile{count} - 1 ; $i > -1 ; --$i ) {
+	for my $i ( $hFile{count} - 1 .. 0 ) {
 		defined( $hFile{hunks}[$i] ) and undef( %{ $hFile{hunks}[$i] } );
 	}
 
@@ -2892,7 +2893,7 @@ sub diff_hFile {
 	$hFile{output}[1] =~ s/$tgt/b[${SLASH}]$prt/ms;                          # to be created.
 
 	# ... and the raw hunks can be stored.
-	for ( my $line_no = 1 ; $line_no < scalar @lDiff ; ++$line_no ) {
+	for my $line_no ( 1 .. ( scalar @lDiff ) - 1 ) {
 		( $ATAT eq substr( $lDiff[$line_no], 0, 2 ) )
 		        and ( build_hHunk( splice( @lDiff, 0, $line_no ) ) or return 0 )
 		        and $line_no = 0;
@@ -3032,7 +3033,7 @@ sub get_hunk_head {
 	my $src_start = $hHunk->{src_start};
 	my $tgt_start = defined($offset) ? $src_start + $$offset : $hHunk->{tgt_start};
 
-	for ( my $i = 0 ; $i < $lCount ; ++$i ) {
+	for my $i ( 0 .. $lCount - 1 ) {
 		if ( $hHunk->{lines}[$i] =~ m/^[${PLUS}]/msx ) {
 			$tgt_len++;
 		} elsif ( $hHunk->{lines}[$i] =~ m/^[${DASH}]/msx ) {
@@ -3041,7 +3042,7 @@ sub get_hunk_head {
 			$src_len++;
 			$tgt_len++;
 		}
-	} ## end for ( my $i = 0 ; $i < ...)
+	} ## end for my $i ( 0 .. $lCount...)
 
 	# If an offset reference was given, add back the size diff
 	defined($offset)
@@ -3192,20 +3193,14 @@ sub hunk_is_useful() {
 
 	log_debug("Checking whether the hunk is still useful ...");
 
-	# Go through the lines and see whether we have any changes
-	my $is_useful = 0;
-
-	for ( my $i = 0 ; ( 0 == $is_useful ) && ( $i < $hHunk->{count} ) ; ++$i ) {
-		if ( $hHunk->{lines}[$i] =~ m/^[${DASH}${PLUS}]/msx ) {
-			$is_useful = 1;
-		}
-	}
+	# See whether at least one change is still present
+	my $is_useful = ( defined first { m/^[${DASH}${PLUS}]/msx } @{ $hHunk->{lines} } ) ? 1 : 0;
 
 	$hHunk->{useful} = $is_useful;
 	log_debug( "  => Hunk is %s useful", ( $is_useful > 0 ) ? "still" : "no longer" );
 
 	if ( ( $do_debug > 0 ) && ( $is_useful > 0 ) ) {
-		for ( my $i = 0 ; $i < $hHunk->{count} ; ++$i ) {
+		for my $i ( 0 .. $hHunk->{count} - 1 ) {
 			log_info( "% 3d: %s", $i + 1, $hHunk->{lines}[$i] );
 		}
 	}
@@ -3346,10 +3341,11 @@ sub include_handle_removal {
 		my $all_same  = 1;
 		my $direction = $ins_diff > 0 ? 1 : -1;
 		my $i         = $line_no - 1;
+		my $j         = $direction;
 
 		# Let's see whether there are undos between this and its addition
 		# in the same order, meaning there has been no resorting.
-		for ( my $j = $direction ; ( $all_same > 0 ) && ( abs($j) < abs($ins_diff) ) ; $j += $direction ) {
+		while ( ( $all_same > 0 ) && ( abs($j) < abs($ins_diff) ) ) {
 			$all_same = 0;
 
 			if (       ( $hHunk->{lines}[ $i + $j ] =~ m/^[${DASH}]\s*\/[\/*]+\s*[${HASH}]include\s+[<"']([^>"']+)[>"']\s*(?:\*\/)?/msx )
@@ -3361,7 +3357,9 @@ sub include_handle_removal {
 				        and $hIns->{sysinc} == $hRem->{sysinc}
 				        and $all_same = 1;
 			} ## end if ( ( $hHunk->{lines}...))
-		} ## end for ( my $j = $direction...)
+
+			$j += $direction;
+		} ## end while ( ( $all_same > 0 )...)
 
 		if ( $all_same > 0 ) {
 
@@ -3785,7 +3783,7 @@ sub protect_config() {
 	$hHunk->{useful} or croak("check_masks: Nothing done but hHunk is useless?");
 
 	my $is_sleep_block = 0;
-	for ( my $i = 0 ; $i < $hHunk->{count} ; ++$i ) {
+	for my $i ( 0 .. $hHunk->{count} - 1 ) {
 		my $line = \$hHunk->{lines}[$i]; ## Shortcut
 
 		# Kill addition of lines we do not need
@@ -3817,7 +3815,7 @@ sub protect_config() {
 		# No sleep block
 		$is_sleep_block = 0;
 
-	} ## end for ( my $i = 0 ; $i < ...)
+	} ## end for my $i ( 0 .. $hHunk...)
 
 	return 1;
 } ## end sub protect_config
@@ -3844,7 +3842,7 @@ sub prune_hunk() {
 	my $postfix   = 0;
 	my $changed   = 0; ## Set to 1 once the first change was found.
 
-	for ( my $i = 0 ; $i < $hHunk->{count} ; ++$i ) {
+	for my $i ( 0 .. $hHunk->{count} - 1 ) {
 		my $line = $hHunk->{lines}[$i]; ## Shortcut
 		if ( $line =~ m/^[${DASH}${PLUS}]/msx ) {
 			$changed = 1;
@@ -3866,7 +3864,7 @@ sub prune_hunk() {
 
 		# Note: The last action still stands, no matter whether it gets pruned
 		#       or not, as it is only relevant for the next hunk.
-	} ## end for ( my $i = 0 ; $i < ...)
+	} ## end for my $i ( 0 .. $hHunk...)
 
 	# Now let's prune it:
 	if ( $prefix > 3 ) {
@@ -3877,12 +3875,12 @@ sub prune_hunk() {
 		$hHunk->{count}     -= $prefix;
 
 		# If any mask state change gets pruned, we have to remember the last one:
-		for ( my $i = $prefix ; $i >= 0 ; --$i ) {
+		for my $i ( $prefix .. 0 ) {
 			if ( $mask_info[$i] ) {
 				$hHunk->{masked_start} = $mask_info[$i] > 0 ? 1 : 0;
 				last;
 			}
-		} ## end for ( my $i = $prefix ;...)
+		} ## end for my $i ( $prefix .. ...)
 	} ## end if ( $prefix > 3 )
 	if ( $postfix > 3 ) {
 		$postfix -= 3;
@@ -4148,7 +4146,7 @@ sub read_includes {
 
 	# We must know when "needed by elogind blocks" start
 	my $in_elogind_block = 0;
-	for ( my $i = 0 ; $i < $hHunk->{count} ; ++$i ) {
+	for my $i ( 0 .. $hHunk->{count} - 1 ) {
 		my $line = \$hHunk->{lines}[$i]; ## Shortcut
 
 		# Note down removals of includes we commented out
@@ -4203,7 +4201,7 @@ sub read_includes {
 			log_debug( 'Leaving elogind include block at line %d', $i + 1 );
 			$in_elogind_block = 0;
 		}
-	} ## end for ( my $i = 0 ; $i < ...)
+	} ## end for my $i ( 0 .. $hHunk...)
 
 	return 1;
 } ## end sub read_includes
