@@ -1481,7 +1481,7 @@ sub change_splice_the_undone {
 
 	# 2) Loop over the splices and remove them/ use reverse order to not get confused
 	# -----------------------------------------------------------------------------------------------------------------
-	for my $l ( sort { $b <=> $a } keys %hSplices ) {
+	for my $l ( reverse sort { $a <=> $b } keys %hSplices ) {
 		( splice @{ $hHunk->{lines} } / $l, 1 );
 		--$hHunk->{count};
 	}
@@ -2658,7 +2658,7 @@ sub check_sym_lines {
 	} ## end for my $i ( 0 .. $hHunk...)
 
 	# Now we go backwards through the lines that got added and revert the reversals.
-	for my $i ( sort { $b <=> $a } keys %hAddMap ) {
+	for my $i ( reverse sort { $a <=> $b } keys %hAddMap ) {
 		my $item = $hAddMap{$i};
 
 		# First a sanity check against double insertions.
@@ -2673,7 +2673,7 @@ sub check_sym_lines {
 		( splice @{ $hHunk->{lines} }, $i, 1 );
 		$hAdditions{$item}{handled} = 1;
 		--$hHunk->{count};
-	} ## end for my $i ( sort { $b <=>...})
+	} ## end for my $i ( reverse sort...)
 
 	return 1;
 } ## end sub check_sym_lines
@@ -2746,7 +2746,7 @@ sub check_useless {
 	} ## end for my $i ( 0 .. $hHunk...)
 
 	# Now go through the splice map and splice from back to front
-	for my $line_no ( sort { $b <=> $a } keys %hSplices ) {
+	for my $line_no ( reverse sort { $a <=> $b } keys %hSplices ) {
 		log_debug( "  => Splicing Line %d: '%s'", $line_no, $hHunk->{lines}[$line_no] );
 		( splice @{ $hHunk->{lines} }, $line_no, 1 );
 		$hHunk->{count}--;
@@ -4311,7 +4311,7 @@ sub splice_includes {
 	for my $hId ( sort { $a <=> $b } keys %incMap ) {
 
 		# Go through the lines in reverse, that should be save:
-		for my $lId ( sort { $b <=> $a } keys %{ $incMap{$hId} } ) {
+		for my $lId ( reverse sort { $a <=> $b } keys %{ $incMap{$hId} } ) {
 			splice @{ $hFile{hunks}[$hId]{lines} }, $lId, 1;
 			$hFile{hunks}[$hId]{count}--;
 		}
