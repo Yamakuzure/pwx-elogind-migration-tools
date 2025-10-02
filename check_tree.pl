@@ -367,59 +367,7 @@ for my $file_part (@source_files) {
 	# ---------------------------------------------------------------------
 	# --- Go through all hunks and check them against our various rules ---
 	# ---------------------------------------------------------------------
-	for my $pos ( 0 .. $hFile{count} - 1 ) {
-
-		# Break off if a signal was caught
-		( $death_note > 0 ) and ( $pos = $hFile{count} ) and next;
-
-		log_debug( 'Checking Hunk %d', $pos + 1 );
-		$hHunk = $hFile{hunks}[$pos]; ## Global shortcut
-
-		# === Special 1) protect src/login/logind.conf.in =================
-		if ( $hFile{source} =~ m/src\/login\/logind[${DOT}]conf[${DOT}]in/msx ) {
-			protect_config() and hunk_is_useful() and prune_hunk() or next;
-		}
-
-		# === 1) Check for elogind masks 1 (normal source code) ===========
-		check_masks() and hunk_is_useful() and prune_hunk() or next;
-
-		# === 2) Check for elogind masks 2 (symbol files) =================
-		check_sym_lines() and hunk_is_useful() and prune_hunk() or next;
-
-		# === 3) Check for musl_libc compatibility blocks =================
-		check_musl() and hunk_is_useful() and prune_hunk() or next;
-
-		# === 4) Check for __STDC_VERSION guard removals ==================
-		check_stdc_version() and hunk_is_useful() and prune_hunk() or next;
-
-		# === 5) Check for debug constructs ===============================
-		check_debug() and hunk_is_useful() and prune_hunk() or next;
-
-		# === 6) Check for useful blank line additions ====================
-		check_blanks() and hunk_is_useful() and prune_hunk() or next;
-
-		# === 7) Check for 'elogind' => 'systemd' reverts =================
-		%hProtected = ();
-		check_name_reverts() and hunk_is_useful() and prune_hunk() or next;
-
-		# === 8) Check for elogind_*() function removals ==================
-		check_func_removes() and hunk_is_useful() and prune_hunk() or next;
-
-		# === 9) Check for elogind extra comments and information =========
-		check_comments() and hunk_is_useful() and prune_hunk() or next;
-
-		# === 10) Check for any useless changes that do nothing ============
-		check_useless() and hunk_is_useful() and prune_hunk() or next;
-
-		# === 11) Check for empty masks that guard nothing any more =======
-		check_empty_masks() and hunk_is_useful() and prune_hunk() or next;
-
-		#  ===> IMPORTANT: From here on no more pruning, lines must *NOT* change any more! <===
-
-		# === 11) Analyze includes and note their appearance in $hIncs =====
-		read_includes(); ## Never fails, doesn't change anything.
-
-	} ## end for my $pos ( 0 .. $hFile...)
+	refactor_hunks();
 
 	# Break off if a signal was caught
 	( $death_note > 0 ) and show_progress( 1, "$file_fmt : cancelled", $file_part ) and next;
@@ -427,29 +375,12 @@ for my $file_part (@source_files) {
 	# ---------------------------------------------------------------------
 	# --- Make sure saved include data is sane                          ---
 	# ---------------------------------------------------------------------
-	for my $inc ( keys %hIncs ) {
-		$hIncs{$inc}{applied} = 0;
-		( defined $hIncs{$inc}{elogind} )
-		        or $hIncs{$inc}{elogind} = { hunkid => -1, lineid => -1 };
-		( defined $hIncs{$inc}{insert} )
-		        or $hIncs{$inc}{insert} = { elogind => 0, hunkid => -1, lineid => -1, spliceme => 0, sysinc => 0 };
-		( defined $hIncs{$inc}{remove} )
-		        or $hIncs{$inc}{remove} = { hunkid => -1, lineid => -1, sysinc => 0 };
-	} ## end for my $inc ( keys %hIncs)
+	include_check_sanity();
 
 	# ---------------------------------------------------------------------
 	# --- Go through all hunks and apply remaining changes and checks   ---
 	# ---------------------------------------------------------------------
-	for my $pos ( 0 .. $hFile{count} - 1 ) {
-		$hHunk = $hFile{hunks}[$pos]; ## Global shortcut
-
-		# (pre -> early out)
-		hunk_is_useful() or next;
-
-		# === 1) Apply what we learned about changed includes =============
-		check_includes() and hunk_is_useful() or next;
-
-	} ## end for my $pos ( 0 .. $hFile...)
+	finish_hunks();
 
 	# ---------------------------------------------------------------------
 	# --- Splice all include insertions that are marked for splicing    ---
@@ -459,18 +390,10 @@ for my $file_part (@source_files) {
 	# ---------------------------------------------------------------------
 	# --- Go through all hunks for a last prune and check               ---
 	# ---------------------------------------------------------------------
-	my $have_hunk = 0;
-	for my $pos ( 0 .. $hFile{count} - 1 ) {
-		$hHunk = $hFile{hunks}[$pos]; ## Global shortcut
-
-		# (pre -> early out)
-		hunk_is_useful() or next;
-
-		prune_hunk() and ++$have_hunk;
-	} ## end for my $pos ( 0 .. $hFile...)
+	my $have_hunk = count_useful_hunks();
 
 	# If we have at least 1 useful hunk, create the output and tell the user what we've got.
-	$have_hunk
+	( $have_hunk > 0 )
 	        and build_output()  # (Always returns 1)
 	        and show_progress( 1, "$file_fmt: %d Hunk%s", $file_part, $have_hunk, $have_hunk > 1 ? 's' : $EMPTY )
 	        or show_progress( 1, "$file_fmt: clean", $file_part );
@@ -478,22 +401,8 @@ for my $file_part (@source_files) {
 	# Shell and xml files must be unprepared. See unprepare_[shell,xml]()
 	$hFile{pwxfile} and ( unprepare_shell() or unprepare_xml() );
 
-	# Now skip the writing if there are no hunks
-	$have_hunk or next;
-
-	# That's it, write the file and be done!
-	if ( open my $fOut, '>', $hFile{patch} ) {
-		for my $line ( @{ $hFile{output} } ) {
-
-			# Do not assume empty comment lines with trailing spaces in shell files
-			$hFile{pwxfile} and $line =~ s/([+ -][${HASH}])\s+$/$1/msgx;
-			print {$fOut} "$line\n";
-		} ## end for my $line ( @{ $hFile...})
-		close $fOut or croak("Closing '$fOut' FAILED: $!\n");
-	} else {
-		log_error( "ERROR: %s could not be opened for writing!\n%s\n", $hFile{patch}, $! );
-		confess('Please fix this first!');
-	}
+	# Now write the patch if we have at least one hunk to write
+	( $have_hunk > 0 ) and write_to_patch();
 } ## end for my $file_part (@source_files)
 
 # ===========================
@@ -2828,6 +2737,28 @@ sub clean_hFile {
 	return 1;
 } ## end sub clean_hFile
 
+## @brief Counts useful hunks in a file and returns the count.
+#
+# This subroutine iterates through all hunks in a file, checks if each hunk is
+# useful using the hunk_is_useful() function. If a hunk is deemed useful,
+# it's pruned with prune_hunk() and counted as a useful hunk.
+# The count of useful hunks is returned at the end of the iteration.
+#
+#  @return Returns the number of useful hunks found in the file.
+sub count_useful_hunks {
+	my $have_hunk = 0;
+	for my $pos ( 0 .. $hFile{count} - 1 ) {
+		$hHunk = $hFile{hunks}[$pos]; ## Global shortcut
+
+		# (pre -> early out)
+		hunk_is_useful() or next;
+
+		prune_hunk() and ++$have_hunk;
+	} ## end for my $pos ( 0 .. $hFile...)
+
+	return $have_hunk;
+} ## end sub count_useful_hunks
+
 ## @brief Handles program termination with error logging and exception throwing.
 #
 #  This subroutine sets global variables to indicate program death and logs the
@@ -2938,6 +2869,30 @@ sub do_prechecks {
 
 	return $result;
 } ## end sub do_prechecks
+
+## @brief This subroutine processes hunks of file data to filter out non-useful ones and applies changes to include statements.
+#
+#  The finish_hunks subroutine iterates through all hunks in a file. For each hunk,
+#  it first checks if the hunk is useful using the hunk_is_useful() function, and skips
+#  any non-useful hunks. Then, for potentially useful hunks, it applies changes related to
+#  include statements through check_includes(). If after applying these changes a hunk remains
+#  non-useful, it is also skipped.
+#
+#  @return The subroutine returns 1 upon completion of processing all hunks.
+sub finish_hunks {
+	for my $pos ( 0 .. $hFile{count} - 1 ) {
+		$hHunk = $hFile{hunks}[$pos]; ## Global shortcut
+
+		# === 1) useful or early out ======================================
+		hunk_is_useful() or next;
+
+		# === 2) Apply what we learned about changed includes =============
+		check_includes() and hunk_is_useful() or next;
+
+	} ## end for my $pos ( 0 .. $hFile...)
+
+	return 1;
+} ## end sub finish_hunks
 
 sub format_caller {
 	my ($caller) = @_;
@@ -3207,6 +3162,28 @@ sub hunk_is_useful() {
 
 	return $is_useful;
 } ## end sub hunk_is_useful
+
+## @brief This subroutine initializes sanity check values for inclusion checks.
+#
+#  This function iterates over all keys in the %hIncs hash and ensures that certain
+#  nested hashes are defined with default values. It resets the 'applied' status
+#  to 0, sets up default structures for 'elogind', 'insert', and 'remove'
+#  operations if they are not already defined.
+#
+#  @return Returns 1 after completing the initialization process.
+sub include_check_sanity {
+	for my $inc ( keys %hIncs ) {
+		$hIncs{$inc}{applied} = 0;
+		( defined $hIncs{$inc}{elogind} )
+		        or $hIncs{$inc}{elogind} = { hunkid => -1, lineid => -1 };
+		( defined $hIncs{$inc}{insert} )
+		        or $hIncs{$inc}{insert} = { elogind => 0, hunkid => -1, lineid => -1, spliceme => 0, sysinc => 0 };
+		( defined $hIncs{$inc}{remove} )
+		        or $hIncs{$inc}{remove} = { hunkid => -1, lineid => -1, sysinc => 0 };
+	} ## end for my $inc ( keys %hIncs)
+
+	return 1;
+} ## end sub include_check_sanity
 
 ## @brief Handles "needed by elogind" blocks in include lines.
 #
@@ -4230,6 +4207,72 @@ sub read_includes {
 	return 1;
 } ## end sub read_includes
 
+## @brief Subroutine to refactor hunks by applying various checks and conditionally pruning them
+#
+#  This subroutine iterates through all hunks of a file and applies specific
+#  condition-based checks. If any check determines that a hunk is no longer
+#  necessary, the hunk is pruned (removed). The order of checks matters as each
+#  one has its own specific conditions to evaluate.
+#
+#  @return Returns 1 after processing all hunks in the file.
+sub refactor_hunks {
+	for my $pos ( 0 .. $hFile{count} - 1 ) {
+
+		# Break off if a signal was caught
+		( $death_note > 0 ) and ( $pos = $hFile{count} ) and next;
+
+		log_debug( 'Checking Hunk %d', $pos + 1 );
+		$hHunk = $hFile{hunks}[$pos]; ## Global shortcut
+
+		# === Special 1) protect src/login/logind.conf.in =================
+		if ( $hFile{source} =~ m/src\/login\/logind[${DOT}]conf[${DOT}]in/msx ) {
+			protect_config() and hunk_is_useful() and prune_hunk() or next;
+		}
+
+		# === 1) Check for elogind masks 1 (normal source code) ===========
+		check_masks() and hunk_is_useful() and prune_hunk() or next;
+
+		# === 2) Check for elogind masks 2 (symbol files) =================
+		check_sym_lines() and hunk_is_useful() and prune_hunk() or next;
+
+		# === 3) Check for musl_libc compatibility blocks =================
+		check_musl() and hunk_is_useful() and prune_hunk() or next;
+
+		# === 4) Check for __STDC_VERSION guard removals ==================
+		check_stdc_version() and hunk_is_useful() and prune_hunk() or next;
+
+		# === 5) Check for debug constructs ===============================
+		check_debug() and hunk_is_useful() and prune_hunk() or next;
+
+		# === 6) Check for useful blank line additions ====================
+		check_blanks() and hunk_is_useful() and prune_hunk() or next;
+
+		# === 7) Check for 'elogind' => 'systemd' reverts =================
+		%hProtected = ();
+		check_name_reverts() and hunk_is_useful() and prune_hunk() or next;
+
+		# === 8) Check for elogind_*() function removals ==================
+		check_func_removes() and hunk_is_useful() and prune_hunk() or next;
+
+		# === 9) Check for elogind extra comments and information =========
+		check_comments() and hunk_is_useful() and prune_hunk() or next;
+
+		# === 10) Check for any useless changes that do nothing ============
+		check_useless() and hunk_is_useful() and prune_hunk() or next;
+
+		# === 11) Check for empty masks that guard nothing any more =======
+		check_empty_masks() and hunk_is_useful() and prune_hunk() or next;
+
+		#  ===> IMPORTANT: From here on no more pruning, lines must *NOT* change any more! <===
+
+		# === 11) Analyze includes and note their appearance in $hIncs =====
+		read_includes(); ## Never fails, doesn't change anything.
+
+	} ## end for my $pos ( 0 .. $hFile...)
+
+	return 1;
+} ## end sub refactor_hunks
+
 sub set_log_file {
 	my ($name) = @_;
 	$logfile = sprintf '%s-%s.log', $name, get_date_now();
@@ -4430,6 +4473,36 @@ sub write_to_log {
 
 	return 1;
 } ## end sub write_to_log
+
+## @brief This subroutine writes content to a patch file from an array reference.
+#
+#  The subroutine attempts to open a file handle for writing to $hFile{patch}.
+#  If successful, it iterates through each line in $hFile{output}, modifies certain
+#  lines if needed based on the value of $hFile{pwxfile} and regular expression matching,
+#  and writes them to the output file. After processing all lines, it closes the file handle.
+#  If opening or closing the file fails, appropriate error messages are logged.
+#
+#  The line modification is specific for shell files where trailing spaces in certain
+#  comment lines should be removed without assuming they are empty.
+#
+#  @return Returns 1 on successful completion. In case of failure to open the output file,
+#          it logs an error message, confesses a fatal error and does not return.
+sub write_to_patch {
+	if ( open my $fOut, '>', $hFile{patch} ) {
+		for my $line ( @{ $hFile{output} } ) {
+
+			# Do not assume empty comment lines with trailing spaces in shell files
+			$hFile{pwxfile} and $line =~ s/([+ -][${HASH}])\s+$/$1/msgx;
+			print {$fOut} "$line\n";
+		} ## end for my $line ( @{ $hFile...})
+		close $fOut or croak("Closing '$fOut' FAILED: $!\n");
+	} else {
+		log_error( "ERROR: %s could not be opened for writing!\n%s\n", $hFile{patch}, $! );
+		confess('Please fix this first!');
+	}
+
+	return 1;
+} ## end sub write_to_patch
 
 __END__
 
