@@ -118,7 +118,7 @@ Readonly my $WORKDIR => getcwd();
 # ===        ==> ------ Constants and Helpers ----- <==        ===
 # ================================================================
 Readonly my $AT             => q{@};
-Readonly my $ATAT           => q{@@};
+Readonly my $ATAT           => q{@@}; ## no critic(ValuesAndExpressions::RequireInterpolationOfMetachars)
 Readonly my $DASH           => q{-};
 Readonly my $DOT            => q{.};
 Readonly my $EMPTY          => q{};
@@ -173,7 +173,7 @@ Readonly my %FILE_NAME_PATTERNS => (
 		'\.po$',             '\.pot$',      '\.py$', '\.sh$',        '\.sym$',   'bash/busctl', 'bash/loginctl', 'pam.d/other',
 		'pam.d/system-auth', 'zsh/_busctl', 'zsh/_loginctl'
 	],
-	"xml" => [ '\.xml$', '\.ent\.in$', '\.policy\.in$/' ]
+	"xml" => [ '\.xml$', '\.ent\.in$', '\.policy\.in$/' ] ## no critic(ValuesAndExpressions::RequireInterpolationOfMetachars)
 );
 
 # And some protected website URLs
@@ -481,7 +481,7 @@ for my $file_part (@source_files) {
 	$have_hunk or next;
 
 	# That's it, write the file and be done!
-	if ( open( my $fOut, ">", $hFile{patch} ) ) {
+	if ( open( my $fOut, '>', $hFile{patch} ) ) {
 		for my $line ( @{ $hFile{output} } ) {
 
 			# Do not assume empty comment lines with trailing spaces in shell files
@@ -1291,7 +1291,7 @@ sub change_is_protected_text {
 	$text =~ m/systemd\[1\]/msx and log_debug( "     => Protected '%s'", 'man systemd' ) and return 1;
 
 	# 5) Specific systemd services that might be mentioned in comments that are not masked:
-	my $systemd_services = qq{user-sessions|logind};
+	my $systemd_services = q{user-sessions|logind};
 	            ( $is_commented > 0 )
 	        and ( ( $text =~ m/systemd[-_]($systemd_services)[${DOT}]service/msx ) )
 	        and log_debug( "     => Protected '%s'", 'systemd service' )
@@ -1300,9 +1300,9 @@ sub change_is_protected_text {
 	# 6) References to systemd-homed and other tools not shipped by elogind
 	#    must not be changed either, or users might think elogind has its
 	#    own replacements.
-	my $systemd_daemon  = qq{home|import|journal|network|oom|passwor|udev};
-	my $systemd_keyword = qq{NR_[\{]|devel[/]};
-	my $systemd_product = qq{analyze|creds|cryptsetup|export|firstboot|fsck|home|import-fs|nspawn|repart|syscfg|sysusers|tmpfiles|vmspawn};
+	my $systemd_daemon  = q{home|import|journal|network|oom|passwor|udev};
+	my $systemd_keyword = q{NR_[\{]|devel[/]};
+	my $systemd_product = q{analyze|creds|cryptsetup|export|firstboot|fsck|home|import-fs|nspawn|repart|syscfg|sysusers|tmpfiles|vmspawn};
 	( $text =~ m/systemd[-_]($systemd_daemon)d/msx ) and log_debug( "     => Protected '%s'", 'systemd daemons' ) and return 1;
 	( $text =~ m/systemd[-_]($systemd_keyword)/msx ) and log_debug( "     => Protected '%s'", 'systemd keyword' ) and return 1;
 	( $text =~ m/systemd[-_]($systemd_product)/msx ) and log_debug( "     => Protected '%s'", 'systemd product' ) and return 1;
@@ -3592,7 +3592,7 @@ sub prepare_shell {
 	my @lOut = ();
 
 	# Leech the source file
-	if ( open( my $fIn, "<", $in ) ) {
+	if ( open( my $fIn, '<', $in ) ) {
 		@lIn = <$fIn>;
 		close($fIn) or croak "Closing '$fIn' FAILED: $!\n";
 	} else {
@@ -3659,7 +3659,7 @@ sub prepare_shell {
 	} ## end for my $line (@lIn)
 
 	# Now write the outfile:
-	if ( open( my $fOut, ">", $out ) ) {
+	if ( open( my $fOut, '>', $out ) ) {
 		for my $line (@lOut) {
 			print $fOut "$line\n";
 		}
@@ -3689,7 +3689,7 @@ sub prepare_xml {
 	my @lOut = ();
 
 	# Leech the source file
-	if ( open( my $fIn, "<", $in ) ) {
+	if ( open( my $fIn, '<', $in ) ) {
 		@lIn = <$fIn>;
 		close($fIn) or croak "Closing '$fIn' FAILED: $!\n";
 	} else {
@@ -3753,7 +3753,7 @@ sub prepare_xml {
 	} ## end for my $line (@lIn)
 
 	# Now write the outfile:
-	if ( open( my $fOut, ">", $out ) ) {
+	if ( open( my $fOut, '>', $out ) ) {
 		for my $line (@lOut) {
 			print $fOut "$line\n";
 		}
@@ -3910,7 +3910,7 @@ sub unprepare_shell {
 	$hFile{is_xml} and return 0;
 
 	# Leech the temporary file
-	if ( open( my $fIn, "<", $in ) ) {
+	if ( open( my $fIn, '<', $in ) ) {
 		@lIn = <$fIn>;
 		close($fIn) or croak "Closing '$fIn' FAILED: $!\n";
 	} else {
@@ -3975,7 +3975,7 @@ sub unprepare_shell {
 	} ## end for my $line (@lIn)
 
 	# Now write the outfile:
-	if ( open( my $fOut, ">", $out ) ) {
+	if ( open( my $fOut, '>', $out ) ) {
 		for my $line (@lOut) {
 			print $fOut "$line\n";
 		}
@@ -4038,7 +4038,7 @@ sub unprepare_xml {
 	$hFile{is_sh} and return 0;
 
 	# Leech the temporary file
-	if ( open( my $fIn, "<", $in ) ) {
+	if ( open( my $fIn, '<', $in ) ) {
 		@lIn = <$fIn>;
 		close($fIn) or croak "Closing '$fIn' FAILED: $!\n";
 	} else {
@@ -4088,7 +4088,7 @@ sub unprepare_xml {
 	} ## end for my $line (@lIn)
 
 	# Now write the outfile:
-	if ( open( my $fOut, ">", $out ) ) {
+	if ( open( my $fOut, '>', $out ) ) {
 		for my $line (@lOut) {
 			print $fOut "$line\n";
 		}
@@ -4158,7 +4158,7 @@ sub read_includes {
 			$hIncs{$2}{remove} = {
 				hunkid => $hHunk->{idx},
 				lineid => $i,
-				sysinc => $1 eq "<"
+				sysinc => $1 eq '<'
 			};
 			next;
 		} ## end if ( ${$line} =~ m/^[${DASH}]\s*\/[\/*]+\s*[${HASH}]include\s+([<"'])([^>"']+)([>"'])/msx)
@@ -4174,7 +4174,7 @@ sub read_includes {
 				hunkid   => $hHunk->{idx},
 				lineid   => $i,
 				spliceme => 0,
-				sysinc   => $1 eq "<"
+				sysinc   => $1 eq '<'
 			};
 			next;
 		} ## end if ( ${$line} =~ m/^[${PLUS}]\s*[${HASH}]include\s+([<"'])([^>"']+)([>"'])/msx)
