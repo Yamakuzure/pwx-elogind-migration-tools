@@ -2745,11 +2745,17 @@ sub diff_hFile {
 	$hFile{output}[1] =~ s/$tgt/b[${SLASH}]$prt/ms;                          # to be created.
 
 	# ... and the raw hunks can be stored.
-	for my $line_no ( 1 .. ( scalar @lDiff ) - 1 ) {
-		( $ATAT eq ( substr $lDiff[$line_no], 0, 2 ) )
-		        and ( build_hHunk( splice @lDiff, 0, $line_no ) or return 0 )
-		        and $line_no = 0;
-	}
+	my $max_idx = ( scalar @lDiff ) - 1;
+	my $line_no = 1;
+	while ( $line_no < $max_idx ) {
+		if ( $ATAT eq ( substr $lDiff[$line_no], 0, 2 ) ) {
+			build_hHunk( splice @lDiff, 0, $line_no ) or return 0;
+			$max_idx -= $line_no;
+			$line_no = 0;
+			next;
+		} ## end if ( $ATAT eq ( substr...))
+		++$line_no;
+	} ## end while ( $line_no < $max_idx)
 	scalar @lDiff and build_hHunk(@lDiff);
 
 	return 1;
