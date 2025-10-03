@@ -1734,32 +1734,11 @@ sub check_empty_masks {
 
 		# entering an elogind mask
 		# ---------------------------------------
-		if ( is_mask_start( ${$line} ) ) {
-
-			# No checks needed, check_masks() already did that, and later pruning might make
-			# checks here fail, if large else block removals got reverted and the hunk(s) pruned.
-			$local_iib = 0;
-			$local_imb = 1;
-
-			$mask_block_start = $i;
-
-			# Note down mask message in case we leave a message
-			${$line} =~ m/[${SLASH}]{3}\s*(.+)\s*$/msx and $mask_message = $1;
-
-			next;
-		} ## end if ( is_mask_start( ${...}))
+		empty_handle_mask_start( $line, \$mask_message, \$local_iib, \$local_imb ) and $mask_block_start = $i and next;
 
 		# entering an elogind insert
 		# ---------------------------------------
-		if ( is_insert_start( ${$line} ) ) {
-			$local_iib = 1;
-			$local_ieb = 0;
-
-			# Note down mask message in case we leave a message
-			${$line} =~ m/[${SLASH}]{3}\s*(.+)\s*$/msx and $mask_message = $1;
-
-			next;
-		} ## end if ( is_insert_start( ...))
+		empty_handle_insert_start( $line, \$mask_message, \$local_ieb, \$local_iib ) and next;
 
 		# Count regular #if
 		${$line} =~ m/^-[${HASH}]if/msx and ++$regular_ifs;
@@ -1767,71 +1746,15 @@ sub check_empty_masks {
 		# Switching from Mask to else.
 		# Note: Inserts have no #else, they make no sense.
 		# ---------------------------------------
-		if ( is_mask_else( ${$line} ) ) {
-			$local_ieb = 1;
-
-			# If the else starts right after a mask start, we have to do something about it, if there is enough space left in the patch
-			# (Which should be the case as the else block would have lengthened it. But better check it to be safe!)
-			if ( $i && ( $i == ( $mask_block_start + 1 ) ) && ( $i < ( $hHunk->{count} - 2 ) ) ) {
-
-				# Re-enable the removal of the "#if 0" and of the "#else" line
-				( substr $hHunk->{lines}[ $i - 1 ], 0, 1, "${DASH}" );
-				( substr $hHunk->{lines}[$i], 0, 1, "${DASH}" );
-
-				# Add a note that we converted this and add an insert mask
-				splice @{ $hHunk->{lines} }, $i + 1, 0, ( '+/// elogind empty mask else converted', "+#if 1 /// $mask_message" );
-
-				$hHunk->{count} += 2;
-				$need_endif_conversion = 1;
-				$i += 2; ## Already known...
-			} ## end if ( $i && ( $i == ( $mask_block_start...)))
-
-			$mask_block_start = -1;
-
-			next;
-		} ## end if ( is_mask_else( ${$line...}))
+		empty_handle_mask_to_else( $line, \$i, \$mask_message, \$mask_block_start, \$local_ieb, \$need_endif_conversion ) and next;
 
 		# ending a Mask block
 		# ---------------------------------------
-		if ( is_mask_end( ${$line} ) ) {
-
-			# If the endif is right after the mask start, we have to do something about it, but only if we have enough space left in the patch
-			if ( $i < ( $hHunk->{count} - 2 ) ) {
-				if ( $i && ( $i == ( $mask_block_start + 1 ) ) ) {
-
-					# Re-enable the removal of the "#if 0" and of the "#endif" line
-					( substr $hHunk->{lines}[ $i - 1 ], 0, 1, "${DASH}" );
-					( substr $hHunk->{lines}[$i], 0, 1, "${DASH}" );
-
-					# Add a note that we converted this
-					splice @{ $hHunk->{lines} }, $i + 1, 0,
-					        ( ${PLUS} . ( $hFile{is_sh} ? "${HASH}${SPACE}" : $EMPTY ) . "/// elogind empty mask removed ($mask_message)" );
-
-					$hHunk->{count} += 1;
-				} ## end if ( $i && ( $i == ( $mask_block_start...)))
-
-				# If we need an endif conversion, do it now:
-				elsif ( $need_endif_conversion > 0 ) {
-
-					# First re-enable the removal:
-					( substr $hHunk->{lines}[$i], 0, 1, "${DASH}" );
-
-					# Add the correct endif
-					splice @{ $hHunk->{lines} }, $i + 1, 0, ('+#endif // 1');
-
-					$hHunk->{count} += 1;
-					$i += 1; ## Already known...
-				} ## end elsif ( $need_endif_conversion...)
-			} ## end if ( $i < ( $hHunk->{count...}))
-
-			$local_imb             = 0;
-			$local_ieb             = 0;
-			$mask_block_start      = -1;
-			$mask_message          = $EMPTY;
-			$need_endif_conversion = 0;
-
+		if ( empty_handle_mask_end($line) > 0 ) {
+			$local_ieb = 0;
+			$local_imb = 0;
 			next;
-		} ## end if ( is_mask_end( ${$line...}))
+		}
 
 		# ending an insert block
 		# ---------------------------------------
@@ -2869,6 +2792,176 @@ sub do_prechecks {
 
 	return $result;
 } ## end sub do_prechecks
+
+## @brief Handles empty mask end line processing and re-enables removed lines when conditions are met.
+#
+#  This subroutine processes a given line to check if it's the end of a mask (using is_mask_end).
+#  If the line is indeed an end of a mask, it checks various conditions related to the position
+#  of the line within the hunk and whether certain conversions need to be made.
+#
+#  When the endif follows immediately after the mask start and there's sufficient space in the patch,
+#  it re-enables removed lines (marked with DASH) and adds a comment indicating the empty mask removal.
+#  If an endif conversion is needed, it also handles that by adding the appropriate endif line.
+#
+#  The function updates various references to track the state of the hunk being processed.
+#
+#  @param $line Reference to the current line string being checked
+#  @param $line_no_p Pointer/reference to the current line number in the hunk
+#  @param $message_p Pointer/reference to store messages about the processing
+#  @param $mask_block_start_p Pointer/reference to track the start of mask block
+#  @param $need_conversion_p Pointer/reference indicating if conversion is needed
+#  @return Returns 1 if the line was processed as a mask end, otherwise returns 0
+sub empty_handle_mask_end {
+	my ( $line, $line_no_p, $message_p, $mask_block_start_p, $need_conversion_p ) = @_;
+
+	if ( is_mask_end( ${$line} ) ) {
+		my $i = ${$line_no_p};
+
+		# If the endif is right after the mask start, we have to do something about it, but only if we have enough space left in the patch
+		if ( $i < ( $hHunk->{count} - 2 ) ) {
+			if ( $i && ( $i == ( ${$mask_block_start_p} + 1 ) ) ) {
+
+				# Re-enable the removal of the "#if 0" and of the "#endif" line
+				( substr $hHunk->{lines}[ $i - 1 ], 0, 1, "${DASH}" );
+				( substr $hHunk->{lines}[$i], 0, 1, "${DASH}" );
+
+				# Add a note that we converted this
+				splice @{ $hHunk->{lines} }, $i + 1, 0,
+				        ( ${PLUS} . ( $hFile{is_sh} ? "${HASH}${SPACE}" : $EMPTY ) . "/// elogind empty mask removed (${$message_p})" );
+
+				$hHunk->{count} += 1;
+			} ## end if ( $i && ( $i == ( $...)))
+
+			# If we need an endif conversion, do it now:
+			elsif ( ${$need_conversion_p} > 0 ) {
+
+				# First re-enable the removal:
+				( substr $hHunk->{lines}[$i], 0, 1, "${DASH}" );
+
+				# Add the correct endif
+				splice @{ $hHunk->{lines} }, $i + 1, 0, ('+#endif // 1');
+
+				$hHunk->{count} += 1;
+				${$line_no_p}   += 1; ## Already known...
+			} ## end elsif ( ${$need_conversion_p...})
+		} ## end if ( $i < ( $hHunk->{count...}))
+
+		${$mask_block_start_p} = -1;
+		${$message_p}          = $EMPTY;
+		${$need_conversion_p}  = 0;
+
+		return 1;
+	} ## end if ( is_mask_end( ${$line...}))
+
+	return 0;
+
+} ## end sub empty_handle_mask_end
+
+## @brief Handles empty mask to "else" conversion for line processing.
+#
+# This subroutine processes lines where an "else" statement follows immediately after
+# a masked code section. If certain conditions are met, it modifies the mask to handle
+# this scenario correctly by adjusting the patch and adding appropriate notes.
+# The purpose is to ensure proper handling of empty mask blocks that end with an else
+# statement, preserving the integrity of the code transformation process.
+#
+# @param line Reference to a string containing the current line being processed.
+# @param line_no_p Reference to an integer indicating the current line number in the patch.
+# @param message_p Reference to a string used for logging or messaging purposes.
+# @param mask_block_start_p Reference to an integer indicating where the mask block starts.
+# @param is_else_begin_p Reference to a flag indicating if this is the beginning of an else block.
+# @param need_conversion_p Reference to a flag indicating whether conversion was needed.
+# @return Returns 1 if the line was processed as an empty mask followed by an "else", 0 otherwise.
+sub empty_handle_mask_to_else {
+	my ( $line, $line_no_p, $message_p, $mask_block_start_p, $is_else_begin_p, $need_conversion_p ) = @_;
+
+	if ( is_mask_else( ${$line} ) ) {
+		my $i = ${$line_no_p};
+		${$is_else_begin_p} = 1;
+
+		# If the else starts right after a mask start, we have to do something about it, if there is enough space left in the patch
+		# (Which should be the case as the else block would have lengthened it. But better check it to be safe!)
+		if ( $i && ( $i == ( ${$mask_block_start_p} + 1 ) ) && ( $i < ( $hHunk->{count} - 2 ) ) ) {
+
+			# Re-enable the removal of the "#if 0" and of the "#else" line
+			( substr $hHunk->{lines}[ $i - 1 ], 0, 1, "${DASH}" );
+			( substr $hHunk->{lines}[$i], 0, 1, "${DASH}" );
+
+			# Add a note that we converted this and add an insert mask
+			splice @{ $hHunk->{lines} }, $i + 1, 0, ( '+/// elogind empty mask else converted', "+#if 1 /// ${$message_p}" );
+
+			$hHunk->{count} += 2;
+			${$need_conversion_p} = 1;
+			${$line_no_p} += 2; ## Already known...
+		} ## end if ( $i && ( $i == ( $...)))
+
+		${$mask_block_start_p} = -1;
+
+		return 1;
+	} ## end if ( is_mask_else( ${$line...}))
+
+	return 0;
+} ## end sub empty_handle_mask_to_else
+
+## @brief Handles mask start for empty lines and updates flags accordingly.
+#
+#  This subroutine checks if the given line indicates the start of a mask
+#  section. If it does, it sets relevant flags to indicate that we're starting
+#  a mask rather than an insert, and captures any associated message.
+#  The is_mask_start() function should have already validated this context,
+#  so no additional checks are performed here. This avoids potential issues
+#  with later pruning operations modifying the conditions.
+#
+#  @param line Reference to the line string being checked.
+#  @param message_p Reference to store the mask message if found.
+#  @param is_insert_begin_p Reference to flag indicating insert start (set to 0 if mask).
+#  @param is_mask_begin_p Reference to flag indicating mask start (set to 1 if mask).
+#  @return Returns 1 if a mask start was detected, otherwise returns 0.
+sub empty_handle_mask_start {
+	my ( $line, $message_p, $is_insert_begin_p, $is_mask_begin_p ) = @_;
+
+	if ( is_mask_start( ${$line} ) ) {
+
+		# No checks needed, check_masks() already did that, and later pruning might make
+		# checks here fail, if large else block removals got reverted and the hunk(s) pruned.
+		${$is_insert_begin_p} = 0;
+		${$is_mask_begin_p}   = 1;
+
+		# Note down mask message in case we leave a message
+		${$line} =~ m/[${SLASH}]{3}\s*(.+)\s*$/msx and ${$message_p} = $1;
+
+		return 1;
+	} ## end if ( is_mask_start( ${...}))
+
+	return 0;
+} ## end sub empty_handle_mask_start
+
+## @brief Checks if current line is an insert start and updates flags accordingly
+#
+# This subroutine checks whether the given line matches the criteria for being an
+# "insert start". If it does, it sets appropriate flags to indicate this condition,
+# and extracts any message from the line. It returns 1 if a match is found, otherwise 0.
+#
+# @param $line Reference to the current line string being processed
+# @param $message_p Reference to store extracted message (if any)
+# @param $is_else_begin_p Reference to flag indicating start of an 'else' section
+# @param $is_insert_begin_p Reference to flag indicating start of an 'insert' section
+# @return Returns 1 if the line matches insert start criteria, otherwise returns 0
+sub empty_handle_insert_start {
+	my ( $line, $message_p, $is_else_begin_p, $is_insert_begin_p ) = @_;
+
+	if ( is_insert_start( ${$line} ) ) {
+		${$is_insert_begin_p} = 1;
+		${$is_else_begin_p}   = 0;
+
+		# Note down mask message in case we leave a message
+		${$line} =~ m/[${SLASH}]{3}\s*(.+)\s*$/msx and ${$message_p} = $1;
+
+		return 1;
+	} ## end if ( is_insert_start( ...))
+
+	return 0;
+} ## end sub empty_handle_insert_start
 
 ## @brief This subroutine processes hunks of file data to filter out non-useful ones and applies changes to include statements.
 #
