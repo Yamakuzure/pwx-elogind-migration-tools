@@ -2746,16 +2746,16 @@ sub diff_hFile {
 
 	# ... and the raw hunks can be stored.
 	my $max_idx = ( scalar @lDiff ) - 1;
-	my $line_no = 1;
-	while ( $line_no < $max_idx ) {
-		if ( $ATAT eq ( substr $lDiff[$line_no], 0, 2 ) ) {
-			build_hHunk( splice @lDiff, 0, $line_no ) or return 0;
-			$max_idx -= $line_no;
-			$line_no = 0;
+	my $cur_idx = 1;
+	while ( $cur_idx < $max_idx ) {
+		if ( $ATAT eq ( substr $lDiff[$cur_idx], 0, 2 ) ) {
+			build_hHunk( splice @lDiff, 0, $cur_idx ) or return 0;
+			$max_idx -= $cur_idx;
+			$cur_idx = 1; ## Start at 1 or we crash at going for '@@' again.
 			next;
 		} ## end if ( $ATAT eq ( substr...))
-		++$line_no;
-	} ## end while ( $line_no < $max_idx)
+		++$cur_idx;
+	} ## end while ( $cur_idx < $max_idx)
 	scalar @lDiff and build_hHunk(@lDiff);
 
 	return 1;
