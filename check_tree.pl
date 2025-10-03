@@ -2143,15 +2143,14 @@ sub check_musl {
 	# ------------------------------------------------
 	my $hunk_ends_in_mask = $in_mask_block;
 	my $hunk_ends_in_else = $in_else_block;
+	$in_mask_block = $hHunk->{masked_start} ? 1 : 0;
 	$in_else_block = 0;
-	$hHunk->{masked_start} and $in_mask_block = 1 or $in_mask_block = 0;
 
 	for my $i ( 0 .. $hHunk->{count} - 1 ) {
 		my $line = \$hHunk->{lines}[$i]; ## Shortcut
 
 		# The increment/decrement variant can cause negative values:
-		$in_mask_block < 0 and $in_mask_block = 0;
-		$in_else_block < 0 and $in_else_block = 0;
+		validate_block_counters();
 
 		# Quick mask checks, we must have the intermediate states
 		# -------------------------------------------------------
@@ -2269,7 +2268,7 @@ sub check_name_reverts {
 	$hHunk->{masked_start} and $in_mask_block = 1 or $in_mask_block = 0;
 
 	# The increment/decrement variant can cause negative values
-	$in_mask_block < 0 and $in_mask_block = 0;
+	validate_block_counters();
 	$in_else_block = 0;
 
 	for my $i ( 0 .. $hHunk->{count} - 1 ) {
@@ -2378,8 +2377,7 @@ sub check_stdc_version {
 		my $line = \$hHunk->{lines}[$i]; ## Shortcut
 
 		# The increment/decrement variant can cause negative values:
-		$in_mask_block < 0 and $in_mask_block = 0;
-		$in_else_block < 0 and $in_else_block = 0;
+		validate_block_counters();
 
 		# Quick mask checks, we must have the intermediate states
 		# -------------------------------------------------------
@@ -4487,6 +4485,14 @@ sub strempty {
 	( defined $str ) and return $str;
 	return $EMPTY;
 }
+
+sub validate_block_counters {
+
+	# Do not allow negative values:
+	$in_mask_block < 0 and $in_mask_block = 0;
+	$in_else_block < 0 and $in_else_block = 0;
+	return 1;
+} ## end sub validate_block_counters
 
 ## @brief Callback function for File::Find to identify source files for processing.
 #
