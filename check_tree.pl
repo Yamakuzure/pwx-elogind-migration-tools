@@ -1486,7 +1486,7 @@ sub check_blanks {
 
 	} ## end for my $i ( 0 .. $hHunk...)
 
-	return 1;
+	return hunk_is_useful();
 } ## end sub check_blanks
 
 ## @brief Checks for proper comment block formatting in a hunk.
@@ -1553,7 +1553,7 @@ sub check_comments {
 		$in_comment_block = 0;
 	} ## end for my $i ( 0 .. $hHunk...)
 
-	return 1;
+	return hunk_is_useful();
 } ## end sub check_comments
 
 ## @brief Check and process debug constructs in a hunk
@@ -1639,7 +1639,7 @@ sub check_debug {
 
 	} ## end for my $i ( 0 .. $hHunk...)
 
-	return 1;
+	return hunk_is_useful();
 } ## end sub check_debug
 
 ## @brief Checks and modifies patch lines that remove elogind_ function calls to prevent accidental deletion
@@ -1653,8 +1653,8 @@ sub check_debug {
 sub check_func_removes {
 
 	# early exits:
-	( defined $hHunk ) or return 1;
-	$hHunk->{useful}   or return 1;
+	( defined $hHunk ) or return 0;
+	$hHunk->{useful}   or return 0;
 
 	# Not used in pwx files (meson, xml, sym)
 	$hFile{pwxfile} and return 1;
@@ -1686,7 +1686,7 @@ sub check_func_removes {
 		$is_func_call and ${$line} =~ m/[)]\s*;/msx and --$is_func_call;
 	} ## end for my $i ( 0 .. $hHunk...)
 
-	return 1;
+	return hunk_is_useful();
 } ## end sub check_func_removes
 
 ## @brief Checks for and removes empty mask blocks, converting relevant else clauses.
@@ -1705,8 +1705,8 @@ sub check_func_removes {
 sub check_empty_masks {
 
 	# early exits:
-	( defined $hHunk ) or return 1;
-	$hHunk->{useful}   or return 1;
+	( defined $hHunk ) or return 0;
+	$hHunk->{useful}   or return 0;
 
 	log_debug('Checking empty mask removals ...');
 
@@ -1773,7 +1773,7 @@ sub check_empty_masks {
 
 	} ## end for my $i ( 0 .. $hHunk...)
 
-	return 1;
+	return hunk_is_useful();
 } ## end sub check_empty_masks
 
 ## @brief Validates and processes include directives within a code hunk.
@@ -1787,8 +1787,8 @@ sub check_empty_masks {
 sub check_includes {
 
 	# early exits:
-	( defined $hHunk ) or return 1;
-	$hHunk->{useful}   or return 1;
+	( defined $hHunk ) or return 0;
+	$hHunk->{useful}   or return 0;
 
 	log_debug('Checking includes ...');
 
@@ -2102,7 +2102,7 @@ sub check_masks {
 	# Note down how this hunk ends before first pruning
 	$hHunk->{masked_end} = $in_mask_block && !$in_else_block ? 1 : 0;
 
-	return 1;
+	return hunk_is_useful();
 } ## end sub check_masks
 
 ## @brief Checks for musl libc compatibility blocks in a hunk.
@@ -2220,7 +2220,7 @@ sub check_musl {
 	$in_mask_block = $hunk_ends_in_mask;
 	$in_else_block = $hunk_ends_in_else;
 
-	return 1;
+	return hunk_is_useful();
 } ## end sub check_musl
 
 ## @brief Checks for name reversals (elogind<->systemd) within a hunk and handles them appropriately.
@@ -2334,7 +2334,7 @@ sub check_name_reverts {
 	$in_mask_block = $hunk_ends_in_mask;
 	$in_else_block = $hunk_ends_in_else;
 
-	return 1;
+	return hunk_is_useful();
 } ## end sub check_name_reverts
 
 ## @brief Checks for and handles __STDC_VERSION__ guards in code hunks.
@@ -2428,7 +2428,7 @@ sub check_stdc_version {
 	$in_mask_block = $hunk_ends_in_mask;
 	$in_else_block = $hunk_ends_in_else;
 
-	return 1;
+	return hunk_is_useful();
 } ## end sub check_stdc_version
 
 ## @brief Checks .sym files for unsupported API function uncommenting attempts and corrects them.
@@ -2507,7 +2507,7 @@ sub check_sym_lines {
 		--$hHunk->{count};
 	} ## end for my $i ( reverse sort...)
 
-	return 1;
+	return hunk_is_useful();
 } ## end sub check_sym_lines
 
 ## @brief Checks for and removes useless updates in a hunk.
@@ -2584,7 +2584,7 @@ sub check_useless {
 		$hHunk->{count}--;
 	}
 
-	return 1;
+	return hunk_is_useful();
 } ## end sub check_useless
 
 ## @brief Checks out a specific commit in the upstream repository.
@@ -3247,6 +3247,8 @@ sub hunk_is_useful() {
 	$hHunk->{useful} = $is_useful;
 	log_debug( '  => Hunk is %s useful', ( $is_useful > 0 ) ? 'still' : 'no longer' );
 
+	( $is_useful > 1 ) and prune_hunk();
+
 	if ( ( $do_debug > 0 ) && ( $is_useful > 0 ) ) {
 		for my $i ( 0 .. $hHunk->{count} - 1 ) {
 			log_info( '% 3d: %s', $i + 1, $hHunk->{lines}[$i] );
@@ -3887,7 +3889,7 @@ sub protect_config() {
 
 	} ## end for my $i ( 0 .. $hHunk...)
 
-	return 1;
+	return hunk_is_useful();
 } ## end sub protect_config
 
 ## @brief Prunes leading and trailing lines from a hunk if they are not useful.
@@ -4233,8 +4235,8 @@ sub unprepare_xml {
 sub read_includes {
 
 	# early exits:
-	( defined $hHunk ) or return 1;
-	$hHunk->{useful}   or return 1;
+	( defined $hHunk ) or return 0;
+	$hHunk->{useful}   or return 0;
 
 	log_debug('Reading includes ...');
 
@@ -4319,42 +4321,42 @@ sub refactor_hunks {
 
 		# === Special 1) protect src/login/logind.conf.in =================
 		if ( $hFile{source} =~ m/src\/login\/logind[${DOT}]conf[${DOT}]in/msx ) {
-			protect_config() and hunk_is_useful() and prune_hunk() or next;
+			protect_config() or next;
 		}
 
 		# === 1) Check for elogind masks 1 (normal source code) ===========
-		check_masks() and hunk_is_useful() and prune_hunk() or next;
+		check_masks() or next;
 
 		# === 2) Check for elogind masks 2 (symbol files) =================
-		check_sym_lines() and hunk_is_useful() and prune_hunk() or next;
+		check_sym_lines() or next;
 
 		# === 3) Check for musl_libc compatibility blocks =================
-		check_musl() and hunk_is_useful() and prune_hunk() or next;
+		check_musl() or next;
 
 		# === 4) Check for __STDC_VERSION guard removals ==================
-		check_stdc_version() and hunk_is_useful() and prune_hunk() or next;
+		check_stdc_version() or next;
 
 		# === 5) Check for debug constructs ===============================
-		check_debug() and hunk_is_useful() and prune_hunk() or next;
+		check_debug() or next;
 
 		# === 6) Check for useful blank line additions ====================
-		check_blanks() and hunk_is_useful() and prune_hunk() or next;
+		check_blanks() or next;
 
 		# === 7) Check for 'elogind' => 'systemd' reverts =================
 		%hProtected = ();
-		check_name_reverts() and hunk_is_useful() and prune_hunk() or next;
+		check_name_reverts() or next;
 
 		# === 8) Check for elogind_*() function removals ==================
-		check_func_removes() and hunk_is_useful() and prune_hunk() or next;
+		check_func_removes() or next;
 
 		# === 9) Check for elogind extra comments and information =========
-		check_comments() and hunk_is_useful() and prune_hunk() or next;
+		check_comments() or next;
 
 		# === 10) Check for any useless changes that do nothing ============
-		check_useless() and hunk_is_useful() and prune_hunk() or next;
+		check_useless() or next;
 
 		# === 11) Check for empty masks that guard nothing any more =======
-		check_empty_masks() and hunk_is_useful() and prune_hunk() or next;
+		check_empty_masks() or next;
 
 		#  ===> IMPORTANT: From here on no more pruning, lines must *NOT* change any more! <===
 
