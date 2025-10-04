@@ -1750,7 +1750,7 @@ sub check_empty_masks {
 
 		# ending a Mask block
 		# ---------------------------------------
-		if ( empty_handle_mask_end($line) > 0 ) {
+		if ( empty_handle_mask_end( $line, \$i, \$mask_message, \$mask_block_start, \$need_endif_conversion ) > 0 ) {
 			$local_ieb = 0;
 			$local_imb = 0;
 			next;
@@ -1802,9 +1802,9 @@ sub check_includes {
 	for my $i ( 0 .. $hHunk->{count} - 1 ) {
 		my $line = \$hHunk->{lines}[$i]; ## Shortcut
 
-		include_handle_removal( $i + 1, ${$line}, \%undos ) and next;                       # 1) Handling of removals of includes we commented out
-		include_handle_insertion( $i + 1, ${$line} ) and next;                              # 2) Handling of insertions, not handled by 1)
-		( $in_elogind_block > 0 ) and include_handle_elogind( $i + 1, ${$line} ) and next;  # 3) Handling of "needed by elogind" blocks
+		include_handle_removal( $i + 1, ${$line}, \%undos ) and next;                    # 1) Handling of removals of includes we commented out
+		include_handle_insertion( $i + 1, ${$line} ) and next;                           # 2) Handling of insertions, not handled by 1)
+		( $in_elogind_block > 0 ) and include_handle_elogind( $i + 1, $line ) and next;  # 3) Handling of "needed by elogind" blocks
 
 		# === Other 1 : Look for "needed by elogind" block starts           ===
 		# =====================================================================
@@ -2818,7 +2818,7 @@ sub do_prechecks {
 sub empty_handle_mask_end {
 	my ( $line, $line_no_p, $message_p, $mask_block_start_p, $need_conversion_p ) = @_;
 
-	if ( is_mask_end( ${$line} ) ) {
+	if ( is_mask_end($line) ) {
 		my $i = ${$line_no_p};
 
 		# If the endif is right after the mask start, we have to do something about it, but only if we have enough space left in the patch
@@ -2855,7 +2855,7 @@ sub empty_handle_mask_end {
 		${$need_conversion_p}  = 0;
 
 		return 1;
-	} ## end if ( is_mask_end( ${$line...}))
+	} ## end if ( is_mask_end($line...))
 
 	return 0;
 
@@ -3859,13 +3859,14 @@ sub protect_config() {
 	$hHunk->{useful}   or croak('check_masks: Nothing done but hHunk is useless?');
 
 	my $is_sleep_block = 0;
-	for my $i ( 0 .. $hHunk->{count} - 1 ) {
-		my $line = \$hHunk->{lines}[$i]; ## Shortcut
+	my $cur_idx        = 0;
+	while ( $cur_idx < $hHunk->{count} - 1 ) {
+		my $line = \$hHunk->{lines}[ $cur_idx++ ]; ## Shortcut
 
 		# Kill addition of lines we do not need
 		# ---------------------------------------
 		if ( ${$line} =~ m/^[${PLUS}][${HASH}]?(?:NAutoVTs|ReserveVT)/msx ) {
-			splice @{ $hHunk->{lines} }, $i--, 1;
+			splice @{ $hHunk->{lines} }, $cur_idx--, 1;
 			--$hHunk->{count};
 			next;
 		}
@@ -3876,7 +3877,7 @@ sub protect_config() {
 			substr ${$line}, 0, 1, $SPACE; ## Remove '-'
 
 			# The previous line is probably the deletion of the blank line before the block
-			( $i > 0 ) and ( $hHunk->{lines}[ $i - 1 ] =~ /^[${DASH}]/ms ) and $hHunk->{lines}[ $i - 1 ] = $SPACE;
+			( $cur_idx > 0 ) and ( $hHunk->{lines}[ $cur_idx - 1 ] =~ /^[${DASH}]/ms ) and $hHunk->{lines}[ $cur_idx - 1 ] = $SPACE;
 
 			$is_sleep_block = 1;
 			next;
@@ -3891,7 +3892,7 @@ sub protect_config() {
 		# No sleep block
 		$is_sleep_block = 0;
 
-	} ## end for my $i ( 0 .. $hHunk...)
+	} ## end while ( $cur_idx < $hHunk...)
 
 	return hunk_is_useful();
 } ## end sub protect_config
