@@ -449,7 +449,7 @@ END {
 			log_warning( " {tgt_start}    : ${QUOT}" . $lFails[$i]{info}{tgt_start} . $QUOT );
 			log_warning( " {useful}       : ${QUOT}" . $lFails[$i]{info}{useful} . $QUOT );
 			log_warning('---------------------------');
-			foreach ( @{ $lFails[$i]{hunk} } ) { log_warning("$_\n") }
+			foreach ( @{ $lFails[$i]{hunk} } ) { log_warning("$_") }
 		} ## end for my $i ( 0 .. $count...)
 	} ## end if ( scalar @lFails )
 
