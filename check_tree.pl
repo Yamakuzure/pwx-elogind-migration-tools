@@ -3346,7 +3346,7 @@ sub include_handle_insertion {
 
 	# === Ruleset 2 : Handling of insertions, not handled by 1          ===
 	# =====================================================================
-	if ( ${$line} =~ m/^[${PLUS}]\s*[${HASH}]include\s+([<"'])([^>"']+)([>"'])/msx ) {
+	if ( $line =~ m/^[${PLUS}]\s*[${HASH}]include\s+([<"'])([^>"']+)([>"'])/msx ) {
 		( $pre, $inc, $post ) = ( $1, $2, $3 );
 	}
 
