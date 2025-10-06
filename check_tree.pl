@@ -1935,169 +1935,49 @@ sub check_masks {
 	# Note down how this hunk starts before first pruning
 	$hHunk->{masked_start} = $in_mask_block && !$in_else_block ? 1 : 0;
 
-	for my $i ( 0 .. $hHunk->{count} - 1 ) {
-		my $line = \$hHunk->{lines}[$i]; ## Shortcut
+	# Now go through all lines and check them
+	my $cur_idx = 0;
+	while ( $cur_idx < $hHunk->{count} ) {
+		my $line = \$hHunk->{lines}[$cur_idx]; ## Shortcut
 
 		# entering an elogind mask
-		# ---------------------------------------
-		if ( is_mask_start( ${$line} ) ) {
-			$in_mask_block and return hunk_failed('check_masks: Mask start found while being in a mask block!');
-			$in_insert_block
-			        and return hunk_failed('check_masks: Mask start found while being in an insert block!');
-			substr ${$line}, 0, 1, $SPACE; ## Remove '-'
-			$in_insert_block  = 0;
-			$in_mask_block    = 1;
-			$mask_block_start = $i;
-			$mask_end_line    = -1;
-			$move_to_line     = -1;
-
-			# While we are here we can check the previous line.
-			# All masks shall be preceded by an empty line to enhance readability.
-			# So any attempt to remove them must be stopped.
-			( $i > 0 )
-			        and ( $hHunk->{lines}[ $i - 1 ] =~ m/^[${DASH}]\s*$/msx )
-			        and substr $hHunk->{lines}[ $i - 1 ], 0, 1, $SPACE;
-
-			next;
-		} ## end if ( is_mask_start( ${...}))
+		# ------------------------------------------------------------------------------
+		masks_handle_mask_start( \$cur_idx, $line, \$mask_block_start, \$mask_end_line, \$move_to_line ) and next;
 
 		# entering an elogind insert
-		# ---------------------------------------
-		if ( is_insert_start( ${$line} ) ) {
-			$in_mask_block   and return hunk_failed('check_masks: Insert start found while being in a mask block!');
-			$in_insert_block and return hunk_failed('check_masks: Insert start found while being in an insert block!');
-			substr ${$line}, 0, 1, $SPACE; ## Remove '-'
-			$in_insert_block  = 1;
-			$in_mask_block    = 0;
-			$mask_block_start = -1;
-			$mask_end_line    = -1;
-			$move_to_line     = $i;
-
-			# While we are here we can check the previous line.
-			# All inserts shall be preceded by an empty line to enhance readability.
-			# So any attempt to remove them must be stopped.
-			( $i > 0 )
-			        and ( $hHunk->{lines}[ $i - 1 ] =~ m/^[${DASH}]\s*$/msx )
-			        and substr $hHunk->{lines}[ $i - 1 ], 0, 1, $SPACE;
-
-			next;
-		} ## end if ( is_insert_start( ...))
+		# ------------------------------------------------------------------------------
+		masks_handle_insert_start( \$cur_idx, $line, \$mask_block_start, \$mask_end_line, \$move_to_line ) and next;
 
 		# Count regular #if
 		${$line} =~ m/^-[${HASH}]if/msx and ++$regular_ifs;
 
 		# Switching from Mask to else.
 		# Note: Inserts have no #else, they make no sense.
-		# ---------------------------------------
-		if ( is_mask_else( ${$line} ) ) {
-			$in_mask_block
-			        or return hunk_failed('check_masks: Mask else found outside any mask block!');
-
-			substr ${$line}, 0, 1, $SPACE; ## Remove '-'
-			$in_else_block = 1;
-			$move_to_line  = $i;
-			next;
-		} ## end if ( is_mask_else( ${$line...}))
+		# ------------------------------------------------------------------------------
+		masks_handle_mask_else( \$cur_idx, $line, \$move_to_line ) and next;
 
 		# ending a Mask block
-		# ---------------------------------------
-		if ( is_mask_end( ${$line} ) ) {
-			$in_mask_block or return hunk_failed('check_masks: #endif // 0 found outside any mask block');
-			substr ${$line}, 0, 1, $SPACE; ## Remove '-'
-			$in_mask_block    = 0;
-			$in_else_block    = 0;
-			$mask_block_start = -1;
-			$mask_end_line    = $i;
-			next;
-		} ## end if ( is_mask_end( ${$line...}))
+		# ------------------------------------------------------------------------------
+		masks_handle_mask_end( \$cur_idx, $line, \$mask_block_start, \$mask_end_line ) and next;
 
 		# ending an insert block
-		# ---------------------------------------
-		if ( is_insert_end( ${$line} ) ) {
-			$in_insert_block or return hunk_failed('check_masks: #endif // 1 found outside any insert block');
-			substr ${$line}, 0, 1, $SPACE; ## Remove '-'
-			$in_insert_block  = 0;
-			$mask_block_start = -1;
-			$mask_end_line    = $i;
-			next;
-		} ## end if ( is_insert_end( ${...}))
+		# ------------------------------------------------------------------------------
+		masks_handle_insert_end( \$cur_idx, $line, \$mask_block_start, \$mask_end_line ) and next;
 
 		# end regular #if
 		${$line} =~ m/^-[${HASH}]endif/msx and --$regular_ifs;
 
 		# Special treatment for all mask-else and insert blocks.
 		# (Well, that's what this function is all about, isn't it?)
-		if ( $in_insert_block || ( $in_mask_block && $in_else_block ) ) {
-
-			# Remove '-' prefixes in all lines within insert and mask-else blocks
-			# -------------------------------------------------------------------
-			if ( ${$line} =~ m/^[${DASH}]/msx ) {
-				substr ${$line}, 0, 1, $SPACE; ## Remove '-'
-			}
-
-			# Special check for additions/keepers that might (will!) wreak havoc:
-			# -------------------------------------------------------------------
-			elsif ( $move_to_line > -1 ) {
-
-				# The following cases have been met:
-				# a) upstream adds something after a mask #else block ( See issues #1 and #4 )
-				# b) name reverts push lines under a mask start
-				# c) diff removes lines from a masked block or before an insert, but keeps
-				#    common lines inside mask-else or insert blocks
-				# d) as a follow-up on c), diff wants to add a line and adds it after the
-				#    kept common line inside our domain.
-				# All these cases can be handled with two simple solutions.
-				# ------------------------------------------------------------------------------------
-				my $cpy_line = ${$line};
-
-				# Case 1 ; The keeper: Copy the offending line back above the else/insert
-				# -----------------------------------------------------------------------
-				if ( ${$line} =~ m/^[${SPACE}]/msx ) {
-					substr $cpy_line, 0, 1, "${PLUS}"; ## Above, this is an addition.
-					( splice @{ $hHunk->{lines} }, $move_to_line++, 0, $cpy_line );
-					$hHunk->{count} += 1;
-					$i++; ## We have to advance i, or the next iteration puts as back here.
-				} ## end if ( ${$line} =~ m/^[${SPACE}]/msx)
-
-				# Case 2 ; The addition: move the offending line back above the else/insert
-				# -----------------------------------------------------------------------
-				else {
-					( splice @{ $hHunk->{lines} }, $i, 1 ); ## Order matters here.
-					( splice @{ $hHunk->{lines} }, $move_to_line++, 0, $cpy_line );
-
-					# Note: No change to $hHunk->{count} here, as the lines are moved.
-				} ## end else [ if ( ${$line} =~ m/^[${SPACE}]/msx)]
-
-				# No matter whether we have copied or moved, the if/else moved down.
-				$mask_end_line > -1 and ++$mask_end_line or ++$mask_block_start;
-
-				next;
-			} ## end elsif ( $move_to_line > -1)
-		} ## end if ( $in_insert_block ...)
+		# ------------------------------------------------------------------------------
+		masks_sanitize_elogind_blocks( \$cur_idx, $line, \$mask_block_start, \$mask_end_line, \$move_to_line ) and next;
 
 		# Being here means that we are in a mask block or outside of any block.
-		# A special thing to consider is when diff wants to change the end or
-		# add something to the end of a mask block, or right before an insertion
-		# block.
-		# As our blocks are getting removed by diff, the addition will happen
-		# right after that. So anything added the very next lines after we have
-		# exited our domain must be moved up.
-		if ( 0 == $in_mask_block ) {
-			if ( ( $move_to_line > -1 ) && ( ${$line} =~ m/^[${PLUS}]/msx ) ) {
-				my $cpy_line = ${$line};
-				( splice @{ $hHunk->{lines} }, $i, 1 ); ## Order matters here.
-				( splice @{ $hHunk->{lines} }, $move_to_line++, 0, $cpy_line );
+		# ------------------------------------------------------------------------------
+		masks_sanitize_additions( $cur_idx, $line, \$mask_end_line, \$move_to_line );
 
-				# Note: Again no change to $hHunk->{count} here, as the lines are moved.
-				next;
-			} ## end if ( ( $move_to_line >...))
-
-			# end our mask block ending awareness at the first non-insertion line after a mask block.
-			# ---------------------------------------------------------------------------------------
-			$mask_end_line = -1;
-			$move_to_line  = -1;
-		} ## end if ( 0 == $in_mask_block)
-	} ## end for my $i ( 0 .. $hHunk...)
+		++$cur_idx;
+	} ## end while ( $cur_idx < $hHunk...)
 
 	# Note down how this hunk ends before first pruning
 	$hHunk->{masked_end} = $in_mask_block && !$in_else_block ? 1 : 0;
@@ -3218,8 +3098,9 @@ sub hunk_failed {
 	        };
 
 	# Add the hunk itself
-	for my $line ( @{ $hHunk->{lines} } ) {
-		push @{ $lFails[$num]{hunk} }, $line;
+	for my $i ( 0 .. $hHunk->{count} - 1 ) {
+		push @{ $lFails[$num]{hunk} }, $hHunk->{lines}[$i];
+		log_debug( '% 3d: %s', $i + 1, $hHunk->{lines}[$i] );
 	}
 
 	# And terminate the progress line:
@@ -3243,7 +3124,8 @@ sub hunk_is_useful() {
 	( defined $hHunk ) or return 0;
 	$hHunk->{useful}   or return 0;
 
-	log_debug('Checking whether the hunk is still useful ...');
+	log_debug('Checking whether the hunk is still useful:');
+	log_debug( ' => Mask   Start: in_mask: %d ; in_else: %d ; in_insert: %d', $in_mask_block, $in_else_block, $in_insert_block );
 
 	# See whether at least one change is still present
 	my $is_useful = ( defined first { m/^[${DASH}${PLUS}]/msx } @{ $hHunk->{lines} } ) ? 1 : 0;
@@ -3475,12 +3357,12 @@ sub is_insert_end {
 
 	( defined $line ) and ( length $line ) or return 0;
 
-	if (       ( $line =~ m/^[-${SPACE}]?[${HASH}]endif\s*\/(?:[*\/]+)\s*1/msx )
-		|| ( $line =~ m/\/\/\s+1\s+-->\s*$/msx )
-		|| ( $line =~ m/[${STAR}]\s+\/\/\s+1\s+[${STAR}]{2}\/\s*$/msx ) )
+	if (       ( $line =~ m/^[${DASH}${SPACE}]?[${HASH}]endif\s*[${SLASH}](?:[${STAR}${SLASH}]+)\s*1/msx )
+		|| ( $line =~ m/[${SLASH}]{2}\s+1\s+[${DASH}]{2}>\s*$/msx )
+		|| ( $line =~ m/[${STAR}]\s+[${SLASH}]{2}\s+1\s+[${STAR}]{2}[${SLASH}]\s*$/msx ) )
 	{
 		return 1;
-	} ## end if ( ( $line =~ m/^[-${SPACE}]?[${HASH}]endif\s*\/(?:[*\/]+)\s*1/msx...))
+	} ## end if ( ( $line =~ m/^[${DASH}${SPACE}]?[${HASH}]endif\s*[${SLASH}](?:[${STAR}${SLASH}]+)\s*1/msx...))
 
 	return 0;
 } ## end sub is_insert_end
@@ -3493,8 +3375,8 @@ sub is_insert_start {
 
 	( defined $line ) and ( length $line ) or return 0;
 
-	if (       ( $line =~ m/^[-${SPACE}]?[${HASH}]if\s+1.+elogind/msx )
-		|| ( $line =~ m/<!--\s+1.+elogind.+-->\s*$/msx ) )
+	if (       ( $line =~ m/^[${DASH}${SPACE}]?[${HASH}]if\s+1.+elogind/msx )
+		|| ( $line =~ m/<![${DASH}]{2}\s+1.+elogind.+[${DASH}]{2}>\s*$/msx ) )
 	{
 		return 1;
 	}
@@ -3510,12 +3392,12 @@ sub is_mask_else {
 
 	( defined $line ) and ( length $line ) or return 0;
 
-	if (       ( $line =~ m/^[-${SPACE}]?[${HASH}]else\s+[\/]+\s+0/msx )
-		|| ( $line =~ m/else\s+[\/]+\s+0\s+-->\s*$/msx )
-		|| ( $line =~ m/[${STAR}]\s+else\s+[\/]+\s+0\s+[${STAR}]{2}\/\s*$/msx ) )
+	if (       ( $line =~ m/^[${DASH}${SPACE}]?[${HASH}]else\s+[${SLASH}]+\s+0/msx )
+		|| ( $line =~ m/else\s+[${SLASH}]+\s+0\s+[${DASH}]{2}>\s*$/msx )
+		|| ( $line =~ m/[${STAR}]\s+else\s+[${SLASH}]+\s+0\s+[${STAR}]{2}[${SLASH}]\s*$/msx ) )
 	{
 		return 1;
-	} ## end if ( ( $line =~ m/^[-${SPACE}]?[${HASH}]else\s+[\/]+\s+0/msx...))
+	} ## end if ( ( $line =~ m/^[${DASH}${SPACE}]?[${HASH}]else\s+[${SLASH}]+\s+0/msx...))
 
 	return 0;
 } ## end sub is_mask_else
@@ -3528,12 +3410,12 @@ sub is_mask_end {
 
 	( defined $line ) and ( length $line ) or return 0;
 
-	if (       ( $line =~ m/^[${DASH}${SPACE}]?[${HASH}]endif\s*[${SLASH}](?:[${STAR}${SLASH}]+)\s*(?:0)/msx )
+	if (       ( $line =~ m/^[${DASH}${SPACE}]?[${HASH}]endif\s+[${SLASH}]+\s+0/msx )
 		|| ( $line =~ m/[${SLASH}]{2}\s+0\s+[${DASH}]{2}>\s*$/msx )
 		|| ( $line =~ m/[${STAR}]\s+[${SLASH}]{2}\s+0\s+[${STAR}]{2}[${SLASH}]\s*$/msx ) )
 	{
 		return 1;
-	} ## end if ( ( $line =~ m/^[${DASH}${SPACE}]?[${HASH}]endif\s*[${SLASH}](?:[${STAR}${SLASH}]+)\s*(?:0)/msx...))
+	} ## end if ( ( $line =~ m/^[${DASH}${SPACE}]?[${HASH}]endif\s+[${SLASH}]+\s+0/msx...))
 
 	return 0;
 } ## end sub is_mask_end
@@ -3548,8 +3430,8 @@ sub is_mask_start {
 
 	if (
 		( $line =~ m/^[${DASH}${SPACE}]?[${HASH}]if\s+0.+elogind/msx )
-		|| ( ( $line =~ m/<!--\s+0.+elogind/msx )
-			&& !( $line =~ m/-->\s*$/msx ) )
+		|| ( ( $line =~ m/<![${DASH}]{2}\s+0.+elogind/msx )
+			&& !( $line =~ m/[${DASH}]{2}>\s*$/msx ) )
 		|| ( ( $line =~ m/[${SLASH}][${STAR}]{2}\s+0.+elogind/msx )
 			&& !( $line =~ m/[${STAR}]{2}[${SLASH}]\s*$/msx ) )
 	   )
@@ -3650,6 +3532,304 @@ sub make_location_fmt {
 
 	return sprintf $fmtfmt, $len;
 } ## end sub make_location_fmt
+
+## @brief Handles the end of an insert block by processing line markers and updating flags.
+#
+#  This subroutine checks if the current line marks the end of an insert block,
+#  logs the current state, updates the relevant block status flags, modifies the
+#  line content to remove a leading character, and sets the start and end line
+#  indicators for the block. It returns success or failure based on the validity
+#  of the operation.
+#
+#  @param $cur_idx Current index in the file being processed.
+#  @param $line_p Reference to the current line being examined.
+#  @param $block_start_p Reference to the starting line of the insert block.
+#  @param $end_line_p Reference to where the end line should be stored.
+#  @return Returns 1 if processing is successful, otherwise returns 0 or calls hunk_failed.
+sub masks_handle_insert_end {
+	my ( $cur_idx_p, $line_p, $block_start_p, $end_line_p ) = @_;
+
+	if ( is_insert_end( ${$line_p} ) ) {
+		log_debug( ' => Insert End  : in_mask: %d ; in_else: %d ; in_insert: %d', $in_mask_block, $in_else_block, $in_insert_block );
+		$in_insert_block or return hunk_failed('check_masks: #endif // 1 found outside any insert block');
+
+		substr ${$line_p}, 0, 1, $SPACE; ## Remove '-'
+		$in_insert_block = 0;
+		${$block_start_p} = -1;
+		${$end_line_p}    = ${$cur_idx_p};
+		${$cur_idx_p}++;
+
+		return 1;
+	} ## end if ( is_insert_end( ${...}))
+
+	return 0;
+} ## end sub masks_handle_insert_end
+
+## @brief Handles the insertion start of a mask by checking conditions and modifying line data accordingly.
+#
+#  This subroutine processes a line to determine if it represents an insert start. If so, it performs
+#  various checks and modifications:
+#   - Logs debug information about current block states
+#   - Verifies that an insert isn't already within a mask or insert block
+#   - Modifies the line by replacing the first character with a space (removing '-')
+#   - Updates internal state variables to indicate the start of an insert block and end of a mask block
+#   - Optionally checks and modifies the previous line to ensure it has a space at the beginning
+#
+#  @param $cur_idx The current index in the hunk lines array.
+#  @param $line reference to the current line being processed.
+#  @param $block_start_p Reference to a variable indicating the block start line.
+#  @param $end_line_p Reference to a variable indicating the end line of a block.
+#  @param $move_to_line_p Reference to a variable indicating where to move to in the hunk lines array.
+#  @return Returns 1 if the line is processed as an insert start, otherwise returns 0. Also returns
+#          error codes via the hunk_failed function when certain conditions are not met.
+sub masks_handle_insert_start {
+	my ( $cur_idx_p, $line_p, $block_start_p, $end_line_p, $move_to_line_p ) = @_;
+	my $idx = ${$cur_idx_p};
+
+	if ( is_insert_start( ${$line_p} ) ) {
+		log_debug( ' => Insert Start: in_mask: %d ; in_else: %d ; in_insert: %d', $in_mask_block, $in_else_block, $in_insert_block );
+		$in_mask_block   and return hunk_failed('check_masks: Insert start found while being in a mask block!');
+		$in_insert_block and return hunk_failed('check_masks: Insert start found while being in an insert block!');
+		substr ${$line_p}, 0, 1, $SPACE; ## Remove '-'
+		$in_insert_block = 1;
+		$in_mask_block   = 0;
+		${$block_start_p}  = -1;
+		${$end_line_p}     = -1;
+		${$move_to_line_p} = $idx;
+
+		# While we are here we can check the previous line.
+		# All inserts shall be preceded by an empty line to enhance readability.
+		# So any attempt to remove them must be stopped.
+		( $idx > 0 )
+		        and ( $hHunk->{lines}[ $idx - 1 ] =~ m/^[${DASH}]\s*$/msx )
+		        and substr $hHunk->{lines}[ $idx - 1 ], 0, 1, $SPACE;
+
+		${$cur_idx_p}++;
+		return 1;
+	} ## end if ( is_insert_start( ...))
+	return 0;
+} ## end sub masks_handle_insert_start
+
+## @brief Handles mask else statements by modifying line content and setting flags.
+#
+#  This subroutine processes "else" lines within mask blocks. If an "else"
+#  is detected, it removes the leading '-' character, sets appropriate flags,
+#  and moves to a new line index. The function returns 1 on success or
+#  triggers an error if used outside a mask block.
+#
+#  @param $cur_idx Current index in the file being processed.
+#  @param $line_p Reference to the current line string.
+#  @param $move_to_line_p Reference to where the next processing line should be moved.
+#  @return Returns 1 if an else was found and handled, 0 otherwise. Calls hunk_failed
+#          with an error message if misused outside a mask block.
+sub masks_handle_mask_else {
+	my ( $cur_idx_p, $line_p, $move_to_line_p ) = @_;
+
+	if ( is_mask_else( ${$line_p} ) ) {
+		log_debug( ' => Mask   Else : in_mask: %d ; in_else: %d ; in_insert: %d', $in_mask_block, $in_else_block, $in_insert_block );
+		$in_mask_block or return hunk_failed('check_masks: Mask else found outside any mask block!');
+
+		substr ${$line_p}, 0, 1, $SPACE; ## Remove '-'
+		$in_else_block = 1;
+		${$move_to_line_p} = ${$cur_idx_p};
+		${$cur_idx_p}++;
+
+		return 1;
+	} ## end if ( is_mask_else( ${$line_p...}))
+
+	return 0;
+} ## end sub masks_handle_mask_else
+
+## @brief Handles mask end detection and processing for code blocks.
+#
+#  This subroutine checks if the current line marks the end of a mask block,
+#  and processes it accordingly. If the line is identified as the end of a mask,
+#  it logs debug information, updates state variables, modifies the line to
+#  replace the initial '-' with a space, sets the block start to -1 and the end line
+#  to the current index, and returns 1. Otherwise, it returns 0.
+#
+#  The purpose of this subroutine is to ensure proper tracking and handling of masked code blocks,
+#  which helps in conditional compilation or code generation processes where specific blocks need to be masked out or inserted conditionally.
+#
+#  @param cur_idx The current index in the file being processed.
+#  @param line_p Reference to a scalar containing the current line.
+#  @param block_start_p Reference to a scalar indicating the start of the mask block.
+#  @param end_line_p Reference to a scalar where the ending line number will be stored if it's an end mask.
+#  @return Returns 1 if the line is processed as a mask end, otherwise returns 0.
+sub masks_handle_mask_end {
+	my ( $cur_idx_p, $line_p, $block_start_p, $end_line_p ) = @_;
+
+	if ( is_mask_end( ${$line_p} ) ) {
+		log_debug( ' => Mask   End  : in_mask: %d ; in_else: %d ; in_insert: %d', $in_mask_block, $in_else_block, $in_insert_block );
+		$in_mask_block or return hunk_failed('check_masks: #endif // 0 found outside any mask block');
+
+		substr ${$line_p}, 0, 1, $SPACE; ## Remove '-'
+		$in_mask_block = 0;
+		$in_else_block = 0;
+		${$block_start_p} = -1;
+		${$end_line_p}    = ${$cur_idx_p};
+		${$cur_idx_p}++;
+
+		return 1;
+	} ## end if ( is_mask_end( ${$line_p...}))
+
+	return 0;
+} ## end sub masks_handle_mask_end
+
+## @brief This subroutine handles mask start patterns in a given line within a text block.
+#
+#  The function checks if the current line represents a mask start and processes it accordingly.
+#  If a mask start is found, it updates various flags that track the state of the text block
+#  (e.g., whether the block is currently inside a mask or insert block).
+#  It also ensures proper formatting by verifying that mask starts are preceded by an empty line.
+#
+#  @param $cur_idx The current index in the list of lines being processed.
+#  @param $line_p Reference to the current line string being checked.
+#  @param $block_start_p Reference to a scalar where the start index of the block will be stored.
+#  @param $end_line_p Reference to a scalar where the end index of the block will be stored.
+#  @param $move_to_line_p Reference to a scalar indicating whether to move to a specific line.
+#  @return Returns 1 if the line is successfully processed as a mask start, otherwise returns 0.
+sub masks_handle_mask_start {
+	my ( $cur_idx_p, $line_p, $block_start_p, $end_line_p, $move_to_line_p ) = @_;
+	my $idx = ${$cur_idx_p};
+
+	if ( is_mask_start( ${$line_p} ) ) {
+		log_debug( ' => Mask   Start: in_mask: %d ; in_else: %d ; in_insert: %d', $in_mask_block, $in_else_block, $in_insert_block );
+		$in_mask_block   and return hunk_failed('check_masks: Mask start found while being in a mask block!');
+		$in_insert_block and return hunk_failed('check_masks: Mask start found while being in an insert block!');
+		substr ${$line_p}, 0, 1, $SPACE; ## Remove '-'
+		$in_insert_block = 0;
+		$in_mask_block   = 1;
+		${$block_start_p}  = $idx;
+		${$end_line_p}     = -1;
+		${$move_to_line_p} = -1;
+
+		# While we are here we can check the previous line.
+		# All masks shall be preceded by an empty line to enhance readability.
+		# So any attempt to remove them must be stopped.
+		( $idx > 0 )
+		        and ( $hHunk->{lines}[ $idx - 1 ] =~ m/^[${DASH}]\s*$/msx )
+		        and substr $hHunk->{lines}[ $idx - 1 ], 0, 1, $SPACE;
+
+		${$cur_idx_p}++;
+		return 1;
+	} ## end if ( is_mask_start( ${...}))
+
+	return 0;
+} ## end sub masks_handle_mask_start
+
+## @brief This subroutine handles special cases when diff operations want to change or add content at the end of mask blocks.
+#
+#  This function specifically deals with scenarios where a diff operation adds lines immediately after exiting a mask block.
+#  When this happens, those added lines need to be moved up in the sequence. The function adjusts the order of lines
+#  within the current hunk to handle these cases correctly. It modifies the $hHunk structure by moving lines around while
+#  maintaining proper ordering. This is necessary because our block-based approach means diff operations could alter
+#  line positions unexpectedly.
+#
+#  @param cur_idx The current index in the hunk's lines array.
+#  @param line_p Reference to a scalar containing the current line being processed.
+#  @param end_line_p Reference to a scalar indicating the ending line of processing.
+#  @param move_to_line_p Reference to a scalar that determines where to move the current line to.
+#  @return Returns 1 if lines were moved successfully, otherwise returns 0.
+sub masks_sanitize_additions {
+	my ( $cur_idx, $line_p, $end_line_p, $move_to_line_p ) = @_;
+
+	# A special thing to consider is when diff wants to change the end or
+	# add something to the end of a mask block, or right before an insertion
+	# block.
+	# As our blocks are getting removed by diff, the addition will happen
+	# right after that. So anything added the very next lines after we have
+	# exited our domain must be moved up.
+	if ( 0 == $in_mask_block ) {
+		if ( ( ${$move_to_line_p} > -1 ) && ( ${$line_p} =~ m/^[${PLUS}]/msx ) ) {
+			my $cpy_line = ${$line_p};
+			( splice @{ $hHunk->{lines} }, $cur_idx, 1 ); ## Order matters here.
+			( splice @{ $hHunk->{lines} }, ${$move_to_line_p}++, 0, $cpy_line );
+
+			# Note: Again no change to $hHunk->{count} here, as the lines are moved.
+			return 1;
+		} ## end if ( ( ${$move_to_line_p...}))
+
+		# end our mask block ending awareness at the first non-insertion line after a mask block.
+		# ---------------------------------------------------------------------------------------
+		${$end_line_p}     = -1;
+		${$move_to_line_p} = -1;
+	} ## end if ( 0 == $in_mask_block)
+
+	return 0;
+} ## end sub masks_sanitize_additions
+
+## @brief Subroutine to sanitize specific blocks for elogind compatibility by adjusting line prefixes and handling special cases.
+#
+#  This subroutine masks_sanitize_elogind_blocks is used to process lines within insert and mask-else blocks,
+#  removing specific prefixes ('-' or ' ') and handling certain edge cases that could cause issues during patching.
+#  The function checks for lines with a leading '-' prefix, replacing them with spaces. Additionally, it handles
+#  special scenarios where lines need to be copied or moved above else/insert points to maintain proper order
+#  within the hunk of lines being processed. This ensures that masking and insertion operations work correctly.
+#
+#  @param $cur_idx_p Reference to current index in the line array (scalar reference).
+#  @param $line_p Reference to the current line being processed (scalar reference).
+#  @param $block_start_p Reference to the start of the block (scalar reference).
+#  @param $end_line_p Reference to the end line of the block (scalar reference).
+#  @param $move_to_line_p Reference to the line number where moves should be made (scalar reference).
+#  @return Returns 1 if a modification was made, otherwise returns 0.
+sub masks_sanitize_elogind_blocks {
+	my ( $cur_idx_p, $line_p, $block_start_p, $end_line_p, $move_to_line_p ) = @_;
+
+	if ( $in_insert_block || ( $in_mask_block && $in_else_block ) ) {
+
+		# Remove '-' prefixes in all lines within insert and mask-else blocks
+		# -------------------------------------------------------------------
+		if ( ${$line_p} =~ m/^[${DASH}]/msx ) {
+			substr ${$line_p}, 0, 1, $SPACE; ## Remove '-'
+			${$cur_idx_p}++;
+
+			return 1;
+		} ## end if ( ${$line_p} =~ m/^[${DASH}]/msx)
+
+		# Special check for additions/keepers that might (will!) wreak havoc:
+		# -------------------------------------------------------------------
+		if ( ${$move_to_line_p} > -1 ) {
+
+			# The following cases have been met:
+			# a) upstream adds something after a mask #else block ( See issues #1 and #4 )
+			# b) name reverts push lines under a mask start
+			# c) diff removes lines from a masked block or before an insert, but keeps
+			#    common lines inside mask-else or insert blocks
+			# d) as a follow-up on c), diff wants to add a line and adds it after the
+			#    kept common line inside our domain.
+			# All these cases can be handled with two simple solutions.
+			# ------------------------------------------------------------------------------------
+			my $cpy_line = ${$line_p};
+
+			# Case 1 ; The keeper: Copy the offending line back above the else/insert
+			# -----------------------------------------------------------------------
+			if ( ${$line_p} =~ m/^[${SPACE}]/msx ) {
+				substr $cpy_line, 0, 1, "${PLUS}"; ## Above, this is an addition.
+				( splice @{ $hHunk->{lines} }, ${$move_to_line_p}++, 0, $cpy_line );
+				$hHunk->{count} += 1;
+				${$cur_idx_p}++; ## We have to advance i, or the next iteration puts as back here.
+			} ## end if ( ${$line_p} =~ m/^[${SPACE}]/msx)
+
+			# Case 2 ; The addition: move the offending line back above the else/insert
+			# -----------------------------------------------------------------------
+			else {
+				( splice @{ $hHunk->{lines} }, ${$cur_idx_p}, 1 ); ## Order matters here.
+				( splice @{ $hHunk->{lines} }, ${$move_to_line_p}++, 0, $cpy_line );
+
+				# Note: No change to $hHunk->{count} here, as the lines are moved.
+			} ## end else [ if ( ${$line_p} =~ m/^[${SPACE}]/msx)]
+
+			# No matter whether we have copied or moved, the if/else moved down.
+			${$end_line_p} > -1 and ++${$end_line_p} or ++${$block_start_p};
+
+			${$cur_idx_p}++;
+			return 1;
+		} ## end if ( ${$move_to_line_p...})
+	} ## end if ( $in_insert_block ...)
+
+	return 0;
+} ## end sub masks_sanitize_elogind_blocks
 
 ## @brief Prepares shell and meson files for patch processing by commenting out masked blocks.
 #
