@@ -3424,7 +3424,7 @@ sub is_mask_end {
 
 	if (       ( $line =~ m/^[${DASH}${SPACE}]?[${HASH}]endif\s+[${SLASH}]+\s+0/msx )
 		|| ( $line =~ m/[${SLASH}]{2}\s+0\s+[${DASH}]{2}>\s*$/msx )
-		|| ( $line =~ m/[${STAR}]\s+[${SLASH}]{2}\s+0\s+[${STAR}]{2}[${SLASH}]\s*$/msx ) )
+		|| ( $line =~ m/[${SLASH}][${STAR}]+\s+0\s+[${STAR}]+[${SLASH}]\s*$/msx ) )
 	{
 		return 1;
 	} ## end if ( ( $line =~ m/^[${DASH}${SPACE}]?[${HASH}]endif\s+[${SLASH}]+\s+0/msx...))
