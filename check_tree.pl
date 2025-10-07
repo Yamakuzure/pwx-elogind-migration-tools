@@ -3267,7 +3267,7 @@ sub include_handle_removal {
 
 	# === Ruleset 1 : Handling of removals of includes we commented out ===
 	# =====================================================================
-	if ( $line =~ m/^[${DASH}]\s*\/[\/*]+\s*[${HASH}]include\s+([<"'])([^>"']+)([>"'])/msx ) {
+	if ( $line =~ m/^[${DASH}]\s*\/[${SLASH}${STAR}]+\s*[${HASH}]include\s+([<"'])([^>"']+)([>"'])/msx ) {
 		( $pre, $inc, $post ) = ( $1, $2, $3 );
 	}
 
@@ -3284,10 +3284,14 @@ sub include_handle_removal {
 	( defined $hRem->{hunkid} ) and $hRem->{hunkid} > -1
 	        or return hunk_failed('check_includes: Unrecorded removal found!');
 
+	log_debug( '    Removal  in hunk %d at line %d', $hRem->{hunkid}, $hRem->{lineid} );
+	log_debug( '    Addition in hunk %d at line %d', $hIns->{hunkid}, $hIns->{lineid} );
+
 	# a) Check for removals of obsolete includes.
 	#    If no insert was found, then the include was removed by systemd devs for good.
 	# ---------------------------------------------------------------------------------------------
-	if ( ( $hInc->{elogind}{hunkid} + $hIns->{hunkid} ) < 0 ) {
+	if ( ( $hInc->{elogind}{hunkid} + $hIns->{hunkid} ) < -1 ) {
+		log_debug(' => No insertion found, removed by systemd devs.');
 		++$hInc->{applied};
 		return 1;
 	}
@@ -3301,19 +3305,26 @@ sub include_handle_removal {
 		my $i         = $line_no - 1;
 		my $j         = $direction;
 
+		log_debug( ' => Checking undos in %d distance with %d direction', $ins_diff, $direction );
+
 		# Let's see whether there are undos between this and its addition
 		# in the same order, meaning there has been no resorting.
 		while ( ( $all_same > 0 ) && ( ( abs $j ) < ( abs $ins_diff ) ) ) {
 			$all_same = 0;
 
-			if (       ( $hHunk->{lines}[ $i + $j ] =~ m/^[${DASH}]\s*\/[\/*]+\s*[${HASH}]include\s+[<"']([^>"']+)[>"']\s*(?:[${STAR}]\/)?/msx )
+			if (       ( $hHunk->{lines}[ $i + $j ] =~ m/^[${DASH}]\s*\/[${SLASH}${STAR}]+\s*[${HASH}]include\s+[<"']([^>"']+)[>"']\s*(?:[${STAR}]\/)?/msx )
 				|| ( $hHunk->{lines}[ $i + $j ] =~ m/^[${PLUS}]\s*[${HASH}]include\s+[<"']([^>"']+)[>"']/msx ) )
 			{
+				my $hI = $hIncs{$1}{insert};
+				my $hR = $hIncs{$1}{remove};
 
-				            $hIncs{$1}{insert}{hunkid} == $hIncs{$1}{remove}{hunkid}
-				        and $ins_diff == ( $hIncs{$1}{insert}{lineid} - $hIncs{$1}{remove}{lineid} )
-				        and $hIns->{sysinc} == $hRem->{sysinc}
+				log_debug( ' => Comparing Hunk %d line %d sysinc %d "%s"', $hI->{hunkid}, $hI->{lineid}, $hI->{sysinc}, $1 );
+				log_debug( ' =>      With Hunk %d line %d sysinc %d "%s"', $hR->{hunkid}, $hR->{lineid}, $hR->{sysinc}, $1 );
+				            $hI->{hunkid} == $hR->{hunkid}
+				        and $ins_diff == ( $hI->{lineid} - $hR->{lineid} )
+				        and $hI->{sysinc} == $hR->{sysinc}
 				        and $all_same = 1;
+				log_debug( ' They are %s same', $all_same > 0 ? 'the' : 'NOT the' );
 			} ## end if ( ( $hHunk->{lines}...))
 
 			$j += $direction;
@@ -3322,6 +3333,7 @@ sub include_handle_removal {
 		if ( $all_same > 0 ) {
 
 			# The insertion is right before or after the removal. That's pointless.
+			log_debug( ' => Undo useless removal, undo line %d, splice line %d', $hRem->{lineid}, $hIns->{lineid} );
 			$undos->{ $hRem->{lineid} } = 1;
 			$hInc->{applied}            = 1;
 			$hIns->{spliceme}           = 1;
@@ -4431,18 +4443,20 @@ sub read_includes {
 		my $line = \$hHunk->{lines}[$i]; ## Shortcut
 
 		# Note down removals of includes we commented out
-		if ( ${$line} =~ m/^[${DASH}]\s*\/[\/*]+\s*[${HASH}]include\s+([<"'])([^>"']+)([>"'])/msx ) {
+		if ( ${$line} =~ m/^[${DASH}]\s*\/[${SLASH}${STAR}]+\s*[${HASH}]include\s+([<"'])([^>"']+)([>"'])/msx ) {
 			( defined $hIncs{$2}{remove} )
 			        and log_debug( 'Line % 3d Include %s removal first in line %d', $i + 1, $2, $hIncs{$2}{remove}{lineid} + 1 )
 			        and next;
 			log_debug( 'Recording remove commented at % 3d: %s%s%s', $i + 1, $1, $2, $3 );
 			$hIncs{$2}{remove} = {
-				hunkid => $hHunk->{idx},
-				lineid => $i,
-				sysinc => $1 eq '<'
+				elogind  => $in_elogind_block,
+				hunkid   => $hHunk->{idx},
+				lineid   => $i,
+				spliceme => 0,
+				sysinc   => ( $1 eq '<' ) ? 1 : 0
 			};
 			next;
-		} ## end if ( ${$line} =~ m/^[${DASH}]\s*\/[\/*]+\s*[${HASH}]include\s+([<"'])([^>"']+)([>"'])/msx)
+		} ## end if ( ${$line} =~ m/^[${DASH}]\s*\/[${SLASH}${STAR}]+\s*[${HASH}]include\s+([<"'])([^>"']+)([>"'])/msx)
 
 		# Note down inserts of possibly new includes we might want commented out
 		if ( ${$line} =~ m/^[${PLUS}]\s*[${HASH}]include\s+([<"'])([^>"']+)([>"'])/msx ) {
@@ -4455,7 +4469,7 @@ sub read_includes {
 				hunkid   => $hHunk->{idx},
 				lineid   => $i,
 				spliceme => 0,
-				sysinc   => $1 eq '<'
+				sysinc   => ( $1 eq '<' ) ? 1 : 0
 			};
 			next;
 		} ## end if ( ${$line} =~ m/^[${PLUS}]\s*[${HASH}]include\s+([<"'])([^>"']+)([>"'])/msx)
