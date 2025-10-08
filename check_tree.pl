@@ -2617,12 +2617,12 @@ sub diff_hFile {
 
 	# ... the head of the output can be generated ...
 	@{ $hFile{output} } = splice @lDiff, 0, 2;
-	chomp $hFile{output}[0];                                                 # These now have absolute paths, and source meson files have a
-	chomp $hFile{output}[1];                                                 # .pwx extensions. That is not what the result shall look like.
-	$hFile{create}                                                           # But we have $hFile{part}, which is already the
-	        and $hFile{output}[0] =~ s/$src/[${SLASH}]dev[${SLASH}]null/msx  # relative file name of the file we are
-	        or $hFile{output}[0]  =~ s/$src/a[${SLASH}]$prt/msx;             # processing, and we know if a file is
-	$hFile{output}[1] =~ s/$tgt/b[${SLASH}]$prt/ms;                          # to be created.
+	chomp $hFile{output}[0];                                             # These now have absolute paths, and source meson files have a
+	chomp $hFile{output}[1];                                             # .pwx extensions. That is not what the result shall look like.
+	$hFile{create}                                                       # But we have $hFile{part}, which is already the
+	        and $hFile{output}[0] =~ s/$src/${SLASH}dev${SLASH}null/msx  # relative file name of the file we are
+	        or $hFile{output}[0]  =~ s/$src/a${SLASH}$prt/msx;           # processing, and we know if a file is
+	$hFile{output}[1] =~ s/$tgt/b${SLASH}$prt/ms;                        # to be created.
 
 	# ... and the raw hunks can be stored.
 	my $max_idx = ( scalar @lDiff ) - 1;
