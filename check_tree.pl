@@ -771,11 +771,10 @@ sub change_check_solo_changes {
 		#    $pChanges->{string}{'texts'}{'changes'}[no]
 		# and has write-back capabilities.
 
-		log_change( 'Handle Solo Changes ; Considering Change', $change,              0 );
-		log_change( '--- ==> Partner : ---',                    $change->{'partner'}, 1 );
-
 		# If the change is already finished, or if it has a partner defined, nothing is to be done.
 		( ( $TRUE == $change->{'done'} ) || ( defined $change->{'partner'} ) ) and next;
+
+		log_change( 'Handle Solo Changes ; Considering Change', $change, 0 );
 
 		# If it is removed from or added to a mask block, we are ok with it
 		( $TRUE == $change->{'masked'} ) and change_mark_as_done($change) and next;
@@ -1210,7 +1209,7 @@ sub change_is_protected_text {
 	# 6) References to systemd-homed and other tools not shipped by elogind
 	#    must not be changed either, or users might think elogind has its
 	#    own replacements.
-	is_systemd_only( $text ) and log_debug('     => protected systemd-only') and return 1;
+	is_systemd_only($text) and log_debug('     => protected systemd-only') and return 1;
 
 	return 0;
 } ## end sub change_is_protected_text
@@ -1341,6 +1340,15 @@ sub change_protect_removals {
 	return 1;
 } ## end sub change_protect_removals
 
+sub change_remove {
+	my ( $to_splice, $at_line ) = @_;
+
+	$to_splice->{'spliceme'} = $at_line;
+	log_debug( "     => Splicing % 3d: '%s'", $at_line + 1, $hHunk->{lines}[ $to_splice->{'spliceme'} ] );
+
+	return 1;
+} ## end sub change_remove
+
 ## @brief Changes a line by reversing its first character and marks it for splicing.
 #
 #  This subroutine modifies a line in the hunk by changing its first character
@@ -1357,9 +1365,8 @@ sub change_reverse {
 	log_debug( "     => Changing  '%s'", $hHunk->{lines}[ $to_change->{'line'} ] );
 	change_use_alt($to_change);
 	substr $hHunk->{lines}[ $to_change->{'line'} ], 0, 1, $SPACE;
-	$to_splice->{'spliceme'} = $at_line;
 	log_debug( "           => To  '%s'", $hHunk->{lines}[ $to_change->{'line'} ] );
-	log_debug( "     => Splicing  '%s'", $hHunk->{lines}[ $to_splice->{'spliceme'} ] );
+	change_remove( $to_splice, $at_line );
 
 	return 1;
 } ## end sub change_reverse
@@ -1407,9 +1414,8 @@ sub change_undo {
 	my ( $to_keep, $to_splice, $at_line ) = @_;
 
 	substr $hHunk->{lines}[ $to_keep->{'line'} ], 0, 1, $SPACE;
-	$to_splice->{'spliceme'} = $at_line;
 	log_debug( "     => Keeping  % 3d: '%s'", $to_keep->{'line'} + 1, $hHunk->{lines}[ $to_keep->{'line'} ] );
-	log_debug( "     => Splicing % 3d: '%s'", $at_line + 1,           $hHunk->{lines}[ $to_splice->{'spliceme'} ] );
+	change_remove( $to_splice, $at_line );
 
 	return 1;
 } ## end sub change_undo
@@ -3450,17 +3456,17 @@ sub is_mask_start {
 } ## end sub is_mask_start
 
 sub is_systemd_only {
-	my ($text) = @_;
+	my ($text)          = @_;
 	my $systemd_daemon  = q{home|import|journal|network|oom|passwor|udev};
 	my $systemd_keyword = q{NR_[\{]|devel[/]};
 	my $systemd_product = q{analyze|creds|cryptsetup|export|firstboot|fsck|home|import-fs|nspawn|repart|syscfg|sysusers|tmpfiles|vmspawn};
 
-	( $text =~ m/systemd[-_]($systemd_daemon)d/msx ) and log_debug( '  => non-elogind %s', 'systemd daemon' ) and return 1;
+	( $text =~ m/systemd[-_]($systemd_daemon)d/msx ) and log_debug( '  => non-elogind %s', 'systemd daemon' )  and return 1;
 	( $text =~ m/systemd[-_]($systemd_keyword)/msx ) and log_debug( '  => non-elogind %s', 'systemd keyword' ) and return 1;
 	( $text =~ m/systemd[-_]($systemd_product)/msx ) and log_debug( '  => non-elogind %s', 'systemd product' ) and return 1;
 
 	return 0;
-}
+} ## end sub is_systemd_only
 
 sub logMsg {
 	my ( $lvl, $fmt, @args ) = @_;
