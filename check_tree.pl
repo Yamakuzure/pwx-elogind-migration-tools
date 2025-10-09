@@ -1210,12 +1210,7 @@ sub change_is_protected_text {
 	# 6) References to systemd-homed and other tools not shipped by elogind
 	#    must not be changed either, or users might think elogind has its
 	#    own replacements.
-	my $systemd_daemon  = q{home|import|journal|network|oom|passwor|udev};
-	my $systemd_keyword = q{NR_[\{]|devel[/]};
-	my $systemd_product = q{analyze|creds|cryptsetup|export|firstboot|fsck|home|import-fs|nspawn|repart|syscfg|sysusers|tmpfiles|vmspawn};
-	( $text =~ m/systemd[-_]($systemd_daemon)d/msx ) and log_debug( "     => Protected '%s'", 'systemd daemons' ) and return 1;
-	( $text =~ m/systemd[-_]($systemd_keyword)/msx ) and log_debug( "     => Protected '%s'", 'systemd keyword' ) and return 1;
-	( $text =~ m/systemd[-_]($systemd_product)/msx ) and log_debug( "     => Protected '%s'", 'systemd product' ) and return 1;
+	is_systemd_only( $text ) and log_debug('     => protected systemd-only') and return 1;
 
 	return 0;
 } ## end sub change_is_protected_text
@@ -3453,6 +3448,19 @@ sub is_mask_start {
 
 	return 0;
 } ## end sub is_mask_start
+
+sub is_systemd_only {
+	my ($text) = @_;
+	my $systemd_daemon  = q{home|import|journal|network|oom|passwor|udev};
+	my $systemd_keyword = q{NR_[\{]|devel[/]};
+	my $systemd_product = q{analyze|creds|cryptsetup|export|firstboot|fsck|home|import-fs|nspawn|repart|syscfg|sysusers|tmpfiles|vmspawn};
+
+	( $text =~ m/systemd[-_]($systemd_daemon)d/msx ) and log_debug( '  => non-elogind %s', 'systemd daemon' ) and return 1;
+	( $text =~ m/systemd[-_]($systemd_keyword)/msx ) and log_debug( '  => non-elogind %s', 'systemd keyword' ) and return 1;
+	( $text =~ m/systemd[-_]($systemd_product)/msx ) and log_debug( '  => non-elogind %s', 'systemd product' ) and return 1;
+
+	return 0;
+}
 
 sub logMsg {
 	my ( $lvl, $fmt, @args ) = @_;
