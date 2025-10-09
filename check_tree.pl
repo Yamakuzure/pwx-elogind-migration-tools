@@ -417,22 +417,22 @@ END {
 	# -------------------------------------------------------------------------
 	# --- Print out the list of files that only exist here and not upstream ---
 	# -------------------------------------------------------------------------
-	if ( scalar @only_here ) {
-		my $count = scalar @only_here;
-		my $fmt   = sprintf '%%d %d: %%s', ( length "$count" );
+	my $count = scalar @only_here;
+	if ( $count > 0 ) {
+		my $fmt = sprintf '%%%dd: %%s', ( length "$count" );
 
-		log_info( "\n%d file%s only found in $WORKDIR:", $count, $count > 1 ? 's' : $EMPTY );
+		log_status( "\n\t%d file%s only found in $WORKDIR:", $count, $count > 1 ? 's' : $EMPTY );
 
 		for my $i ( 0 .. $count - 1 ) {
-			log_info( $fmt, $i + 1, $only_here[$i] );
+			log_status( $fmt, $i + 1, $only_here[$i] );
 		}
-	} ## end if ( scalar @only_here)
+	} ## end if ( $count > 0 )
 
 	# -------------------------------------------------------------------------
 	# --- Print out the list of failed hunks -> bug in hunk or program?     ---
 	# -------------------------------------------------------------------------
-	if ( scalar @lFails ) {
-		my $count = scalar @lFails;
+	$count = scalar @lFails;
+	if ( $count > 0 ) {
 
 		log_warning( "\n%d file%s %s at least one fishy hunk:", $count, $count > 1 ? 's' : $EMPTY, $count > 1 ? 'have' : 'has' );
 
@@ -451,7 +451,7 @@ END {
 			log_warning('---------------------------');
 			foreach ( @{ $lFails[$i]{hunk} } ) { log_warning("$_") }
 		} ## end for my $i ( 0 .. $count...)
-	} ## end if ( scalar @lFails )
+	} ## end if ( $count > 0 )
 
 	$do_stay or ( length $previous_commit ) and checkout_upstream($previous_commit);
 
