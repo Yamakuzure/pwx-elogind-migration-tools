@@ -367,6 +367,7 @@ for my $file_part (@source_files) {
 	# ---------------------------------------------------------------------
 	# --- Go through all hunks and check them against our various rules ---
 	# ---------------------------------------------------------------------
+	log_debug( "Refactoring diff for '%s'", $file_part );
 	refactor_hunks();
 
 	# Break off if a signal was caught
@@ -4064,34 +4065,59 @@ sub protect_config() {
 	( defined $hHunk ) or croak('check_masks: hHunk is undef');
 	$hHunk->{useful}   or croak('check_masks: Nothing done but hHunk is useless?');
 
+	log_debug( 'Checking config file %s ...', $hFile{source} );
+
 	my $is_sleep_block = 0;
 	my $cur_idx        = 0;
-	while ( $cur_idx < $hHunk->{count} - 1 ) {
+	while ( $cur_idx < $hHunk->{count} ) {
 		my $line = \$hHunk->{lines}[ $cur_idx++ ]; ## Shortcut
 
 		# Kill addition of lines we do not need
 		# ---------------------------------------
 		if ( ${$line} =~ m/^[${PLUS}][${HASH}]?(?:NAutoVTs|ReserveVT)/msx ) {
-			splice @{ $hHunk->{lines} }, $cur_idx--, 1;
+			log_debug( " => Removing unwanted config '%s'", ${$line} );
+			splice @{ $hHunk->{lines} }, --$cur_idx, 1;
 			--$hHunk->{count};
 			next;
-		}
+		} ## end if ( ${$line} =~ m/^[${PLUS}][${HASH}]?(?:NAutoVTs|ReserveVT)/msx)
 
 		# enter elogind specific [Sleep] block
 		# ------------------------------------------
-		if ( ${$line} =~ m/^[${DASH}]\[Sleep\]/msx ) {
+		if ( ( ${$line} =~ m/^[${DASH}]\[Sleep\]/msx ) || ( ${$line} =~ m/^[${DASH}][${HASH}].*elogind.*addition/msx ) ) {
+			log_debug( " => elogind block start: '%s'", ${$line} );
 			substr ${$line}, 0, 1, $SPACE; ## Remove '-'
 
 			# The previous line is probably the deletion of the blank line before the block
-			( $cur_idx > 0 ) and ( $hHunk->{lines}[ $cur_idx - 1 ] =~ /^[${DASH}]/ms ) and $hHunk->{lines}[ $cur_idx - 1 ] = $SPACE;
+			( $cur_idx > 1 ) and ( $hHunk->{lines}[ $cur_idx - 2 ] =~ /^[${DASH}]/ms ) and $hHunk->{lines}[ $cur_idx - 2 ] = $SPACE;
 
 			$is_sleep_block = 1;
 			next;
-		} ## end if ( ${$line} =~ m/^[${DASH}]\[Sleep\]/msx)
+		} ## end if ( ( ${$line} =~ m/^[${DASH}]\[Sleep\]/msx...))
+
+		# Remove additions of comments for systemd-only tools and products
+		# ------------------------------------------
+		if ( ( ${$line} =~ m/^[${PLUS}][${HASH}]/msx ) && is_systemd_only( ${$line} ) ) {
+			log_debug( " => Removing systemd-only comment addition: '%s'", ${$line} );
+			splice @{ $hHunk->{lines} }, --$cur_idx, 1;
+			--$hHunk->{count};
+
+			# The next lines can be further additions, closed by an added blank line
+			while ( ( $cur_idx < $hHunk->{count} ) && ( $hHunk->{lines}[$cur_idx] =~ /^[${PLUS}][${HASH}]\s*(.*)$/msx ) ) {
+				my $is_last = ( ( defined $1 ) && ( ( length $1 ) > 0 ) ) ? 0 : 1;
+				log_debug( "    => Removing follow-up '%s'", $hHunk->{lines}[$cur_idx] );
+				splice @{ $hHunk->{lines} }, $cur_idx, 1;
+				--$hHunk->{count};
+				( $is_last > 0 ) and next;
+			} ## end while ( ( $cur_idx < $hHunk...))
+
+			next;
+		} ## end if ( ( ${$line} =~ m/^[${PLUS}][${HASH}]/msx...))
 
 		# Remove deletions of lines in our [Sleep] block
+		# ------------------------------------------
 		$is_sleep_block
 		        and ( ${$line} =~ m/^[${DASH}]/ms )
+		        and log_debug( " => Keeping line '%s'", ${$line} )
 		        and ( substr ${$line}, 0, 1, $SPACE ) ## Remove '-'
 		        and next;
 
@@ -4533,7 +4559,7 @@ sub refactor_hunks {
 		$hHunk = $hFile{hunks}[$pos]; ## Global shortcut
 
 		# === Special 1) protect src/login/logind.conf.in =================
-		if ( $hFile{source} =~ m/src\/login\/logind[${DOT}]conf[${DOT}]in/msx ) {
+		if ( $hFile{source} =~ m/src[${SLASH}](?:login|sleep)[${SLASH}](?:logind|sleep)[${DOT}]conf/msx ) {
 			protect_config() or next;
 		}
 
