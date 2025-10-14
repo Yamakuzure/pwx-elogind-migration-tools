@@ -618,7 +618,7 @@ sub check_tree {
 	my $path = $hFiles{$file}{patch};
 
 	# Now get the patch built
-	my @lResult = `$CHECK_TREE --stay -c $commit ${stNew}-f $file $upstream_path 2>&1`;
+	my @lResult = `$CHECK_TREE --stay -c $commit ${stNew}-f $file -u $upstream_path 2>&1`;
 	my $res     = $?;
 	my $err     = $!;
 
