@@ -2,7 +2,7 @@
 # Only edit if you know what these do!
 
 ../systemd-stable   v252-stable 79c337ef54 src-654c598689 tgt-5c1c516a3
-../systemd-stable   v255-stable df9bf67023 src-92df356fe1 tgt-d116a9262
+../systemd-stable   v255-stable 92cc01df26 src-356c54394a tgt-d116a9262
 ../systemd-upstream v252        a0a2dd64d9 src-449f26a447 tgt-f75d34374
 ../systemd-upstream v255        a14b75e218 src-0966fe6734 tgt-3f7258f22
 ../systemd-upstream v256        5c79cdec10 src-2ee17370db tgt-b45a86fee
