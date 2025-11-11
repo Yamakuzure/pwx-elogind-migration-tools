@@ -3460,7 +3460,7 @@ sub is_systemd_only {
 	my ($text)          = @_;
 	my $systemd_daemon  = q{home|import|journal|network|oom|passwor|udev};
 	my $systemd_keyword = q{NR_[\{]|devel[/]};
-	my $systemd_product = q{analyze|creds|cryptsetup|export|firstboot|fsck|home|import-fs|nspawn|repart|syscfg|sysusers|tmpfiles|vmspawn};
+	my $systemd_product = q{analyze|creds|cryptsetup|export|firstboot|fsck|home|import-fs|mountwork|nspawn|repart|nsresourcework|syscfg|sysusers|tmpfiles|vmspawn};
 
 	( $text =~ m/systemd[-_]($systemd_daemon)d/msx ) and log_debug( '  => non-elogind %s', 'systemd daemon' )  and return 1;
 	( $text =~ m/systemd[-_]($systemd_keyword)/msx ) and log_debug( '  => non-elogind %s', 'systemd keyword' ) and return 1;
