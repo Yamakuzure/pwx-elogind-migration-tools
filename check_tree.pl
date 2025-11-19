@@ -3466,6 +3466,9 @@ sub is_systemd_only {
 	( $text =~ m/systemd[-_]($systemd_keyword)/msx ) and log_debug( '  => non-elogind %s', 'systemd keyword' ) and return 1;
 	( $text =~ m/systemd[-_]($systemd_product)/msx ) and log_debug( '  => non-elogind %s', 'systemd product' ) and return 1;
 
+	# Special wordings that have to remain untouched
+	( $text =~ m/systemd\s+[${DASH}]{2}user/msx ) and log_debug( '  => non-elogind "%s"', 'systemd --user' ) and return 1;
+
 	return 0;
 } ## end sub is_systemd_only
 
