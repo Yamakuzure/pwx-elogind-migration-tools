@@ -88,6 +88,8 @@ use Try::Tiny;
 # 1.4.2    2024-02-03  sed, EdenWorX   Do not migrate NEWS and TODO. They are elogind files now
 # 1.4.3    2025-09-27  sed, EdenWorX   The name change (systemd<=>elogind) analysis and handling was completely overhauled,
 #                                        and can correctly identify and handle changes over several lines.
+# 1.4.4    2025-11-19  sed, EdenWorX   Use systemd.io as alternative text to github.com/elogind/elogind.
+#                                        Protect 'systemd --user' as elogind has no such thing.
 #
 # ========================
 # === Little TODO list ===
@@ -97,7 +99,7 @@ use Try::Tiny;
 #
 # ------------------------
 ## Please keep this current!
-Readonly our $VERSION => '1.4.3';
+Readonly our $VERSION => '1.4.4';
 
 # ---------------------------------------------------------
 # Shared Variables
@@ -882,6 +884,9 @@ sub change_find_alt_text {
 
 		# systemd-sleep.conf is *not* elogind-sleep.conf, but just sleep.conf in elogind
 		$alt =~ s/(?:systemd|elogind)${DASH}(sleep${DOT}conf)/$1/msgx;
+
+		# systemd.io does not have an elogind equivalent, use the github page instead
+		$alt =~ s{(?:systemd|elogind)[$DOT]io}{github.com/elogind/elogind}msgx;
 	} ## end if ( $KIND_SYSTEMD == ...)
 
 	# 4) 'systemctl' => 'loginctl'
@@ -1081,15 +1086,15 @@ sub change_handle_false_positives {
 		if ( ( $text =~ m/github[${DOT}]com[${SLASH}]systemd/msx ) || ( $text =~ m/systemd[${DOT}]io/msx ) ) {
 
 			# If it is the issue tracker, look at the issue number. elogind is in the 3-digit area, systemd is in the 5-digit area
-			if ( $text =~ m/github[${DOT}]com[${SLASH}]systemd[${SLASH}]systemd[${SLASH}]issues[${SLASH}](\d+)/msx ) {
+			if ( $text =~ m{github[${DOT}]com[${SLASH}]systemd[${SLASH}]systemd[${SLASH}]issues[${SLASH}](\d+)}msx ) {
 				my $num = $1;
 				( ( length "$num" ) > 4 ) and change_mark_as_done($change) and next;  # clearly a systemd issue
 			}
 
-			# If a removal exists that was a link to the elogind github main page, then allow the switch back. We had our reasons!
+			# If a removal exists that was a link to the elogind github main page, then disallow the switch back. We had our reasons!
 			my $partner      = $change->{'partner'};
 			my $partner_text = ( defined $partner ) ? $partner->{'text'} // $EMPTY : $EMPTY;
-			if ( $partner_text =~ m/github[${DOT}]com[${SLASH}]elogind[${SLASH}]elogind/msx ) {
+			if ( $partner_text =~ m{github[${DOT}]com[${SLASH}]elogind[${SLASH}]elogind}msx ) {
 				next;
 			}
 
