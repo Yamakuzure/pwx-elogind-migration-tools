@@ -491,9 +491,15 @@ sub build_hFile {
 	my $tgt = "$upstream_path/$part";
 	$tgt =~ s/elogind/systemd/msg;
 	$tgt =~ s/[${DOT}]pwx$//ms;
-	-f $tgt
-	        or ( push @only_here, $part )
-	        and return 0;
+	if ( !-f $tgt ) {
+
+		# Before we give up, we try a regular "alternative text search" like we do for name revert checks
+		my ( $fname, $fpath, $fext ) = fileparse( $part, qr/[${DOT}][^${DOT}]*/msx );
+		my $altname = change_find_alt_text( $KIND_ELOGIND, $fname );
+		$fpath =~ s/^[${DOT}][${SLASH}]//msx; ## local './' is not needed.
+		$tgt = sprintf '%s/%s%s%s', $upstream_path, $fpath, $altname, $fext;
+		-f $tgt or ( push @only_here, $part ) and return 0;
+	} ## end if ( !-f $tgt )
 
 	# Build the patch name
 	my $patch = $part;
@@ -860,6 +866,10 @@ sub change_find_alt_text {
 		# sleep.conf in elogind is systemd-sleep.conf in systemd
 		$alt =~ s/([^${DASH}])(sleep${DOT}conf)/$1systemd-$2/msgx;
 
+		# elogind-userdbd has to be translated to systemd-userdbd.service
+		# The instances where the .service is missing, has to work via the reverse way below.
+		$alt =~ s/(?:systemd|elogind)${DASH}userdbd/systemd-userdbd.service/msgx;
+
 		# Note: The replacement of 'systemd-logind' or 'systemd-stable' with elogind can not be reversed this way.
 		#       The usr of this subs result (change_map_hunk_lines()) has to do this itself when searching for a match.
 	} ## end if ( $KIND_ELOGIND == ...)
@@ -881,6 +891,9 @@ sub change_find_alt_text {
 
 		# If we are in a man page, systemd is placed in volume 1, while elogind is placed in volume 8
 		$source_text ne $alt and $alt =~ s/<manvolnum>1<\/manvolnum>/<manvolnum>8<\/manvolnum>/msgx;
+
+		# systemd-userdbd.service has to be translated to elogind-userdbd
+		$alt =~ s/(?:systemd|elogind)${DASH}userdbd${DOT}service/elogind-userdbd/msgx;
 
 		# systemd-sleep.conf is *not* elogind-sleep.conf, but just sleep.conf in elogind
 		$alt =~ s/(?:systemd|elogind)${DASH}(sleep${DOT}conf)/$1/msgx;
