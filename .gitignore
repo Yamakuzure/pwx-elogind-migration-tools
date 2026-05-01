@@ -3,3 +3,4 @@ patches/
 _Deparsed_XSubs.pm
 *~
 .idea/perl5local.xml
+check_*.md
