@@ -678,7 +678,7 @@ sub change_analyze_hunk_line {
 	my $pChText = $pChanges->{'texts'}{$replace_text};
 
 	# We need a few values...
-	my $i      = $pChanges->{'texts'}{$replace_text}{'count'} // 0;                                                # The count is the next free index
+	my $i      = $pChText->{'count'} // 0;                                                                         # The count is the next free index
 	my $kind   = change_detect_kind($replace_text);
 	my $type   = ( ${DASH} eq $prefix ) ? $TYPE_REMOVAL : ( ${PLUS} eq $prefix ) ? $TYPE_ADDITION : $TYPE_NEUTRAL;
 	my $alttxt = change_find_alt_text( $kind, $replace_text );
