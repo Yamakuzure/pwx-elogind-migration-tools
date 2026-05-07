@@ -674,8 +674,11 @@ sub change_analyze_hunk_line {
 		$pChanges->{'texts'}{$replace_text} = { 'count' => 0, 'changes' => [] };
 	}
 
+	# Let us have a shortcut
+	my $pChText = $pChanges->{'texts'}{$replace_text};
+
 	# We need a few values...
-	my $i      = $pChanges->{$replace_text}{'count'} // 0;                                                         # The count is the next free index
+	my $i      = $pChanges->{'texts'}{$replace_text}{'count'} // 0;                                                # The count is the next free index
 	my $kind   = change_detect_kind($replace_text);
 	my $type   = ( ${DASH} eq $prefix ) ? $TYPE_REMOVAL : ( ${PLUS} eq $prefix ) ? $TYPE_ADDITION : $TYPE_NEUTRAL;
 	my $alttxt = change_find_alt_text( $kind, $replace_text );
@@ -685,8 +688,8 @@ sub change_analyze_hunk_line {
 	        :                                                                    $FALSE;
 
 	# Now record our findings
-	$pChanges->{$replace_text}{'texts'}{'count'} += 1;
-	$pChanges->{$replace_text}{'texts'}{'changes'}[$i] = {
+	$pChText->{'count'} += 1;
+	$pChText->{'changes'}[$i] = {
 		'alttxt'    => $alttxt,
 		'iscomment' => $iscomment,
 		'done'      => $FALSE,
@@ -703,7 +706,7 @@ sub change_analyze_hunk_line {
 	};
 
 	# Record the change at its line number
-	$pChanges->{'lines'}[$line_idx] = $pChanges->{$replace_text}{'texts'}{'changes'}[$i];
+	$pChanges->{'lines'}[$line_idx] = $pChText->{'changes'}[$i];
 
 	log_debug( " => %-8s type %d at line % 3d: '%s'", ( 0 > $type ) ? 'REMOVAL' : ( 0 < $type ) ? 'ADDITION' : 'Neutral', $kind, $line_idx + 1, $replace_text );
 
@@ -832,10 +835,10 @@ sub change_detect_kind {
 	my $kind =
 	          ( $text =~ m/.*elogind.*/msxi )                      ? $KIND_ELOGIND
 	        : ( $text =~ m/.*loginctl.*/msxi )                     ? $KIND_LOGINCTL
-	        : ( $text =~ m/.*systemd.*/msxi )                      ? $KIND_SYSTEMD
 	        : ( $text =~ m/.*systemctl.*/msxi )                    ? $KIND_SYSTEMCTL
 	        : ( $text =~ m/.*systemd[-_]sleep[${DOT}]conf.*/msxi ) ? $KIND_SYSTEMD   # The full name is systemd...
 	        : ( $text =~ m/.*sleep[${DOT}]conf.*/msxi )            ? $KIND_ELOGIND   # ... and the short name is elogind...
+	        : ( $text =~ m/.*systemd.*/msxi )                      ? $KIND_SYSTEMD
 	        :                                                        0;
 	return $kind;
 } ## end sub change_detect_kind
@@ -3480,9 +3483,10 @@ sub is_systemd_only {
 	my $systemd_keyword = q{NR_[\{]|devel[/]};
 	my $systemd_product = q{analyze|creds|cryptsetup|export|firstboot|fsck|home|import-fs|mountwork|nspawn|repart|nsresourcework|syscfg|sysusers|tmpfiles|vmspawn};
 
-	( $text =~ m/systemd[-_]($systemd_daemon)d/msx ) and log_debug( '  => non-elogind %s', 'systemd daemon' )  and return 1;
-	( $text =~ m/systemd[-_]($systemd_keyword)/msx ) and log_debug( '  => non-elogind %s', 'systemd keyword' ) and return 1;
-	( $text =~ m/systemd[-_]($systemd_product)/msx ) and log_debug( '  => non-elogind %s', 'systemd product' ) and return 1;
+	( $text =~ m/systemd[-_]($systemd_daemon)d/msx )  and log_debug( '  => non-elogind %s', 'systemd daemon' )  and return 1;
+	( $text =~ m/systemd[-_]($systemd_keyword)/msx )  and log_debug( '  => non-elogind %s', 'systemd keyword' ) and return 1;
+	( $text =~ m/systemd[-_]($systemd_product)/msx )  and log_debug( '  => non-elogind %s', 'systemd product' ) and return 1;
+	( $text =~ m/systemd\s+($systemd_product)\b/msx ) and log_debug( '  => non-elogind %s', 'systemd product' ) and return 1;
 
 	# Special wordings that have to remain untouched
 	( $text =~ m/systemd\s+[${DASH}]{2}user/msx ) and log_debug( '  => non-elogind "%s"', 'systemd --user' ) and return 1;
@@ -4128,7 +4132,7 @@ sub protect_config() {
 				log_debug( "    => Removing follow-up '%s'", $hHunk->{lines}[$cur_idx] );
 				splice @{ $hHunk->{lines} }, $cur_idx, 1;
 				--$hHunk->{count};
-				( $is_last > 0 ) and next;
+				( $is_last > 0 ) and last;
 			} ## end while ( ( $cur_idx < $hHunk...))
 
 			next;
@@ -4579,8 +4583,8 @@ sub refactor_hunks {
 		log_debug( 'Checking Hunk %d', $pos + 1 );
 		$hHunk = $hFile{hunks}[$pos]; ## Global shortcut
 
-		# === Special 1) protect src/login/logind.conf.in =================
-		if ( $hFile{source} =~ m/src[${SLASH}](?:login|sleep)[${SLASH}](?:logind|sleep)[${DOT}]conf/msx ) {
+		# === Special 1) protect configuration file =======================
+		if ( $hFile{part} =~ m/[${DOT}]conf(?:[${DOT}]in)?$/msx ) {
 			protect_config() or next;
 		}
 
@@ -4780,7 +4784,7 @@ sub wanted {
 
 	-f $filepath
 	        and ( ( 0 == $have_wanted ) or ( defined $hWanted{$f} ) )
-	        and ( !( $filepath         =~ m/${DOT}]pwx$/ms ) )
+	        and ( !( $filepath         =~ m/${DOT}pwx$/ms ) )
 	        and ( !( $File::Find::name =~ m/man[${SLASH}]rules[${SLASH}]/msx ) ) ## Protect generated man rules (Issue #3)
 	        and push @source_files, $File::Find::name
 	        and $is_wanted = 1;
