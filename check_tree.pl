@@ -1752,16 +1752,24 @@ sub check_empty_masks {
 	# If we leave a note, add the original mask message
 	my $mask_message = $EMPTY;
 
-	for my $i ( 0 .. $hHunk->{count} - 1 ) {
+	# The hanlders may splice, so a fixed loop can't be used.
+	my $i = 0;
+	while ( $i < $hHunk->{count} ) {
 		my $line = \$hHunk->{lines}[$i]; ## Shortcut
 
 		# entering an elogind mask
 		# ---------------------------------------
-		empty_handle_mask_start( $line, \$mask_message, \$local_iib, \$local_imb ) and $mask_block_start = $i and next;
+		if ( empty_handle_mask_start( $line, \$mask_message, \$local_iib, \$local_imb ) ) {
+			$mask_block_start = $i++;
+			next;
+		}
 
 		# entering an elogind insert
 		# ---------------------------------------
-		empty_handle_insert_start( $line, \$mask_message, \$local_ieb, \$local_iib ) and next;
+		if ( empty_handle_insert_start( $line, \$mask_message, \$local_ieb, \$local_iib ) ) {
+			++$i;
+			next;
+		}
 
 		# Count regular #if
 		${$line} =~ m/^-[${HASH}]if/msx and ++$regular_ifs;
@@ -1769,15 +1777,19 @@ sub check_empty_masks {
 		# Switching from Mask to else.
 		# Note: Inserts have no #else, they make no sense.
 		# ---------------------------------------
-		empty_handle_mask_to_else( $line, \$i, \$mask_message, \$mask_block_start, \$local_ieb, \$need_endif_conversion ) and next;
+		if ( empty_handle_mask_to_else( $line, \$i, \$mask_message, \$mask_block_start, \$local_ieb, \$need_endif_conversion ) ) {
+			++$i;
+			next;
+		}
 
 		# ending a Mask block
 		# ---------------------------------------
 		if ( empty_handle_mask_end( $line, \$i, \$mask_message, \$mask_block_start, \$need_endif_conversion ) > 0 ) {
 			$local_ieb = 0;
 			$local_imb = 0;
+			++$i;
 			next;
-		}
+		} ## end if ( empty_handle_mask_end...)
 
 		# ending an insert block
 		# ---------------------------------------
@@ -1787,14 +1799,15 @@ sub check_empty_masks {
 			$mask_block_start      = -1;
 			$mask_message          = $EMPTY;
 			$need_endif_conversion = 0;
-
+			++$i;
 			next;
 		} ## end if ( is_insert_end( ${...}))
 
 		# end regular #if
 		${$line} =~ m/^-[${HASH}]endif/msx and --$regular_ifs;
 
-	} ## end for my $i ( 0 .. $hHunk...)
+		++$i;
+	} ## end while ( $i < $hHunk->{count...})
 
 	return hunk_is_useful();
 } ## end sub check_empty_masks
@@ -2271,58 +2284,69 @@ sub check_stdc_version {
 	$in_else_block = 0;
 	$in_mask_block = $hHunk->{masked_start} ? 1 : 0;
 
-	# Remember lines directly, as those switches are one-liners only
-	my $line_del_num = -1;
-	my $line_del_str = $EMPTY;
-	my $line_rep_num = -1;
-	my $line_rep_str = $EMPTY;
-	for my $i ( 0 .. $hHunk->{count} - 1 ) {
+	# Do a while loop, as we manipulate the list on-the-fly
+	my $i = 0;
+	while ( $i < $hHunk->{count} ) {
 		my $line = \$hHunk->{lines}[$i]; ## Shortcut
+
+		# Sanity check
+		( defined ${$line} ) or return hunk_failed( 'check_stdc_version: Line ' . ( $i + 1 ) . "/$hHunk->{count} is undef?" );
 
 		# The increment/decrement variant can cause negative values:
 		validate_block_counters();
 
 		# Quick mask checks, we must have the intermediate states
 		# -------------------------------------------------------
-		is_mask_start( ${$line} ) and ++$in_mask_block and next;
+		if ( is_mask_start( ${$line} ) ) {
+			++$in_mask_block;
+			++$i;
+			next;
+		}
 		if ( is_mask_end( ${$line} ) ) {
 			$in_mask_block--;
 			$in_else_block--;
+			++$i;
 			next;
-		}
+		} ## end if ( is_mask_end( ${$line...}))
 
-		# Having a removal of a guardian
-		# ---------------------------------------
-		if ( ${$line} =~ m/^[${DASH}][${HASH}]\s*if\s+defined[(][_]{2}STDC[_]VERSION[_]{2}[)]\s+&&\s+/msx ) {
-			## Note: Here it is perfectly fine to be in an elogind mask block.
-			$line_del_num = $i;
-			$line_del_str = ${$line};
-			next;
-		} ## end if ( ${$line} =~ m/^[${DASH}][${HASH}]\s*if\s+defined[(][_]{2}STDC[_]VERSION[_]{2}[)]\s+&&\s+/msx)
+		# Revert removals of the defined(__STDC_VERSION__) guard itself.
+		# --------------------------------------------------------------
+		if ( ( $i < ( $hHunk->{count} - 1 ) ) && ( ${$line} =~ m/^[${DASH}][${HASH}](\s*)if\s+defined\s*[(]\s*__STDC_VERSION__\s*[)]\s*&&\s*(.+)$/msx ) ) {
+			my $if_space       = $1;
+			my $guarded_tail   = $2;
+			my $next_line      = $hHunk->{lines}[ $i + 1 ];
+			my $unguarded_line = "${PLUS}${HASH}${if_space}if ${guarded_tail}";
 
-		# Having the line without guardian added
-		# ---------------------------------------
-		if ( ${$line} =~ m/^[${PLUS}][${HASH}]\s*if\s+/msx ) {
-			$line_rep_num = $i;
-			$line_rep_str = ${$line};
-		}
+			if ( $next_line eq $unguarded_line ) {
 
-		# If we have a deletion and a fitting addition in the next line,
-		# revert the first and remove the second.
-		if ( ( $line_del_num > -1 ) && ( ( $line_del_num + 1 ) == $line_rep_num ) && ( $line_rep_str =~ /^[${PLUS}][${HASH}](\s*)if\s+(\S.*)$/msx ) ) {
-			my $alt_line = "-#${1}if ( defined __STDC_VERSION__ ) && $2";
-			if ( $alt_line eq $line_del_str ) {
-
-				# Yes, the just want to take out the guard.
-				# Let's revert that
-				substr $hHunk->{lines}[$line_del_num], 0, 1, $SPACE;
-				splice @{ $hHunk->{lines} }, $line_rep_num, 1;
+				# They just want to take out the guard. Revert that.
+				substr $hHunk->{lines}[$i], 0, 1, $SPACE;
+				splice @{ $hHunk->{lines} }, $i + 1, 1;
 				--$hHunk->{count};
-			} ## end if ( $alt_line eq $line_del_str)
-			$line_del_num = -1;
-			$line_rep_num = -1;
-		} ## end if ( ( $line_del_num >...))
-	} ## end for my $i ( 0 .. $hHunk...)
+				++$i;
+				next;
+			} ## end if ( $next_line eq $unguarded_line)
+		} ## end if ( ( $i < ( $hHunk->...)))
+
+		# Revert removals of the marker comments on #else/#endif.
+		# -------------------------------------------------------
+		if ( ( $i < ( $hHunk->{count} - 1 ) ) && ( ${$line} =~ m/^[${DASH}][${HASH}](\s*)(else|endif)\s*[${SLASH}]+\s*__STDC_VERSION__\s*$/msx ) ) {
+			my $directive     = $2;
+			my $next_line     = $hHunk->{lines}[ $i + 1 ];
+			my $unmarked_line = "${PLUS}${HASH}${1}${directive}";
+
+			if ( $next_line eq $unmarked_line ) {
+
+				# They just want to take out the marker comment. Revert that.
+				substr $hHunk->{lines}[$i], 0, 1, $SPACE;
+				splice @{ $hHunk->{lines} }, $i + 1, 1;
+				--$hHunk->{count};
+				++$i;
+				next;
+			} ## end if ( $next_line eq $unmarked_line)
+		} ## end if ( ( $i < ( $hHunk->...)))
+		++$i;
+	} ## end while ( $i < $hHunk->{count...})
 
 	# Revert the final mask state remembered above
 	# ------------------------------------------------
@@ -3144,11 +3168,17 @@ sub hunk_is_useful() {
 
 	# early exits:
 	( $death_note > 0 ) and return 0;
-	( defined $hHunk ) or return 0;
-	$hHunk->{useful}   or return 0;
+	( defined $hHunk )      or return 0;
+	$hHunk->{useful}        or return 0;
+	( $hHunk->{count} > 1 ) or return 0;
 
 	log_debug('Checking whether the hunk is still useful:');
 	log_debug( ' => Mask   Start: in_mask: %d ; in_else: %d ; in_insert: %d', $in_mask_block, $in_else_block, $in_insert_block );
+
+	# Sanity check
+	for my $i ( 0 .. $hHunk->{count} - 1 ) {
+		( defined $hHunk->{lines}[$i] ) or return hunk_failed( 'hunk_is_useful: Line ' . ( $i + 1 ) . "/$hHunk->{count} is undef?" );
+	}
 
 	# See whether at least one change is still present
 	my $is_useful = ( defined first { m/^[${DASH}${PLUS}]/msx } @{ $hHunk->{lines} } ) ? 1 : 0;
@@ -3368,10 +3398,26 @@ sub include_handle_removal {
 	# ---------------------------------------------------------------------------------------------
 	if ( $hInc->{elogind}{hunkid} > -1 ) {
 
-		# Just undo the removal of the elogind insert.
-		my $hId = $hInc->{elogind}{hunkid};
-		my $lId = $hInc->{elogind}{lineid};
-		substr $hFile{hunks}[$hId]{lines}[$lId], 0, 1, $SPACE;
+		# If this is an elogind include that was also being inserted in the same hunk,
+		# we should undo the removal but not mark as applied yet
+		if ( $hIns->{hunkid} == $hRem->{hunkid} ) {
+
+			# Same hunk - this is a move within the same hunk
+			log_debug( " => Detected move of elogind include '%s' within same hunk", $inc );
+			substr ${$line}, 0, 1, $SPACE;
+
+			# Don't mark as applied yet - let the insertion logic handle it
+			return 1;
+		} else {
+
+			# Different hunk - this is likely a true move, not just reordering
+			log_debug( " => Detected move of elogind include '%s' to different hunk", $inc );
+
+			# Undo the removal and let the insertion logic handle it
+			substr ${$line}, 0, 1, $SPACE;
+			$hInc->{applied} = 1;
+			return 1;
+		} ## end else [ if ( $hIns->{hunkid} ==...)]
 	} elsif ( $hIns->{elogind} ) {
 
 		# Do not move masked includes under our block.
