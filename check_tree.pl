@@ -123,6 +123,7 @@ Readonly my $AT             => q{@};
 Readonly my $ATAT           => q{@@}; ## no critic(ValuesAndExpressions::RequireInterpolationOfMetachars)
 Readonly my $DASH           => q{-};
 Readonly my $DOT            => q{.};
+Readonly my $DUS            => q{-_/};
 Readonly my $EMPTY          => q{};
 Readonly my $FALSE          => 0;
 Readonly my $HASH           => q{#};
@@ -249,7 +250,7 @@ my $hHunk = {}; ## Secondary data structure to describe one diff hunk.          
 #     insert  = { elogind : Set to 1 if the insert was found under elogind special includes.
 #                 hunkid  : Hunk id ; Position where a commented out include is
 #                 lineid  : Line id ; wanted to be removed by the patch.
-#                 spliceme: Set to 1 if this insert is later to be spliced.
+#                 spliceme: Set to 1 if this insert is later to be spliced. Default: -1 (*)
 #                 sysinc  : Set to 1 if it is <include>, 0 otherwise.
 #     }
 #     remove  = { hunkid : Hunk id ; Position where a new include is wanted to be
@@ -257,6 +258,10 @@ my $hHunk = {}; ## Secondary data structure to describe one diff hunk.          
 #                 sysinc : Set to 1 if it is <include>, 0 otherwise.
 #     }
 # } }
+# (*) spliceme is either -1 (no) or +1 (yes). This differs from the regular '0' for 'false', because
+#     the key is also used in change management, where it becomes the line number of the to be spliced line.
+#     Using -1 to indicate that no splicing is needed, is done for a consistent use, which makes context
+#     based misunderstandings harder, because the key is used the same (if > -1) in both use cases.
 my %hIncs = (); ## Hash for remembered includes over different hunks.
 
 my %hProtected = (); ## check_name_reverts() notes down lines here, which check_comments() shall not touch
@@ -699,7 +704,7 @@ sub change_analyze_hunk_line {
 		'masked'    => $is_masked,
 		'partner'   => undef,
 		'prev'      => undef,
-		'spliceme'  => 0,
+		'spliceme'  => -1,
 		'systemd'   => ( ( $KIND_SYSTEMD == $kind ) || ( $KIND_SYSTEMCTL == $kind ) ) ? 1 : 0,
 		'text'      => $replace_text,
 		'type'      => $type
@@ -833,13 +838,13 @@ sub change_check_solo_changes {
 sub change_detect_kind {
 	my ($text) = @_;
 	my $kind =
-	          ( $text =~ m/.*elogind.*/msxi )                      ? $KIND_ELOGIND
-	        : ( $text =~ m/.*loginctl.*/msxi )                     ? $KIND_LOGINCTL
-	        : ( $text =~ m/.*systemctl.*/msxi )                    ? $KIND_SYSTEMCTL
-	        : ( $text =~ m/.*systemd[-_]sleep[${DOT}]conf.*/msxi ) ? $KIND_SYSTEMD   # The full name is systemd...
-	        : ( $text =~ m/.*sleep[${DOT}]conf.*/msxi )            ? $KIND_ELOGIND   # ... and the short name is elogind...
-	        : ( $text =~ m/.*systemd.*/msxi )                      ? $KIND_SYSTEMD
-	        :                                                        0;
+	          ( $text =~ m/.*elogind.*/msxi )                          ? $KIND_ELOGIND
+	        : ( $text =~ m/.*loginctl.*/msxi )                         ? $KIND_LOGINCTL
+	        : ( $text =~ m/.*systemctl.*/msxi )                        ? $KIND_SYSTEMCTL
+	        : ( $text =~ m/.*systemd[${DUS}]sleep[${DOT}]conf.*/msxi ) ? $KIND_SYSTEMD   # The full name is systemd...
+	        : ( $text =~ m/.*sleep[${DOT}]conf.*/msxi )                ? $KIND_ELOGIND   # ... and the short name is elogind...
+	        : ( $text =~ m/.*systemd.*/msxi )                          ? $KIND_SYSTEMD
+	        :                                                            0;
 	return $kind;
 } ## end sub change_detect_kind
 
@@ -1048,6 +1053,9 @@ sub change_handle_additions {
 		# We only handle forward additions, so the line number of the addition must be greater than that of the removal
 		( $change->{'line'} > $partner->{'line'} ) or next; ## change_handle_removals() takes care of forward removals.
 
+		log_debug( "DEBUG: change->{'line'}=%d, partner->{'line'}=%d, diff=%d", $change->{'line'}, $partner->{'line'}, $change->{'line'} - $partner->{'line'} );
+		log_debug( "DEBUG: change->{'systemd'}=%d, change->{'text'}='%s'", $change->{'systemd'}, substr( $change->{'text'}, 0, 50 ) );
+
 		# If they are direct renames, undo them if they go from elogind to systemd, but accept if it is the other way round
 		if ( $change->{'line'} == ( $partner->{'line'} + 1 ) ) {
 			( $TRUE == $change->{'systemd'} ) and change_undo( $partner, $change, $i );
@@ -1068,8 +1076,20 @@ sub change_handle_additions {
 			next;
 		} ## end if ( ( $partner->{'masked'...}))
 
-		# In all other cases we allow the move, but reverse the text change if it is elogind->systemd and not a protected text
-		change_is_protected_text( $change->{'text'}, $change->{'iscomment'} ) or ( $TRUE == $change->{'systemd'} ) and change_use_alt($change);
+		# In all other cases we allow the move, but reverse the text change if it is elogind->systemd and not a protected text.
+		# But do not process name reversals if the change is within an elogind mask block
+		# The logic is: if the change is from systemd to elogind (systemd=true) and the change is masked (in elogind block), revert it
+		if ( $TRUE == $change->{'systemd'} ) {
+
+			# Only apply name reversal if not within an elogind mask block
+			if ( !$change->{'masked'} ) {
+				change_is_protected_text( $change->{'text'}, $change->{'iscomment'} ) or change_use_alt($change);
+			} else {
+
+				# If in a mask block, we should revert the change (revert to elogind)
+				change_undo( $partner, $change, $i );
+			}
+		} ## end if ( $TRUE == $change->...)
 		change_mark_as_done($change);
 	} ## end for my $i ( 0 .. $#{$lines_ref...})
 
@@ -1180,7 +1200,10 @@ sub change_handle_removals {
 		} ## end if ( ( ( $FALSE == $partner...)))
 
 		# In all other cases we allow the move, but reverse the text change if it is elogind->systemd and the partner is not protected
-		change_is_protected_text( $partner->{'text'}, $partner->{'iscomment'} ) or ( $TRUE == $change->{'elogind'} ) and change_use_alt($partner);
+		# But dchanges in elogind mask blocks, however, are kept.
+		if ( ( $TRUE == $change->{'elogind'} ) && !$partner->{'masked'} ) {
+			change_is_protected_text( $partner->{'text'}, $partner->{'iscomment'} ) or change_use_alt($partner);
+		}
 		change_mark_as_done($change); ## Also marks the partner
 	} ## end for my $i ( 0 .. $#{$lines_ref...})
 
@@ -1407,7 +1430,7 @@ sub change_splice_the_undone {
 	# -----------------------------------------------------------------------------------------------------------------
 	my %hSplices = ();
 	foreach my $change ( grep { defined } @{ $pChanges->{'lines'} } ) {
-		( $change->{'spliceme'} > 0 ) or next;
+		( $change->{'spliceme'} > -1 ) or next;
 		$hSplices{ $change->{'spliceme'} } = 1;
 		log_debug( "Splice line % 3d: '%s'", $change->{'spliceme'} + 1, $change->{'text'} );
 	}
@@ -1457,6 +1480,7 @@ sub change_use_alt {
 
 	log_debug( "     => Change  % 3d: '%s'", $lno + 1, $hHunk->{lines}[$lno] );
 	$hHunk->{lines}[$lno] =~ s{\Q$oldText\E}{$newText}ms;
+	$change->{'text'} = $newText;
 	log_debug( "     =>   To    % 3d: '%s'", $lno + 1, $hHunk->{lines}[$lno] );
 
 	return 1;
@@ -2172,7 +2196,7 @@ sub check_name_reverts {
 	##                                {'masked'}    = $TRUE in mask block, $FALSE not masked or in else block
 	##                                {'partner'}   = the type*-1 variant with systemd<=>elogind text replacements or undef if none was found
 	##                                {'prev'}      = the previously found entry equaling this. Used to backward chain found partners for a change
-	##                                {'spliceme'}  = line_no - The line number to splice (can differ from {line}) or 0 for no splice.
+	##                                {'spliceme'}  = line_no - The line number to splice (can differ from {line}) or -1 for no splice.
 	##                                {'systemd'}   = 1 if 'kind' is $KIND_SYSTEMD or $KIND_SYSTEMCTL, 0 otherwise
 	##                                {'text'}      = The text used as {string}, needed for iteration over {'lines'}
 	##                                {'type'}      = $TYPE_REMOVAL, $TYPE_ADDITION, $TYPE_NEUTRAL
@@ -3211,7 +3235,7 @@ sub include_check_sanity {
 		( defined $hIncs{$inc}{elogind} )
 		        or $hIncs{$inc}{elogind} = { hunkid => -1, lineid => -1 };
 		( defined $hIncs{$inc}{insert} )
-		        or $hIncs{$inc}{insert} = { elogind => 0, hunkid => -1, lineid => -1, spliceme => 0, sysinc => 0 };
+		        or $hIncs{$inc}{insert} = { elogind => 0, hunkid => -1, lineid => -1, spliceme => -1, sysinc => 0 };
 		( defined $hIncs{$inc}{remove} )
 		        or $hIncs{$inc}{remove} = { hunkid => -1, lineid => -1, sysinc => 0 };
 	} ## end for my $inc ( keys %hIncs)
@@ -3617,7 +3641,7 @@ sub log_change {
 		$change->{'elogind'}                ? 'elogind'  : $change->{systemd}                 ? 'systemd' : 'UNKNOWN !!!'
 	      );
 	logMsg( $LOG_DEBUG, ' inside Mask: %s / in Comment: %s', $change->{'masked'} ? 'Yes' : 'No', $change->{'iscomment'} ? 'Yes' : 'No' );
-	( $change->{'spliceme'} > 0 ) and logMsg( $LOG_DEBUG, '      Splice: %d', $change->{'spliceme'} );
+	( $change->{'spliceme'} > -1 ) and logMsg( $LOG_DEBUG, '      Splice: %d', $change->{'spliceme'} );
 	( $is_partner > 0 ) and logMsg( $LOG_DEBUG, ' <--------' );
 
 	return 1;
@@ -4563,7 +4587,7 @@ sub read_includes {
 				elogind  => $in_elogind_block,
 				hunkid   => $hHunk->{idx},
 				lineid   => $i,
-				spliceme => 0,
+				spliceme => -1,
 				sysinc   => ( $1 eq '<' ) ? 1 : 0
 			};
 			next;
@@ -4579,7 +4603,7 @@ sub read_includes {
 				elogind  => $in_elogind_block,
 				hunkid   => $hHunk->{idx},
 				lineid   => $i,
-				spliceme => 0,
+				spliceme => -1,
 				sysinc   => ( $1 eq '<' ) ? 1 : 0
 			};
 			next;
@@ -4757,7 +4781,7 @@ sub splice_includes {
 	# First build a tree of the includes to splice:
 	my %incMap = ();
 	for my $inc ( keys %hIncs ) {
-		if ( $hIncs{$inc}{insert}{spliceme} ) {
+		if ( $hIncs{$inc}{insert}{spliceme} > -1 ) {
 			my $hId = $hIncs{$inc}{insert}{hunkid};
 			my $lId = $hIncs{$inc}{insert}{lineid};
 
