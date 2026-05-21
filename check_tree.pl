@@ -878,7 +878,10 @@ sub change_find_alt_text {
 		# The instances where the .service is missing, has to work via the reverse way below.
 		$alt =~ s/(?:systemd|elogind)${DASH}userdbd/systemd-userdbd.service/msgx;
 
-		# Note: The replacement of 'systemd-logind' or 'systemd-stable' with elogind can not be reversed this way.
+        # Also transform _ELOGIND to _SYSTEMD for proper partner matching
+        $alt =~ s/(ENABLE|USE)_([A-Z]+)_SYSTEMD/$1_$2_ELOGIND/msgx;
+
+        # Note: The replacement of 'systemd-logind' or 'systemd-stable' with elogind can not be reversed this way.
 		#       The usr of this subs result (change_map_hunk_lines()) has to do this itself when searching for a match.
 	} ## end if ( $KIND_ELOGIND == ...)
 
@@ -908,6 +911,9 @@ sub change_find_alt_text {
 
 		# systemd.io does not have an elogind equivalent, use the github page instead
 		$alt =~ s{(?:systemd|elogind)[$DOT]io}{github.com/elogind/elogind}msgx;
+
+        # Also transform _SYSTEMD to _ELOGIND for proper partner matching
+        $alt =~ s/(ENABLE|USE)_([A-Z]+)_SYSTEMD/$1_$2_ELOGIND/msgx;
 	} ## end if ( $KIND_SYSTEMD == ...)
 
 	# 4) 'systemctl' => 'loginctl'
