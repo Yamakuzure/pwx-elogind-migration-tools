@@ -797,7 +797,24 @@ sub change_check_solo_changes {
 		( $TRUE == $change->{'masked'} ) and change_mark_as_done($change) and next;
 
 		# We have only checked pretexted text additions, yet, not singular removals
-		change_is_protected_text( $change->{'text'}, $change->{'iscomment'} ) and change_mark_as_done($change) and next;
+		if ( change_is_protected_text( $change->{'text'}, $change->{'iscomment'} ) ) {
+
+			# The comment line itself will be kept by `change_mark_as_done`.
+			# If the line right before it is a plain removal of an empty line,
+			# we must keep that line as well – it is part of the intended formatting.
+			my $line_no = $change->{'line'};
+			if ( $line_no > 0 ) {
+				my $prev_line = $hHunk->{lines}[ $line_no - 1 ];
+				if ( defined $prev_line && $prev_line =~ m/^[${DASH}]\s*$/msx ) {
+
+					# Turn the leading '-' into a space (keep the empty line)
+					substr $hHunk->{lines}[ $line_no - 1 ], 0, 1, $SPACE;
+					log_debug( '     => Protected preceding empty line at %d', $line_no );
+				} ## end if ( defined $prev_line...)
+			} ## end if ( $line_no > 0 )
+			change_mark_as_done($change);
+			next;
+		} ## end if ( change_is_protected_text...)
 
 		if ( $TYPE_ADDITION == $change->{'type'} ) {
 
@@ -813,11 +830,24 @@ sub change_check_solo_changes {
 
 		if ( $TYPE_REMOVAL == $change->{'type'} ) {
 
-			# Undo elogind removals, those are probably our own elogind-exclusive functions
+			# Undo elogind removals, those are probably our own elogind-exclusive functions or comments.
 			if ( 1 == $change->{'elogind'} ) {
 				substr $hHunk->{lines}[ $change->{'line'} ], 0, 1, $SPACE;
 				log_debug( "     => Keeping   '%s'", $hHunk->{lines}[ $change->{'line'} ] );
-			}
+
+				# Also protect the immediate preceding empty line for elogind removals
+				# This ensures formatting is preserved when elogind comments or code are kept.
+				my $line_no = $change->{'line'};
+				if ( $line_no > 0 ) {
+					my $prev_line = $hHunk->{lines}[ $line_no - 1 ];
+					if ( defined $prev_line && $prev_line =~ m/^[${DASH}]\s*$/msx ) {
+						substr $hHunk->{lines}[ $line_no - 1 ], 0, 1, $SPACE;
+						log_debug( '     => Protected preceding empty line at %d', $line_no - 1 );
+					}
+				} ## end if ( $line_no > 0 )
+
+				# ^^^ CHANGED: End of empty line protection for elogind removals
+			} ## end if ( 1 == $change->{'elogind'...})
 			change_mark_as_done($change);
 		} ## end if ( $TYPE_REMOVAL == ...)
 	} ## end foreach my $change ( grep {...})
@@ -878,10 +908,10 @@ sub change_find_alt_text {
 		# The instances where the .service is missing, has to work via the reverse way below.
 		$alt =~ s/(?:systemd|elogind)${DASH}userdbd/systemd-userdbd.service/msgx;
 
-        # Also transform _ELOGIND to _SYSTEMD for proper partner matching
-        $alt =~ s/(ENABLE|USE)_([A-Z]+)_SYSTEMD/$1_$2_ELOGIND/msgx;
+		# Also transform _ELOGIND to _SYSTEMD for proper partner matching
+		$alt =~ s/(ENABLE|USE)_([A-Z]+)_SYSTEMD/$1_$2_ELOGIND/msgx;
 
-        # Note: The replacement of 'systemd-logind' or 'systemd-stable' with elogind can not be reversed this way.
+		# Note: The replacement of 'systemd-logind' or 'systemd-stable' with elogind can not be reversed this way.
 		#       The usr of this subs result (change_map_hunk_lines()) has to do this itself when searching for a match.
 	} ## end if ( $KIND_ELOGIND == ...)
 
@@ -912,8 +942,8 @@ sub change_find_alt_text {
 		# systemd.io does not have an elogind equivalent, use the github page instead
 		$alt =~ s{(?:systemd|elogind)[$DOT]io}{github.com/elogind/elogind}msgx;
 
-        # Also transform _SYSTEMD to _ELOGIND for proper partner matching
-        $alt =~ s/(ENABLE|USE)_([A-Z]+)_SYSTEMD/$1_$2_ELOGIND/msgx;
+		# Also transform _SYSTEMD to _ELOGIND for proper partner matching
+		$alt =~ s/(ENABLE|USE)_([A-Z]+)_SYSTEMD/$1_$2_ELOGIND/msgx;
 	} ## end if ( $KIND_SYSTEMD == ...)
 
 	# 4) 'systemctl' => 'loginctl'
@@ -1567,8 +1597,9 @@ sub check_comments {
 	for my $i ( 0 .. $hHunk->{count} - 1 ) {
 		my $line = \$hHunk->{lines}[$i]; ## Shortcut
 
-		# Check for comment block start
-		# -----------------------------
+		# ---------------------------------------------------------------------------
+		# 1) Comment block start – keep line and also protect preceding blank removal
+		# ---------------------------------------------------------------------------
 		if ( ${$line} =~ m/^[${DASH}]\s*(\/[${STAR}]+|\/\/+)\s+.*elogind/msx ) {
 
 			# Sanity check:
@@ -1579,22 +1610,37 @@ sub check_comments {
 			( ( ${$line} =~ m/^[${DASH}]\s*\/[${STAR}]+/msx ) && !( ${$line} =~ m/[${STAR}]\/[^\/]*$/msx ) )
 			        and $in_comment_block = 1;
 
-			# Revert the substract *if* this is not in a mask block, but only if the name reversal checker has not marked this as protected
-			$in_mask_block and ( 1 > $in_else_block ) or ( defined $hProtected{ ${$line} } ) or substr ${$line}, 0, 1, $SPACE;
+			# Revert the substract *if* this is not in a mask block,
+			# but only if the name reversal checker has not marked this as protected
+			if ( ( $in_mask_block && ( 1 > $in_else_block ) ) || ( defined $hProtected{ ${$line} } ) ) {
+				substr ${$line}, 0, 1, $SPACE;
+				log_debug( '  => Protected comment block start %d', $i );
+
+				# Protect blank removal lines that immediately precede this comment.
+				# They are part of the intended formatting and must not be stripped.
+				if ( ( $i > 0 ) && ( $hHunk->{lines}[ $i - 1 ] =~ m/^[${DASH}]\s*$/msx ) ) {
+
+					# Turn the preceding '-' into a space so the empty line is kept.
+					substr $hHunk->{lines}[ $i - 1 ], 0, 1, $SPACE;
+					log_debug( '  => Protected preceding empty line at %d', $i - 1 );
+				} ## end if ( ( $i > 0 ) && ( $hHunk...))
+			} ## end if ( ( $in_mask_block ...))
 
 			next;
 		} ## end if ( ${$line} =~ m/^[${DASH}]\s*(\/[${STAR}]+|\/\/+)\s+.*elogind/msx)
 
-		# Check for comment block end
-		# -----------------------------
+		# ---------------------------------------------------------------------------
+		# 2) Comment block end
+		# ---------------------------------------------------------------------------
 		if ( $in_comment_block && ( ${$line} =~ m/^[${DASH}].*[${STAR}]\/\s*$/msx ) ) {
 			( defined $hProtected{ ${$line} } ) or substr ${$line}, 0, 1, $SPACE;
 			$in_comment_block = 0;
 			next;
 		}
 
-		# Check for comment block line
-		# -----------------------------
+		# ---------------------------------------------------------------------------
+		# 3) Comment block line (inside a multiline comment)
+		# ---------------------------------------------------------------------------
 		if ( $in_comment_block && ( ${$line} =~ m/^[${DASH}]/msx ) ) {
 
 			# Note: We do not check for anything else, as empty lines must be allowed.
