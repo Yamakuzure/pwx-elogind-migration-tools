@@ -1,0 +1,10 @@
+*~
+*.old
+*.bak
+check_*.md
+talk*.md
+# Agents must see test source, test logs and output patches
+!patches/*.patch
+!src/*
+!systemd/*
+!systemd*.log

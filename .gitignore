@@ -2,5 +2,20 @@ patches/
 !patches/.keep_dir
 _Deparsed_XSubs.pm
 *~
+*.old
+*.bak
 .idea/perl5local.xml
 check_*.md
+talk*.md
+
+# OpenCode dynamic content
+.opencode/*.md
+.opencode/memory-working
+!.opencode/memory-working/.keep_dir
+.opencode/node_modules
+!.opencode/node_modules/.keep_dir
+
+# Test directories for agents to play with. Fill manually
+src/
+systemd/
+systemd*.log
