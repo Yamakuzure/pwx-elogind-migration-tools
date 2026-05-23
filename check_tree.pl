@@ -1122,8 +1122,12 @@ sub change_handle_additions {
 				change_is_protected_text( $change->{'text'}, $change->{'iscomment'} ) or change_use_alt($change);
 			} else {
 
-				# If in a mask block, we should revert the change (revert to elogind)
-				change_undo( $partner, $change, $i );
+				# If in a mask block, we must ensure the mask contains the ORIGINAL systemd code.
+				# Mask blocks must preserve the exact systemd source code. If elogind adapted the text (e.g., changed
+				# "systemd" to "elogind" in a string), this is an error that must be corrected by the patch.
+				# We do NOT change the lines here; instead, we let the diff show the correction.
+				# The removal has "elogind" (wrong), the addition has "systemd" (correct).
+				# By marking as done without modification, the diff will show the fix.
 			}
 		} ## end if ( $TRUE == $change->...)
 		change_mark_as_done($change);
