@@ -4465,7 +4465,73 @@ sub unprepare_shell {
 	$is_else  = 0;
 	@lIn      = splice @{ $hFile{output} };
 
-	for my $line (@lIn) {
+	# Pre-scan to find mask block boundaries and infer mask membership for lines
+	# For hunks that don't include #if/#else lines, we infer mask membership by:
+	# 1. Lines before #endif // 0 that are removals (-) are likely in a mask block
+	# 2. Once we see #else // 0, lines after it are in the else block (not masked)
+	my @in_mask_block = ();
+	my $saw_endif    = 0;
+	my $saw_else     = 0;
+	my $endif_line   = -1;
+
+	# First pass: find #endif and #else positions
+	for my $i ( 0 .. $#lIn ) {
+		my $line = $lIn[$i];
+		if ( is_mask_end($line) && !$saw_endif ) {
+			$saw_endif  = 1;
+			$endif_line = $i;
+		}
+		if ( is_mask_else($line) && !$saw_else ) {
+			$saw_else = 1;
+		}
+	}
+
+	# Second pass: determine mask membership for each line
+	$is_block = 0;
+	$is_else  = 0;
+	for my $i ( 0 .. $#lIn ) {
+		my $line = $lIn[$i];
+
+		# Handle explicit mask markers
+		if ( $line =~ m/[${HASH}]\s+masked_(?:start|end)\s+([01])$/msx ) {
+			$1 and $is_block = 1 or $is_block = 0;
+			$is_block and $is_else = 0;
+			$in_mask_block[$i] = 0; ## marker line, not content
+			next;
+		}
+
+		# Update state based on mask directives in the content
+		if ( is_mask_start($line) ) {
+			$is_block = 1;
+			$is_else  = 0;
+		}
+		if ( is_mask_else($line) ) {
+			$is_else = 1;
+		}
+		if ( is_mask_end($line) ) {
+			$is_block = 0;
+			$is_else  = 0;
+		}
+
+		# Determine if this line is in a mask block
+		if ( $is_block && !$is_else ) {
+			$in_mask_block[$i] = 1;
+		} elsif ( $saw_endif && !$saw_else && $i < $endif_line ) {
+			# Infer: if we'll see #endif later and haven't seen #else,
+			# all lines before #endif are in the mask block (both context and changes)
+			$in_mask_block[$i] = 1;
+		} else {
+			$in_mask_block[$i] = 0;
+		}
+	}
+
+	# Reset state for actual processing
+	$is_block = 0;
+	$is_else  = 0;
+
+	for my $i ( 0 .. $#lIn ) {
+		my $line = $lIn[$i];
+
 		if ( $line =~ m/[${HASH}]\s+masked_(?:start|end)\s+([01])$/msx ) {
 			$1        and $is_block = 1 or $is_block = 0;
 			$is_block and $is_else  = 0; ## can't be.
@@ -4475,11 +4541,16 @@ sub unprepare_shell {
 		is_mask_start($line) and $is_block = 1;
 		$is_block or $is_else = 0;
 		is_mask_else($line) and $is_else = 1;
-		$is_block
-		        and ( !$is_else )
+
+		# Add # prefix to ALL lines in mask blocks (before #else), not just changes
+		# Use pre-computed mask status if available, otherwise use current state
+		my $in_mask = $in_mask_block[$i] || ( $is_block && !$is_else );
+		$in_mask
 		        and $ATAT ne ( substr $line, 0, 2 )
-		        and ( !( $line =~ m/^[-${SPACE}]+[${HASH}](?:if|else|endif)/msx ) )
-		        and ( substr $line, 1, 0, "${HASH}${SPACE}" );
+		        and ( $line !~ m/^[+-]{3}\s/m )  ## Don't modify file header lines (--- or +++)
+		        and ( !( $line =~ m/^[-+${SPACE}]+[${HASH}](?:if|else|endif)/msx ) )  ## Don't modify mask directives
+		        and ( $line !~ m/^[${SPACE}]+[${HASH}]?endif/m )  ## Don't modify #endif lines
+		        and ( substr $line, 1, 0, "${HASH}${SPACE}" );  ## Add #  to match what prepare_shell() removed
 
 		# Make sure not to demand to add empty comment lines with trailing spaces
 		$line =~ s/^([${PLUS}][${HASH}])\s+$/$1/msgx;

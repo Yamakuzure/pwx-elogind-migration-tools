@@ -112,6 +112,9 @@ Command to test `check_tree.pl`:
 - **Empty Lines**: Max 2 consecutive, keep at start of blocks
 
 ### Perl Code Style
+- **NEVER** use postfix `foo unless <condition>`, use `( <condition> ) or foo;` instead.
+- **NEVER** use postfix `foo if <condition>`, use `( <condition> ) and foo;` instead.
+- **ALWAYS** add `m` and `s` options to regular expressions, plus `x` to complex regular expressions.
 - **Pragmas**: Always use `strict` and `warnings FATAL => 'all'`
 - **Error Handling**: Use Carp, Try::Tiny, Readonly
 - **Variable Declarations**: My with explicit scoping
