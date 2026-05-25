@@ -2668,10 +2668,25 @@ sub check_systemd_docs {
 
 		if ( $is_md > 0 ) {
 
-			# For markdown files, remove the block entirely
+			# For markdown files, we need to handle both additions and removals
+			# The systemd additions should be removed
+			# The elogind removals should be neutralized (converted to keep the elogind content)
+			
+			# First, neutralize any removal lines before the systemd additions
+			# Look backwards from the first addition to find related removals
+			# We neutralize ALL consecutive removals, as they're part of the same change block
+			my $search_start = $first_idx - 1;
+			while ( $search_start >= 0 && $lines_ref->[$search_start] =~ m/^[${DASH}]/msx ) {
+				# Neutralize this removal (keep the elogind line)
+				substr( $lines_ref->[$search_start], 0, 1 ) = $SPACE;
+				log_debug( '  Neutralized removal line %d (keeping elogind content)', $search_start + 1 );
+				$search_start--;
+			}
+			
+			# Now remove the systemd addition lines
 			my $removed_count = $last_idx - $first_idx + 1;
 			splice @{$lines_ref}, $first_idx, $removed_count;
-			log_debug( '  Removed %d lines from markdown hunk', $removed_count );
+			log_debug( '  Removed %d systemd addition lines from markdown hunk', $removed_count );
 			$count -= $removed_count;
 		} elsif ( $is_xml > 0 ) {
 
@@ -3813,6 +3828,12 @@ sub is_systemd_only {
 	# Systemd-homed specific concepts that elogind doesn't have
 	( $text =~ m{/var/cache/systemd/home}msx ) and log_debug( '  => non-elogind "%s"', '/var/cache/systemd/home' ) and return 1;
 	( $text =~ m{~/.identity}msx )             and log_debug( '  => non-elogind "%s"', '~/.identity' )             and return 1;
+
+	# Systemd-specific compile-time options that elogind doesn't have
+	( $text =~ m/-Dcompat-mutable-uid-boundaries/msx ) and log_debug( '  => non-elogind "%s"', 'systemd compile option' ) and return 1;
+
+	# Systemd-specific documentation or configuration details
+	( $text =~ m{sysusers[.]d/basic[.]conf}msx ) and log_debug( '  => non-elogind "%s"', 'systemd sysusers config' ) and return 1;
 
 	return 0;
 } ## end sub is_systemd_only
