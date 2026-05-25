@@ -1543,17 +1543,38 @@ sub change_splice_the_undone {
 	# -----------------------------------------------------------------------------------------------------------------
 	my %hSplices = ();
 	foreach my $change ( grep { defined } @{ $pChanges->{'lines'} } ) {
+		( $change->{'spliced'} ) and next;
 		( $change->{'spliceme'} > -1 ) or next;
+
+		if ( $change->{'spliceme'} >= $hHunk->{count} ) {
+			log_warning(
+				"Skipping stale splice request for line %d/%d in %s: '%s'",
+				$change->{'spliceme'} + 1,
+				$hHunk->{count}, $hFile{part}, $change->{'text'}
+			);
+			$change->{'spliceme'} = -1;
+			$change->{'spliced'}  = $TRUE;
+			next;
+		} ## end if ( $change->{'spliceme'...})
+
 		$hSplices{ $change->{'spliceme'} } = 1;
 		log_debug( "Splice line % 3d: '%s'", $change->{'spliceme'} + 1, $change->{'text'} );
-	}
+	} ## end foreach my $change ( grep {...})
 
 	# 2) Loop over the splices and remove them, use reverse order to not get confused
 	# -----------------------------------------------------------------------------------------------------------------
 	for my $l ( reverse sort { $a <=> $b } keys %hSplices ) {
 		splice @{ $hHunk->{lines} }, $l, 1;
 		--$hHunk->{count};
-	}
+
+		foreach my $change ( grep { defined } @{ $pChanges->{'lines'} } ) {
+			( defined $change->{'spliceme'} ) or next;
+			( $change->{'spliceme'} == $l )   or next;
+
+			$change->{'spliceme'} = -1;
+			$change->{'spliced'}  = $TRUE;
+		} ## end foreach my $change ( grep {...})
+	} ## end for my $l ( reverse sort...)
 
 	return 1;
 } ## end sub change_splice_the_undone
@@ -2433,8 +2454,10 @@ sub check_name_revert_postprocessing {
 	log_debug('Post-processing name revert pairs...');
 
 	# Find all done removals and additions
-	my @removals  = grep { defined && $TYPE_REMOVAL == $_->{'type'}  && $_->{'done'} } @{ $pChanges->{'lines'} };
-	my @additions = grep { defined && $TYPE_ADDITION == $_->{'type'} && $_->{'done'} } @{ $pChanges->{'lines'} };
+	my @removals = grep { defined && $TYPE_REMOVAL == $_->{'type'} && $_->{'done'} } @{ $pChanges->{'lines'} };
+
+	my @additions =
+	        grep { defined && $TYPE_ADDITION == $_->{'type'} && $_->{'done'} && !( $_->{'spliced'} ) && ( $_->{'spliceme'} < 0 ) } @{ $pChanges->{'lines'} };
 
 	# Build a map of addition texts to their changes
 	my %add_map = ();
@@ -2449,7 +2472,9 @@ sub check_name_revert_postprocessing {
 		# Look for an identical addition
 		if ( exists $add_map{$rem_text} ) {
 			for my $addition ( @{ $add_map{$rem_text} } ) {
-				next unless defined $addition;  # Skip if already processed
+				( defined $addition ) or next;  # Skip if already processed
+				( $addition->{'spliced'} ) and next;
+				( $addition->{'spliceme'} > -1 ) and next;
 
 				log_debug('  Found identical pair:');
 				log_debug( '    Removal:  %s', $rem_text );
@@ -2458,7 +2483,7 @@ sub check_name_revert_postprocessing {
 				# Neutralize the removal (convert to keep)
 				my $rem_line = $removal->{'line'};
 				if ( defined $hHunk->{lines}[$rem_line] && $hHunk->{lines}[$rem_line] =~ m/^[${DASH}]/msx ) {
-					substr( $hHunk->{lines}[$rem_line], 0, 1 ) = $SPACE;
+					substr $hHunk->{lines}[$rem_line], 0, 1, $SPACE;
 					log_debug( '    Neutralized removal line %d', $rem_line + 1 );
 				}
 
@@ -2474,15 +2499,18 @@ sub check_name_revert_postprocessing {
 	} ## end for my $removal (@removals)
 
 	# Also check for semantically equivalent service names
-	@removals  = grep { defined && $TYPE_REMOVAL == $_->{'type'}  && $_->{'done'} } @{ $pChanges->{'lines'} };
-	@additions = grep { defined && $TYPE_ADDITION == $_->{'type'} && $_->{'done'} } @{ $pChanges->{'lines'} };
+	@removals = grep { defined && $TYPE_REMOVAL == $_->{'type'} && $_->{'done'} } @{ $pChanges->{'lines'} };
+
+	@additions = grep { defined && $TYPE_ADDITION == $_->{'type'} && $_->{'done'} && !( $_->{'spliced'} ) && ( $_->{'spliceme'} < 0 ) } @{ $pChanges->{'lines'} };
 
 	for my $removal (@removals) {
 		for my $addition (@additions) {
-			next unless defined $addition;
+			( defined $addition ) or next;
+			( $addition->{'spliced'} ) and next;
+			( $addition->{'spliceme'} > -1 ) and next;
 
 			# Skip if they're too far apart in the hunk
-			my $distance = abs( $addition->{'line'} - $removal->{'line'} );
+			my $distance = abs $addition->{'line'} - $removal->{'line'};
 			$distance <= 5 or next;
 
 			my $rem_text = $removal->{'text'};
@@ -2497,7 +2525,7 @@ sub check_name_revert_postprocessing {
 				# Neutralize the removal
 				my $rem_line = $removal->{'line'};
 				if ( defined $hHunk->{lines}[$rem_line] && $hHunk->{lines}[$rem_line] =~ m/^[${DASH}]/msx ) {
-					substr( $hHunk->{lines}[$rem_line], 0, 1 ) = $SPACE;
+					substr $hHunk->{lines}[$rem_line], 0, 1, $SPACE;
 					log_debug( '    Neutralized removal line %d', $rem_line + 1 );
 				}
 
@@ -2510,7 +2538,6 @@ sub check_name_revert_postprocessing {
 
 	return 1;
 } ## end sub check_name_revert_postprocessing
-
 ## @brief Checks for and handles __STDC_VERSION__ guards in code hunks.
 #
 #  This function verifies that __STDC_VERSION__ guards are properly handled
@@ -2791,10 +2818,10 @@ sub check_systemd_docs {
 			for my $i ( 0 .. $count - 1 ) {
 				next if $i >= $first_idx && $i <= $last_idx;  # Skip addition lines
 				my $line = $lines_ref->[$i];
-				next unless $line =~ m/^[${DASH}]/msx;
+				( $line =~ m/^[${DASH}]/msx ) or next;
 
-				my $text = substr( $line, 1 );
-				log_debug( '    Line %d: "%s"', $i + 1, substr( $text, 0, 40 ) );
+				my $text = substr $line, 1;
+				log_debug( '    Line %d: "%s"', $i + 1, ( substr $text, 0, 40 ) );
 
 				# Start block if line contains 'elogind'
 				if ( $text =~ m/elogind/msx ) {
@@ -2825,7 +2852,7 @@ sub check_systemd_docs {
 				my $line_ref = \$lines_ref->[$i];
 
 				# Neutralize this removal (keep the line)
-				substr( $$line_ref, 0, 1 ) = $SPACE;
+				substr ${$line_ref}, 0, 1, $SPACE;
 				log_debug( '  Neutralized elogind block line %d', $i + 1 );
 			} ## end for my $i (@elogind_block_lines)
 
@@ -5214,8 +5241,8 @@ sub semantic_equivalent_service_name {
 	# Normalize both texts: remove .service suffix if present
 	my $norm1 = $text1;
 	my $norm2 = $text2;
-	$norm1 =~ s/\.service\b//msgx;
-	$norm2 =~ s/\.service\b//msgx;
+	$norm1 =~ s/[${DOT}]service\b//msgx;
+	$norm2 =~ s/[${DOT}]service\b//msgx;
 
 	# Also handle backtick-quoted names
 	$norm1 =~ s/`//msgx;
