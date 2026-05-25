@@ -16,6 +16,7 @@ talk*.md
 !.opencode/node_modules/.keep_dir
 
 # Test directories for agents to play with. Fill manually
+docs/
 src/
 systemd/
 systemd*.log

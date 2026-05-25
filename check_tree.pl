@@ -945,6 +945,9 @@ sub change_find_alt_text {
 		# systemd-userdbd.service has to be translated to elogind-userdbd
 		$alt =~ s/(?:systemd|elogind)${DASH}userdbd${DOT}service/elogind-userdbd/msgx;
 
+		# systemd-logind.service has to be translated to just elogind
+		$alt =~ s/systemd[-_]logind${DOT}service/elogind/msgx;
+
 		# systemd-sleep.conf is *not* elogind-sleep.conf, but just sleep.conf in elogind
 		$alt =~ s/(?:systemd|elogind)${DASH}(sleep${DOT}conf)/$1/msgx;
 
@@ -2299,7 +2302,9 @@ sub check_name_reverts {
 
 	# early exits:
 	( defined $hHunk ) or return 0;
-	$hHunk->{useful}   or return 0;
+
+	# Note: Don't check $hHunk->{useful} here - post-processing might find pairs to neutralize
+	# $hHunk->{useful}   or return 0;
 
 	log_debug('Checking name reversals elogind->systemd ...');
 
@@ -2394,6 +2399,15 @@ sub check_name_reverts {
 	# ------------------------------------------------------------------------------------------------------------
 	change_splice_the_undone( \%hChanges );
 
+	# Post-processing: Neutralize semantically equivalent pairs after name reverts
+	# This handles cases where name revert creates pairs that are textually different but semantically the same
+	# ------------------------------------------------------------------------------------------------------------
+	check_name_revert_postprocessing( \%hChanges );
+
+	# Splice any lines that were marked for splicing during post-processing
+	# ------------------------------------------------------------------------------------------------------------
+	change_splice_the_undone( \%hChanges );
+
 	# Revert the final mask state remembered above
 	# ------------------------------------------------------------------------------------------------------------
 	$in_mask_block = $hunk_ends_in_mask;
@@ -2401,6 +2415,101 @@ sub check_name_reverts {
 
 	return hunk_is_useful();
 } ## end sub check_name_reverts
+
+## @brief Post-processing after name reverts to neutralize semantically equivalent pairs.
+#
+#  This function handles cases where name reverts create removal/addition pairs that are
+#  textually different but semantically equivalent (e.g., "elogind" vs "elogind.service"
+#  when both refer to the same service).
+#
+#  It also handles cases where identical lines appear as both removal and addition after
+#  name revert (e.g., when only one field in a table row changed).
+#
+#  @param $pChanges Reference to the changes data structure.
+#  @return Returns 1 to indicate successful completion.
+sub check_name_revert_postprocessing {
+	my ($pChanges) = @_;
+
+	log_debug('Post-processing name revert pairs...');
+
+	# Find all done removals and additions
+	my @removals  = grep { defined && $TYPE_REMOVAL == $_->{'type'}  && $_->{'done'} } @{ $pChanges->{'lines'} };
+	my @additions = grep { defined && $TYPE_ADDITION == $_->{'type'} && $_->{'done'} } @{ $pChanges->{'lines'} };
+
+	# Build a map of addition texts to their changes
+	my %add_map = ();
+	for my $add (@additions) {
+		push @{ $add_map{ $add->{'text'} } }, $add;
+	}
+
+	# Check each removal for an identical addition
+	for my $removal (@removals) {
+		my $rem_text = $removal->{'text'};
+
+		# Look for an identical addition
+		if ( exists $add_map{$rem_text} ) {
+			for my $addition ( @{ $add_map{$rem_text} } ) {
+				next unless defined $addition;  # Skip if already processed
+
+				log_debug('  Found identical pair:');
+				log_debug( '    Removal:  %s', $rem_text );
+				log_debug( '    Addition: %s', $addition->{'text'} );
+
+				# Neutralize the removal (convert to keep)
+				my $rem_line = $removal->{'line'};
+				if ( defined $hHunk->{lines}[$rem_line] && $hHunk->{lines}[$rem_line] =~ m/^[${DASH}]/msx ) {
+					substr( $hHunk->{lines}[$rem_line], 0, 1 ) = $SPACE;
+					log_debug( '    Neutralized removal line %d', $rem_line + 1 );
+				}
+
+				# Splice the addition
+				change_remove( $addition, $addition->{'line'} );
+				log_debug( '    Spliced addition line %d', $addition->{'line'} + 1 );
+
+				# Mark addition as processed
+				undef $add_map{$rem_text};
+				last;
+			} ## end for my $addition ( @{ $add_map...})
+		} ## end if ( exists $add_map{$rem_text...})
+	} ## end for my $removal (@removals)
+
+	# Also check for semantically equivalent service names
+	@removals  = grep { defined && $TYPE_REMOVAL == $_->{'type'}  && $_->{'done'} } @{ $pChanges->{'lines'} };
+	@additions = grep { defined && $TYPE_ADDITION == $_->{'type'} && $_->{'done'} } @{ $pChanges->{'lines'} };
+
+	for my $removal (@removals) {
+		for my $addition (@additions) {
+			next unless defined $addition;
+
+			# Skip if they're too far apart in the hunk
+			my $distance = abs( $addition->{'line'} - $removal->{'line'} );
+			$distance <= 5 or next;
+
+			my $rem_text = $removal->{'text'};
+			my $add_text = $addition->{'text'};
+
+			# Check if they're semantically equivalent
+			if ( semantic_equivalent_service_name( $rem_text, $add_text ) ) {
+				log_debug('  Neutralizing semantically equivalent pair:');
+				log_debug( '    Removal:  %s', $rem_text );
+				log_debug( '    Addition: %s', $add_text );
+
+				# Neutralize the removal
+				my $rem_line = $removal->{'line'};
+				if ( defined $hHunk->{lines}[$rem_line] && $hHunk->{lines}[$rem_line] =~ m/^[${DASH}]/msx ) {
+					substr( $hHunk->{lines}[$rem_line], 0, 1 ) = $SPACE;
+					log_debug( '    Neutralized removal line %d', $rem_line + 1 );
+				}
+
+				# Splice the addition
+				change_remove( $addition, $addition->{'line'} );
+				log_debug( '    Spliced addition line %d', $addition->{'line'} + 1 );
+			} ## end if ( semantic_equivalent_service_name...)
+		} ## end for my $addition (@additions)
+	} ## end for my $removal (@removals)
+
+	return 1;
+} ## end sub check_name_revert_postprocessing
 
 ## @brief Checks for and handles __STDC_VERSION__ guards in code hunks.
 #
@@ -2670,19 +2779,56 @@ sub check_systemd_docs {
 
 			# For markdown files, we need to handle both additions and removals
 			# The systemd additions should be removed
-			# The elogind removals should be neutralized (converted to keep the elogind content)
-			
-			# First, neutralize any removal lines before the systemd additions
-			# Look backwards from the first addition to find related removals
-			# We neutralize ALL consecutive removals, as they're part of the same change block
-			my $search_start = $first_idx - 1;
-			while ( $search_start >= 0 && $lines_ref->[$search_start] =~ m/^[${DASH}]/msx ) {
-				# Neutralize this removal (keep the elogind line)
-				substr( $lines_ref->[$search_start], 0, 1 ) = $SPACE;
-				log_debug( '  Neutralized removal line %d (keeping elogind content)', $search_start + 1 );
-				$search_start--;
-			}
-			
+			# Only the elogind TEXT removals should be neutralized (NOT empty lines)
+
+			# Find ALL removal lines that are part of an elogind block
+			# An elogind block starts with a line containing 'elogind' and includes
+			# all consecutive non-empty removal lines
+			my @elogind_block_lines = ();
+			my $in_block            = 0;
+
+			log_debug('  Scanning for elogind blocks...');
+			for my $i ( 0 .. $count - 1 ) {
+				next if $i >= $first_idx && $i <= $last_idx;  # Skip addition lines
+				my $line = $lines_ref->[$i];
+				next unless $line =~ m/^[${DASH}]/msx;
+
+				my $text = substr( $line, 1 );
+				log_debug( '    Line %d: "%s"', $i + 1, substr( $text, 0, 40 ) );
+
+				# Start block if line contains 'elogind'
+				if ( $text =~ m/elogind/msx ) {
+					$in_block = 1;
+					push @elogind_block_lines, $i;
+					log_debug('      => Start elogind block');
+				} elsif ( $in_block > 0 ) {
+
+					# Continue block if line is not empty
+					if ( $text =~ m/\S/msx ) {
+						push @elogind_block_lines, $i;
+						log_debug('      => Continue block');
+					} else {
+
+						# Empty line ends the block
+						$in_block = 0;
+						log_debug('      => End block (empty line)');
+					} ## end else [ if ( $text =~ m/\S/msx)]
+				} ## end elsif ( $in_block > 0 )
+			} ## end for my $i ( 0 .. $count...)
+
+			log_debug( '  Found %d lines in elogind block(s)', scalar @elogind_block_lines );
+
+			# Neutralize all lines in the elogind block(s)
+			for my $i (@elogind_block_lines) {
+
+				# Get a reference to the array element, not a copy
+				my $line_ref = \$lines_ref->[$i];
+
+				# Neutralize this removal (keep the line)
+				substr( $$line_ref, 0, 1 ) = $SPACE;
+				log_debug( '  Neutralized elogind block line %d', $i + 1 );
+			} ## end for my $i (@elogind_block_lines)
+
 			# Now remove the systemd addition lines
 			my $removed_count = $last_idx - $first_idx + 1;
 			splice @{$lines_ref}, $first_idx, $removed_count;
@@ -3828,6 +3974,9 @@ sub is_systemd_only {
 	# Systemd-homed specific concepts that elogind doesn't have
 	( $text =~ m{/var/cache/systemd/home}msx ) and log_debug( '  => non-elogind "%s"', '/var/cache/systemd/home' ) and return 1;
 	( $text =~ m{~/.identity}msx )             and log_debug( '  => non-elogind "%s"', '~/.identity' )             and return 1;
+
+	# Systemd-specific service names that elogind doesn't use
+	( $text =~ m{systemd-logind[.]service}msx ) and log_debug( '  => non-elogind "%s"', 'systemd-logind.service' ) and return 1;
 
 	# Systemd-specific compile-time options that elogind doesn't have
 	( $text =~ m/-Dcompat-mutable-uid-boundaries/msx ) and log_debug( '  => non-elogind "%s"', 'systemd compile option' ) and return 1;
@@ -5023,11 +5172,11 @@ sub refactor_hunks {
 		check_blanks() or next;
 
 		# === 7) Remove systemd-only blocks from markdown files ==========
-		check_systemd_docs() or next;
+		check_systemd_docs();
 
 		# === 8) Check for 'elogind' => 'systemd' reverts =================
 		%hProtected = ();
-		check_name_reverts() or next;
+		check_name_reverts();
 
 		# === 9) Check for elogind_*() function removals ==================
 		check_func_removes() or next;
@@ -5050,6 +5199,31 @@ sub refactor_hunks {
 
 	return 1;
 } ## end sub refactor_hunks
+
+## @brief Checks if two texts are semantically equivalent service names.
+#
+#  This function checks if two texts refer to the same service, accounting for
+#  variations like "elogind" vs "elogind.service" or "systemd" vs "systemd.service".
+#
+#  @param $text1 First text to compare.
+#  @param $text2 Second text to compare.
+#  @return Returns 1 if semantically equivalent, 0 otherwise.
+sub semantic_equivalent_service_name {
+	my ( $text1, $text2 ) = @_;
+
+	# Normalize both texts: remove .service suffix if present
+	my $norm1 = $text1;
+	my $norm2 = $text2;
+	$norm1 =~ s/\.service\b//msgx;
+	$norm2 =~ s/\.service\b//msgx;
+
+	# Also handle backtick-quoted names
+	$norm1 =~ s/`//msgx;
+	$norm2 =~ s/`//msgx;
+
+	# Check if normalized texts are equal
+	return ( $norm1 eq $norm2 ) ? 1 : 0;
+} ## end sub semantic_equivalent_service_name
 
 sub set_log_file {
 	my ($name) = @_;

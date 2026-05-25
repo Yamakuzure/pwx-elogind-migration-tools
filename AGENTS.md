@@ -114,7 +114,13 @@ Command to test `check_tree.pl`:
 ### Perl Code Style
 - **NEVER** use postfix `foo unless <condition>`, use `( <condition> ) or foo;` instead.
 - **NEVER** use postfix `foo if <condition>`, use `( <condition> ) and foo;` instead.
+- **NEVER** use parantheses on builtin functions, use encasement instead. Example:
+
+  **WRONG**: `printf( "%s\n", substr( $foo, 2, 3 ) );`
+
+  **CORRECT**: `printf "%s\m", ( substr $foo, 2, 3 );`
 - **ALWAYS** add `m` and `s` options to regular expressions, plus `x` to complex regular expressions.
+- **ONLY** use double quote (") for strings needing interpolation, **ALWAYS** use single quote (') otherwise.
 - **Pragmas**: Always use `strict` and `warnings FATAL => 'all'`
 - **Error Handling**: Use Carp, Try::Tiny, Readonly
 - **Variable Declarations**: My with explicit scoping
