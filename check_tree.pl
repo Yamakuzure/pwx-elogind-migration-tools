@@ -294,6 +294,7 @@ sub check_musl;          # Check for musl_libc compatibility blocks
 sub check_name_reverts;  # Check for attempts to revert 'elogind' to 'systemd'
 sub check_stdc_version;  # Check for removal of a dfined(__STDC_VERSION) guard
 sub check_sym_lines;     # Check for attempts to uncomment unsupported API functions in .sym files.
+sub check_systemd_docs;  # Remove systemd-only blocks from markdown hunks
 sub check_useless;       # Check for useless updates that do nothing.
 sub checkout_upstream;   # Checkout the given refid on $upstream_path
 sub clean_hFile;         # Completely clean up the current %hFile data structure.
@@ -818,6 +819,14 @@ sub change_check_solo_changes {
 
 		if ( $TYPE_ADDITION == $change->{'type'} ) {
 
+			# Check if this is systemd-only content that should be spliced out
+			if ( is_systemd_only( $change->{'text'} ) || $change->{'text'} =~ m{freedesktop[.]org/software/systemd/man}msx ) {
+				log_debug('     => Splicing systemd-only addition in solo check');
+				change_remove( $change, $change->{'line'} );
+				change_mark_as_done($change);
+				next;
+			} ## end if ( is_systemd_only( ...))
+
 			# Replace the non-protected systemd phrases with our elogind alternative.
 			if ( ( ( length $change->{'alttxt'} ) > 0 ) && ( $change->{'systemd'} > 0 ) ) {
 				log_debug( "     => Replacing '%s'", $change->{'text'} );
@@ -1090,7 +1099,7 @@ sub change_handle_additions {
 		( $change->{'line'} > $partner->{'line'} ) or next; ## change_handle_removals() takes care of forward removals.
 
 		log_debug( "DEBUG: change->{'line'}=%d, partner->{'line'}=%d, diff=%d", $change->{'line'}, $partner->{'line'}, $change->{'line'} - $partner->{'line'} );
-		log_debug( "DEBUG: change->{'systemd'}=%d, change->{'text'}='%s'", $change->{'systemd'}, substr( $change->{'text'}, 0, 50 ) );
+		log_debug( "DEBUG: change->{'systemd'}=%d, change->{'text'}='%s'", $change->{'systemd'}, ( substr $change->{'text'}, 0, 50 ) );
 
 		# If they are direct renames, undo them if they go from elogind to systemd, but accept if it is the other way round
 		if ( $change->{'line'} == ( $partner->{'line'} + 1 ) ) {
@@ -1119,7 +1128,19 @@ sub change_handle_additions {
 
 			# Only apply name reversal if not within an elogind mask block
 			if ( !$change->{'masked'} ) {
-				change_is_protected_text( $change->{'text'}, $change->{'iscomment'} ) or change_use_alt($change);
+
+				# Check if this is systemd-only content that should be spliced out
+				if ( is_systemd_only( $change->{'text'} ) ) {
+					log_debug('     => Splicing systemd-only addition');
+					change_remove( $change, $i );
+				} elsif ( $change->{'text'} =~ m{freedesktop[.]org/software/systemd/man}msx ) {
+
+					# Systemd documentation URLs should be spliced out - they replace elogind docs
+					log_debug('     => Splicing systemd documentation URL addition');
+					change_remove( $change, $i );
+				} else {
+					change_is_protected_text( $change->{'text'}, $change->{'iscomment'} ) or change_use_alt($change);
+				}
 			} else {
 
 				# If in a mask block, we must ensure the mask contains the ORIGINAL systemd code.
@@ -1128,8 +1149,13 @@ sub change_handle_additions {
 				# We do NOT change the lines here; instead, we let the diff show the correction.
 				# The removal has "elogind" (wrong), the addition has "systemd" (correct).
 				# By marking as done without modification, the diff will show the fix.
-			}
-		} ## end if ( $TRUE == $change->...)
+			} ## end else [ if ( !$change->{'masked'...})]
+		} elsif ( $change->{'text'} =~ m{freedesktop[.]org/software/systemd/man}msx ) {
+
+			# Handle systemd documentation URLs even if systemd flag is not set
+			log_debug('     => Splicing systemd documentation URL (no systemd flag)');
+			change_remove( $change, $i );
+		} ## end elsif ( $change->{'text'}...)
 		change_mark_as_done($change);
 	} ## end for my $i ( 0 .. $#{$lines_ref...})
 
@@ -1177,11 +1203,55 @@ sub change_handle_false_positives {
 			change_mark_as_done($change) and next;
 		} ## end if ( ( $text =~ m/github[${DOT}]com[${SLASH}]systemd/msx...))
 
+		# 1b) Systemd documentation URLs that replace elogind docs should be spliced out
+		if ( $text =~ m{freedesktop[.]org/software/systemd/man}msx ) {
+			log_debug('     => Splicing systemd documentation URL addition');
+			change_remove( $change, $change->{'line'} );
+			change_mark_as_done($change);
+			next;
+		} ## end if ( $text =~ m{freedesktop[.]org/software/systemd/man}msx)
+
+		# 1c) Systemd-only content (like systemd-homed) should be spliced out
+		# This is now handled by check_systemd_docs() for markdown files
+		# and by block-level detection for XML files.
+
 		# 2) Several words/paths/phrases are protected
 		change_is_protected_text( $text, $change->{'iscomment'} ) and change_mark_as_done($change) and next;
 
 		# Also the gettext domain is always "systemd", and varlink works via io.systemd domain.
 		( ( $text =~ m/gettext-domain="systemd/msx ) || ( $text =~ m/io[.]systemd/msx ) ) and change_mark_as_done($change) and next;
+
+		# 3) Additions with systemd-only content (like systemd-homed) that replace elogind content should be spliced out
+		#    These are typically blocks that exist in systemd but not in elogind
+		if ( is_systemd_only($text) ) {
+			log_debug('     => Splicing systemd-only addition');
+			change_remove( $change, $change->{'line'} );
+			change_mark_as_done($change);
+			next;
+		} ## end if ( is_systemd_only($text...))
+
+		# 4) Additions containing freedesktop.org/software/systemd URLs without a matching elogind partner
+		#    should be spliced out. These are systemd documentation links that replace elogind links.
+		if ( $text =~ m{freedesktop[.]org/software/systemd}msx ) {
+			log_debug( "Found systemd URL addition: '%s'", ( substr $text, 0, 50 ) );
+			my $partner = $change->{'partner'};
+
+			# If there's no partner or the partner doesn't contain elogind documentation links, splice this out
+			if ( !( defined $partner ) ) {
+				log_debug('     => No partner, splicing systemd documentation URL addition');
+				change_remove( $change, $change->{'line'} );
+				change_mark_as_done($change);
+				next;
+			} ## end if ( !( defined $partner...))
+			my $partner_text = $partner->{'text'} // $EMPTY;
+			log_debug( "     => Partner text: '%s'", ( substr $partner_text, 0, 50 ) );
+			if ( $partner_text !~ m{file:///usr/share/doc/elogind}msx ) {
+				log_debug('     => Partner is not elogind doc link, splicing');
+				change_remove( $change, $change->{'line'} );
+				change_mark_as_done($change);
+				next;
+			} ## end if ( $partner_text !~ ...)
+		} ## end if ( $text =~ m{freedesktop[.]org/software/systemd}msx)
 	} ## end foreach my $change ( grep {...})
 
 	return 1;
@@ -2515,6 +2585,128 @@ sub check_sym_lines {
 	return hunk_is_useful();
 } ## end sub check_sym_lines
 
+## @brief Removes systemd-only blocks from markdown file hunks.
+#
+#  This subroutine scans hunk lines for contiguous blocks of additions that contain
+#  systemd-only content. When found, the entire block (including non-systemd lines
+#  between systemd lines) is removed from the hunk entirely.
+#
+#  For XML files, the blocks are masked with elogind-style mask blocks instead.
+#
+#  @return Returns 1 to indicate successful completion.
+sub check_systemd_docs {
+
+	# Only process markdown and XML files
+	my $is_md  = ( $hFile{part} =~ m/[${DOT}]md$/msx ) ? 1 : 0;
+	my $is_xml = $hFile{is_xml};
+	( $is_md || $is_xml ) or return 1;
+
+	log_debug( 'Checking for systemd-only blocks in %s hunk', $is_md ? 'markdown' : 'XML' );
+
+	my $lines_ref = $hHunk->{lines};
+	my $count     = $hHunk->{count};
+
+	# Find all addition lines that contain systemd-only content
+	my @systemd_adds = ();
+	for my $i ( 0 .. $count - 1 ) {
+		my $line = $lines_ref->[$i];
+
+		# Only check addition lines
+		if ( $line =~ m/^[${PLUS}]/msx ) {
+			my $text = substr $line, 1;  # Remove the + prefix
+			if ( is_systemd_only($text) || ( $text =~ m{freedesktop[.]org/software/systemd}msx ) ) {
+				push @systemd_adds, $i;
+			}
+		} ## end if ( $line =~ m/^[${PLUS}]/msx)
+	} ## end for my $i ( 0 .. $count...)
+
+	# Need at least one systemd-only addition
+	( scalar @systemd_adds > 0 ) or return 1;
+
+	# Group systemd additions into blocks (within 10 lines of each other)
+	my @blocks        = ();
+	my $current_block = [ $systemd_adds[0] ];
+
+	for my $i ( 1 .. $#systemd_adds ) {
+		my $gap = $systemd_adds[$i] - $systemd_adds[ $i - 1 ];
+		if ( $gap <= 10 ) {
+			push @{$current_block}, $systemd_adds[$i];
+		} else {
+			push @blocks, $current_block;
+			$current_block = [ $systemd_adds[$i] ];
+		}
+	} ## end for my $i ( 1 .. $#systemd_adds)
+	push @blocks, $current_block;
+
+	# Process each block IN REVERSE ORDER to maintain indices
+	for my $block ( reverse @blocks ) {
+		my $first_sys_idx = $block->[0];
+		my $last_sys_idx  = $block->[-1];
+
+		# Expand the block to include ALL additions between first and last systemd line
+		my $first_idx = $first_sys_idx;
+		my $last_idx  = $last_sys_idx;
+
+		# Expand backwards to include any preceding additions
+		while ( $first_idx > 0 && $lines_ref->[ $first_idx - 1 ] =~ m/^[${PLUS}]/msx ) {
+			$first_idx--;
+		}
+
+		# Expand forwards to include any following additions
+		while ( $last_idx < $count - 1 && $lines_ref->[ $last_idx + 1 ] =~ m/^[${PLUS}]/msx ) {
+			$last_idx++;
+		}
+
+		log_debug(
+			'Processing systemd block from line %d to %d (%d lines, systemd markers: %d-%d)',
+			$first_idx + 1,
+			$last_idx + 1,
+			$last_idx - $first_idx + 1,
+			$first_sys_idx + 1,
+			$last_sys_idx + 1
+		);
+
+		if ( $is_md > 0 ) {
+
+			# For markdown files, remove the block entirely
+			my $removed_count = $last_idx - $first_idx + 1;
+			splice @{$lines_ref}, $first_idx, $removed_count;
+			log_debug( '  Removed %d lines from markdown hunk', $removed_count );
+			$count -= $removed_count;
+		} elsif ( $is_xml > 0 ) {
+
+			# For XML files, wrap the block in elogind mask
+			# Convert additions to masked lines
+			for my $i ( $first_idx .. $last_idx ) {
+				my $line = $lines_ref->[$i];
+				if ( $line =~ m/^[${PLUS}]/msx ) {
+
+					# Convert + to - and add mask comment
+					substr $line, 0, 1, $DASH;
+					log_debug( "  Masking XML line %d: '%s'", $i + 1, ( substr $line, 1, 50 ) );
+				} ## end if ( $line =~ m/^[${PLUS}]/msx)
+			} ## end for my $i ( $first_idx ...)
+
+			# Add mask start before the block
+			my $mask_start = '-#if 0 // elogind: systemd-only content';
+			splice @{$lines_ref}, $first_idx, 0, $mask_start;
+
+			# Add mask end after the block
+			my $mask_end = '-#endif // 0';
+			splice @{$lines_ref}, $last_idx + 2, 0, $mask_end;  # +2 because we added the start line
+
+			log_debug( '  Wrapped %d lines in XML mask block', $last_idx - $first_idx + 1 );
+			$count += 2;                                        # Added two mask lines
+		} ## end elsif ( $is_xml > 0 )
+	} ## end for my $block ( reverse...)
+
+	# Update hunk count
+	$hHunk->{count} = scalar @{$lines_ref};
+	log_debug( 'Hunk now has %d lines', $hHunk->{count} );
+
+	return hunk_is_useful();
+} ## end sub check_systemd_docs
+
 ## @brief Checks for and removes useless updates in a hunk.
 #
 #  This function identifies hunks that perform no actual changes, such as
@@ -3607,7 +3799,8 @@ sub is_systemd_only {
 	my ($text)          = @_;
 	my $systemd_daemon  = q{home|import|journal|network|oom|passwor|udev};
 	my $systemd_keyword = q{NR_[\{]|devel[/]};
-	my $systemd_product = q{analyze|creds|cryptsetup|export|firstboot|fsck|home|import-fs|mountwork|nspawn|quotacheck|repart|nsresourcework|syscfg|sysusers|tmpfiles|vmspawn};
+	my $systemd_product =
+	        q{analyze|creds|cryptsetup|export|firstboot|fsck|home|import-fs|mountwork|nspawn|quotacheck|repart|nsresourcework|syscfg|sysusers|tmpfiles|vmspawn};
 
 	( $text =~ m/systemd[-_]($systemd_daemon)d/msx )  and log_debug( '  => non-elogind %s', 'systemd daemon' )  and return 1;
 	( $text =~ m/systemd[-_]($systemd_keyword)/msx )  and log_debug( '  => non-elogind %s', 'systemd keyword' ) and return 1;
@@ -3616,6 +3809,10 @@ sub is_systemd_only {
 
 	# Special wordings that have to remain untouched
 	( $text =~ m/systemd\s+[${DASH}]{2}user/msx ) and log_debug( '  => non-elogind "%s"', 'systemd --user' ) and return 1;
+
+	# Systemd-homed specific concepts that elogind doesn't have
+	( $text =~ m{/var/cache/systemd/home}msx ) and log_debug( '  => non-elogind "%s"', '/var/cache/systemd/home' ) and return 1;
+	( $text =~ m{~/.identity}msx )             and log_debug( '  => non-elogind "%s"', '~/.identity' )             and return 1;
 
 	return 0;
 } ## end sub is_systemd_only
@@ -4470,9 +4667,9 @@ sub unprepare_shell {
 	# 1. Lines before #endif // 0 that are removals (-) are likely in a mask block
 	# 2. Once we see #else // 0, lines after it are in the else block (not masked)
 	my @in_mask_block = ();
-	my $saw_endif    = 0;
-	my $saw_else     = 0;
-	my $endif_line   = -1;
+	my $saw_endif     = 0;
+	my $saw_else      = 0;
+	my $endif_line    = -1;
 
 	# First pass: find #endif and #else positions
 	for my $i ( 0 .. $#lIn ) {
@@ -4484,7 +4681,7 @@ sub unprepare_shell {
 		if ( is_mask_else($line) && !$saw_else ) {
 			$saw_else = 1;
 		}
-	}
+	} ## end for my $i ( 0 .. $#lIn )
 
 	# Second pass: determine mask membership for each line
 	$is_block = 0;
@@ -4494,11 +4691,11 @@ sub unprepare_shell {
 
 		# Handle explicit mask markers
 		if ( $line =~ m/[${HASH}]\s+masked_(?:start|end)\s+([01])$/msx ) {
-			$1 and $is_block = 1 or $is_block = 0;
-			$is_block and $is_else = 0;
+			$1        and $is_block = 1 or $is_block = 0;
+			$is_block and $is_else  = 0;
 			$in_mask_block[$i] = 0; ## marker line, not content
 			next;
-		}
+		} ## end if ( $line =~ m/[${HASH}]\s+masked_(?:start|end)\s+([01])$/msx)
 
 		# Update state based on mask directives in the content
 		if ( is_mask_start($line) ) {
@@ -4517,13 +4714,14 @@ sub unprepare_shell {
 		if ( $is_block && !$is_else ) {
 			$in_mask_block[$i] = 1;
 		} elsif ( $saw_endif && !$saw_else && $i < $endif_line ) {
+
 			# Infer: if we'll see #endif later and haven't seen #else,
 			# all lines before #endif are in the mask block (both context and changes)
 			$in_mask_block[$i] = 1;
 		} else {
 			$in_mask_block[$i] = 0;
 		}
-	}
+	} ## end for my $i ( 0 .. $#lIn )
 
 	# Reset state for actual processing
 	$is_block = 0;
@@ -4547,15 +4745,15 @@ sub unprepare_shell {
 		my $in_mask = $in_mask_block[$i] || ( $is_block && !$is_else );
 		$in_mask
 		        and $ATAT ne ( substr $line, 0, 2 )
-		        and ( $line !~ m/^[+-]{3}\s/m )  ## Don't modify file header lines (--- or +++)
-		        and ( !( $line =~ m/^[-+${SPACE}]+[${HASH}](?:if|else|endif)/msx ) )  ## Don't modify mask directives
-		        and ( $line !~ m/^[${SPACE}]+[${HASH}]?endif/m )  ## Don't modify #endif lines
-		        and ( substr $line, 1, 0, "${HASH}${SPACE}" );  ## Add #  to match what prepare_shell() removed
+		        and ( $line !~ m/^[+-]{3}\s/ms ) ## Don't modify file header lines (--- or +++)
+		        and ( !( $line =~ m/^[-+${SPACE}]+[${HASH}](?:if|else|endif)/msx ) ) ## Don't modify mask directives
+		        and ( $line !~ m/^[${SPACE}]+[${HASH}]?endif/msx ) ## Don't modify #endif lines
+		        and ( substr $line, 1, 0, "${HASH}${SPACE}" ); ## Add #  to match what prepare_shell() removed
 
 		# Make sure not to demand to add empty comment lines with trailing spaces
 		$line =~ s/^([${PLUS}][${HASH}])\s+$/$1/msgx;
 		push @{ $hFile{output} }, $line;
-	} ## end for my $line (@lIn)
+	} ## end for my $i ( 0 .. $#lIn )
 
 	# Now source is the written back original:
 	$hFile{source} = $out;
@@ -4803,25 +5001,28 @@ sub refactor_hunks {
 		# === 6) Check for useful blank line additions ====================
 		check_blanks() or next;
 
-		# === 7) Check for 'elogind' => 'systemd' reverts =================
+		# === 7) Remove systemd-only blocks from markdown files ==========
+		check_systemd_docs() or next;
+
+		# === 8) Check for 'elogind' => 'systemd' reverts =================
 		%hProtected = ();
 		check_name_reverts() or next;
 
-		# === 8) Check for elogind_*() function removals ==================
+		# === 9) Check for elogind_*() function removals ==================
 		check_func_removes() or next;
 
-		# === 9) Check for elogind extra comments and information =========
+		# === 10) Check for elogind extra comments and information =========
 		check_comments() or next;
 
-		# === 10) Check for any useless changes that do nothing ============
+		# === 11) Check for any useless changes that do nothing ============
 		check_useless() or next;
 
-		# === 11) Check for empty masks that guard nothing any more =======
+		# === 12) Check for empty masks that guard nothing any more =======
 		check_empty_masks() or next;
 
 		#  ===> IMPORTANT: From here on no more pruning, lines must *NOT* change any more! <===
 
-		# === 11) Analyze includes and note their appearance in $hIncs =====
+		# === 13) Analyze includes and note their appearance in $hIncs =====
 		read_includes(); ## Never fails, doesn't change anything.
 
 	} ## end for my $pos ( 0 .. $hFile...)
