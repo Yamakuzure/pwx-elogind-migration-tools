@@ -1562,6 +1562,7 @@ sub change_splice_the_undone {
 	} ## end foreach my $change ( grep {...})
 
 	# 2) Loop over the splices and remove them, use reverse order to not get confused
+	#    Also update all line indices in change objects to keep them in sync
 	# -----------------------------------------------------------------------------------------------------------------
 	for my $l ( reverse sort { $a <=> $b } keys %hSplices ) {
 		splice @{ $hHunk->{lines} }, $l, 1;
@@ -1573,6 +1574,14 @@ sub change_splice_the_undone {
 
 			$change->{'spliceme'} = -1;
 			$change->{'spliced'}  = $TRUE;
+		} ## end foreach my $change ( grep {...})
+
+		# Update all line indices for changes that come after the spliced line
+		foreach my $change ( grep { defined } @{ $pChanges->{'lines'} } ) {
+			( defined $change )           or next;
+			( defined $change->{'line'} ) or next;
+			( $change->{'line'} > $l )    or next;
+			$change->{'line'} = $change->{'line'} - 1;
 		} ## end foreach my $change ( grep {...})
 	} ## end for my $l ( reverse sort...)
 
@@ -2453,6 +2462,12 @@ sub check_name_revert_postprocessing {
 
 	log_debug('Post-processing name revert pairs...');
 
+	# Collect all neutralization operations first to avoid index shifting issues
+	my @neutralize_removals = ();  # List of line numbers to neutralize
+	my @splice_additions    = ();  # List of line numbers to splice
+	my %processed_removals  = ();  # Track processed removals by line number
+	my %processed_additions = ();  # Track processed additions by line number
+
 	# Find all done removals and additions
 	my @removals = grep { defined && $TYPE_REMOVAL == $_->{'type'} && $_->{'done'} } @{ $pChanges->{'lines'} };
 
@@ -2468,6 +2483,10 @@ sub check_name_revert_postprocessing {
 	# Check each removal for an identical addition
 	for my $removal (@removals) {
 		my $rem_text = $removal->{'text'};
+		my $rem_line = $removal->{'line'};
+
+		# Skip if already processed
+		$processed_removals{$rem_line} and next;
 
 		# Look for an identical addition
 		if ( exists $add_map{$rem_text} ) {
@@ -2476,41 +2495,41 @@ sub check_name_revert_postprocessing {
 				( $addition->{'spliced'} ) and next;
 				( $addition->{'spliceme'} > -1 ) and next;
 
+				my $add_line = $addition->{'line'};
+				$processed_additions{$add_line} and next;
+
 				log_debug('  Found identical pair:');
 				log_debug( '    Removal:  %s', $rem_text );
 				log_debug( '    Addition: %s', $addition->{'text'} );
 
-				# Neutralize the removal (convert to keep)
-				my $rem_line = $removal->{'line'};
-				if ( defined $hHunk->{lines}[$rem_line] && $hHunk->{lines}[$rem_line] =~ m/^[${DASH}]/msx ) {
-					substr $hHunk->{lines}[$rem_line], 0, 1, $SPACE;
-					log_debug( '    Neutralized removal line %d', $rem_line + 1 );
-				}
+				# Collect for batch processing
+				push @neutralize_removals, $rem_line;
+				push @splice_additions,    $add_line;
 
-				# Splice the addition
-				change_remove( $addition, $addition->{'line'} );
-				log_debug( '    Spliced addition line %d', $addition->{'line'} + 1 );
+				# Mark as processed
+				$processed_removals{$rem_line}  = 1;
+				$processed_additions{$add_line} = 1;
 
-				# Mark addition as processed
-				undef $add_map{$rem_text};
 				last;
 			} ## end for my $addition ( @{ $add_map...})
 		} ## end if ( exists $add_map{$rem_text...})
 	} ## end for my $removal (@removals)
 
 	# Also check for semantically equivalent service names
-	@removals = grep { defined && $TYPE_REMOVAL == $_->{'type'} && $_->{'done'} } @{ $pChanges->{'lines'} };
-
-	@additions = grep { defined && $TYPE_ADDITION == $_->{'type'} && $_->{'done'} && !( $_->{'spliced'} ) && ( $_->{'spliceme'} < 0 ) } @{ $pChanges->{'lines'} };
-
 	for my $removal (@removals) {
+		my $rem_line = $removal->{'line'};
+		$processed_removals{$rem_line} and next;
+
 		for my $addition (@additions) {
 			( defined $addition ) or next;
 			( $addition->{'spliced'} ) and next;
 			( $addition->{'spliceme'} > -1 ) and next;
 
+			my $add_line = $addition->{'line'};
+			$processed_additions{$add_line} and next;
+
 			# Skip if they're too far apart in the hunk
-			my $distance = abs $addition->{'line'} - $removal->{'line'};
+			my $distance = abs $add_line - $rem_line;
 			$distance <= 5 or next;
 
 			my $rem_text = $removal->{'text'};
@@ -2522,19 +2541,31 @@ sub check_name_revert_postprocessing {
 				log_debug( '    Removal:  %s', $rem_text );
 				log_debug( '    Addition: %s', $add_text );
 
-				# Neutralize the removal
-				my $rem_line = $removal->{'line'};
-				if ( defined $hHunk->{lines}[$rem_line] && $hHunk->{lines}[$rem_line] =~ m/^[${DASH}]/msx ) {
-					substr $hHunk->{lines}[$rem_line], 0, 1, $SPACE;
-					log_debug( '    Neutralized removal line %d', $rem_line + 1 );
-				}
+				# Collect for batch processing
+				push @neutralize_removals, $rem_line;
+				push @splice_additions,    $add_line;
 
-				# Splice the addition
-				change_remove( $addition, $addition->{'line'} );
-				log_debug( '    Spliced addition line %d', $addition->{'line'} + 1 );
+				# Mark as processed
+				$processed_removals{$rem_line}  = 1;
+				$processed_additions{$add_line} = 1;
 			} ## end if ( semantic_equivalent_service_name...)
 		} ## end for my $addition (@additions)
 	} ## end for my $removal (@removals)
+
+	# Apply all neutralizations first (these don't affect line indices)
+	for my $rem_line (@neutralize_removals) {
+		if ( defined $hHunk->{lines}[$rem_line] && $hHunk->{lines}[$rem_line] =~ m/^[${DASH}]/msx ) {
+			substr $hHunk->{lines}[$rem_line], 0, 1, $SPACE;
+			log_debug( '    Neutralized removal line %d', $rem_line + 1 );
+		}
+	} ## end for my $rem_line (@neutralize_removals)
+
+	# Apply all splices in reverse order to handle index shifts correctly
+	for my $add_line ( reverse sort { $a <=> $b } @splice_additions ) {
+		log_debug( '    Splicing addition line %d', $add_line + 1 );
+		splice @{ $hHunk->{lines} }, $add_line, 1;
+		--$hHunk->{count};
+	}
 
 	return 1;
 } ## end sub check_name_revert_postprocessing
