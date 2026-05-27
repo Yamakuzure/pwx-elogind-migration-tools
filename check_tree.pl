@@ -203,6 +203,7 @@ my @only_here       = ();      # List of files that do not exist in $upstream_pa
 my $previous_commit = $EMPTY;  # Store current upstream state, so we can revert afterwards.
 my $show_help       = 0;
 my @source_files    = ();      # Final file list to process, generated in in generate_file_list().
+my $source_dir      = $EMPTY;  # Resolved source directory path
 my $upstream_path   = $EMPTY;
 my $wanted_commit   = $EMPTY;
 my @wanted_files    = ();      # User given file list (if any) to limit generate_file_list()
@@ -281,12 +282,14 @@ my @lFails = ();
 # ===     ==> -------    Argument handling     ------- <==     ===
 # ================================================================
 my $podmsg          = "\telogind git tree checker\n";
+my $source_path     = $EMPTY;                         # Optional source tree path, defaults to ./src
 my %program_options = (
 	'help|h+'      => \$show_help,
 	'debug'        => \$do_debug,
 	'commit|c=s'   => \$wanted_commit,
 	'create'       => \$do_create,
 	'file|f=s'     => \@wanted_files,
+	'source|s=s'   => \$source_path,
 	'stay'         => \$do_stay,
 	'upstream|u=s' => \$upstream_path
 );
@@ -299,7 +302,8 @@ $show_help > 0 and pod2usage( { -exitval => 0, -verbose => 1, -noperldoc => 1 } 
 # ===        ==> --------    Prechecks     -------- <==        ===
 # ================================================================
 
-do_prechecks() or pod2usage( { -exitval => 3, -verbose => 2, -noperldoc => 1 } );
+resolve_source_dir() or pod2usage( { -message => "Invalid source directory\n", -exitval => 3, -verbose   => 0 } );
+do_prechecks()       or pod2usage( { -exitval => 3,                            -verbose => 2, -noperldoc => 1 } );
 set_log_file( basename($upstream_path) );
 log_status('Program Start');
 if ( ( length $wanted_commit ) > 0 ) {
@@ -495,7 +499,7 @@ sub build_hFile {
 		part    => "$part",
 		patch   => "$PROGDIR/patches/${patch}.patch",
 		pwxfile => 0,
-		source  => "$WORKDIR/$part",
+		source  => ( length $source_dir ) > 0 ? "$source_dir/$part" : "$WORKDIR/$part",
 		target  => "$tgt"
 	);
 
@@ -3252,6 +3256,55 @@ sub diff_hFile {
 	return 1;
 } ## end sub diff_hFile
 
+## @brief Resolves and validates the source directory path.
+#
+#  This subroutine processes the --source command line parameter to determine
+#  the correct source directory. It handles two cases:
+#  1. If --source points to a directory containing /src, it uses that base path
+#  2. If --source already points to the src directory, it uses the parent as base
+#  3. If --source is not provided, it defaults to ./src
+#
+#  @return Returns 1 on success, 0 if the directory is invalid
+sub resolve_source_dir {
+
+	# If no source path provided, use default ./
+	if ( !( defined $source_path ) || ( length $source_path ) == 0 ) {
+		$source_dir = $DOT;
+		return 1;
+	}
+
+	# Check if the provided path exists
+	if ( -d $source_path ) {
+
+		# Path exists, check if it contains a src subdirectory
+		if ( -d "$source_path/src" ) {
+
+			# Use the base directory (generate_file_list will append /src)
+			$source_dir = $source_path;
+			return 1;
+		} elsif ( $source_path =~ m/[$SLASH]src$/ms ) {
+
+			# Path already ends with /src, use the parent directory
+			$source_dir = $source_path;
+			$source_dir =~ s/[$SLASH]$//ms;
+			return 1;
+		} else {
+
+			# Directory exists but doesn't contain src and doesn't end with src
+			# Try to use it as-is if it looks like a source directory
+			if ( -f "$source_path/meson.build" || -f "$source_path/Makefile" || -f "$source_path/check_tree.pl" ) {
+				$source_dir = $source_path;
+				return 1;
+			}
+			log_error( "Source directory '%s' does not contain a src subdirectory", $source_path );
+			return 0;
+		} ## end else [ if ( -d "$source_path/src")]
+	} ## end if ( -d $source_path )
+
+	log_error( "Source directory '%s' does not exist", $source_path );
+	return 0;
+} ## end sub resolve_source_dir
+
 ## @brief Performs pre-checks for the tree operation.
 #
 #  This subroutine validates the command-line options and file arguments before proceeding
@@ -3517,16 +3570,18 @@ sub generate_file_list {
 	# in all legal directories this program allows. Checking against
 	# the built %hWanted ensures that a user provided list of files
 	# is heeded.
+	# Use the resolved source directory if provided, otherwise search in current directory
+	my $search_base = ( length $source_dir ) > 0 ? $source_dir : $DOT;
 	for my $xDir ( 'doc', 'docs', 'factory', 'm4', 'man', 'po', 'shell-completion', 'src', 'tools' ) {
-		if ( -d "$xDir" ) {
-			find( \&wanted, "$xDir" );
+		if ( -d "$search_base/$xDir" ) {
+			find( \&wanted, "$search_base/$xDir" );
 		}
 	}
 
 	# There are a few root files we need to check, too
 	for my $xFile ( 'configure', 'Makefile', 'meson.build', 'meson_options.txt' ) {
-		if ( -f "$xFile" ) {
-			find( \&wanted, "$xFile" );
+		if ( -f "$search_base/$xFile" ) {
+			find( \&wanted, "$search_base/$xFile" );
 		}
 	}
 
@@ -5728,13 +5783,18 @@ sub wanted {
 	my $f         = $File::Find::name;
 	my $is_wanted = 0;
 
+	# If using a custom source directory, make paths relative to it
+	if ( ( length $source_dir ) > 0 ) {
+		$f =~ s{^$source_dir/}{}msx;
+	}
+
 	$f =~ m/^[${DOT}][${SLASH}]/msx or $f = "./$f";
 
 	-f $filepath
 	        and ( ( 0 == $have_wanted ) or ( defined $hWanted{$f} ) )
 	        and ( !( $filepath         =~ m/${DOT}pwx$/ms ) )
 	        and ( !( $File::Find::name =~ m/man[${SLASH}]rules[${SLASH}]/msx ) ) ## Protect generated man rules (Issue #3)
-	        and push @source_files, $File::Find::name
+	        and push @source_files, $f
 	        and $is_wanted = 1;
 
 	$is_wanted and $hWanted{$f} = 2;
