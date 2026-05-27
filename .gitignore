@@ -17,6 +17,7 @@ talk*.md
 
 # Test directories for agents to play with. Fill manually
 docs/
+man/
 src/
 systemd/
 systemd*.log

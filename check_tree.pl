@@ -2303,11 +2303,18 @@ sub check_musl {
 		# end regular #if
 		${$line} =~ m/^-[${HASH}]endif/msx and --$regular_ifs;
 
-		# Remove '-' prefixes in all lines within the musl (#else) blocks
+		# Remove '-' prefixes in all lines within the musl (#ifndef __GLIBC__) blocks
 		# -------------------------------------------------------------------
+		# For #ifndef __GLIBC__ blocks, the structure is:
+		#   #ifndef __GLIBC__   <- in_else_block is incremented
+		#     [non-glibc code]  <- should be protected (in_else_block > in_mask_block is FALSE)
+		#   #else // __GLIBC__  <- in_else_block is incremented again
+		#     [glibc code]      <- original code (in_else_block > in_mask_block is TRUE)
+		#   #endif // __GLIBC__
+		# So we protect lines when in_else_block <= in_mask_block + 1 (the #ifndef part)
 		if (       ( ${$line} =~ m/^[${DASH}]/msx )
 			&& ( $in_glibc_block > 0 )
-			&& ( $in_else_block > $in_mask_block ) )
+			&& ( $in_else_block <= $in_mask_block + 1 ) )
 		{
 			substr ${$line}, 0, 1, $SPACE; ## Remove '-'
 		} ## end if ( ( ${$line} =~ m/^[${DASH}]/msx...))
@@ -2837,15 +2844,14 @@ sub check_systemd_docs {
 
 			# For markdown files, we need to handle both additions and removals
 			# The systemd additions should be removed
-			# Only the elogind TEXT removals should be neutralized (NOT empty lines)
+			# The elogind removals should be left alone - they will be handled by check_name_reverts()
+			# which will convert elogind→systemd and then postprocessing will neutralize the pairs
 
-			# Find ALL removal lines that are part of an elogind block
-			# An elogind block starts with a line containing 'elogind' and includes
-			# all consecutive non-empty removal lines
-			my @elogind_block_lines = ();
-			my $in_block            = 0;
+			# Find ALL removal lines that contain 'elogind' text
+			# These will be handled by the name revert processing
+			my @elogind_removal_lines = ();
 
-			log_debug('  Scanning for elogind blocks...');
+			log_debug('  Scanning for elogind removal lines...');
 			for my $i ( 0 .. $count - 1 ) {
 				next if $i >= $first_idx && $i <= $last_idx;  # Skip addition lines
 				my $line = $lines_ref->[$i];
@@ -2854,38 +2860,17 @@ sub check_systemd_docs {
 				my $text = substr $line, 1;
 				log_debug( '    Line %d: "%s"', $i + 1, ( substr $text, 0, 40 ) );
 
-				# Start block if line contains 'elogind'
+				# Collect lines that contain 'elogind'
 				if ( $text =~ m/elogind/msx ) {
-					$in_block = 1;
-					push @elogind_block_lines, $i;
-					log_debug('      => Start elogind block');
-				} elsif ( $in_block > 0 ) {
-
-					# Continue block if line is not empty
-					if ( $text =~ m/\S/msx ) {
-						push @elogind_block_lines, $i;
-						log_debug('      => Continue block');
-					} else {
-
-						# Empty line ends the block
-						$in_block = 0;
-						log_debug('      => End block (empty line)');
-					} ## end else [ if ( $text =~ m/\S/msx)]
-				} ## end elsif ( $in_block > 0 )
+					push @elogind_removal_lines, $i;
+					log_debug('      => Found elogind removal');
+				}
 			} ## end for my $i ( 0 .. $count...)
 
-			log_debug( '  Found %d lines in elogind block(s)', scalar @elogind_block_lines );
+			log_debug( '  Found %d elogind removal lines (will be handled by name reverts)', scalar @elogind_removal_lines );
 
-			# Neutralize all lines in the elogind block(s)
-			for my $i (@elogind_block_lines) {
-
-				# Get a reference to the array element, not a copy
-				my $line_ref = \$lines_ref->[$i];
-
-				# Neutralize this removal (keep the line)
-				substr ${$line_ref}, 0, 1, $SPACE;
-				log_debug( '  Neutralized elogind block line %d', $i + 1 );
-			} ## end for my $i (@elogind_block_lines)
+			# DO NOT neutralize here - let check_name_reverts() handle it
+			# This ensures proper removal/addition pair detection for postprocessing
 
 			# Now remove the systemd addition lines
 			my $removed_count = $last_idx - $first_idx + 1;
@@ -3249,7 +3234,7 @@ sub empty_handle_mask_end {
 
 				# Add a note that we converted this
 				splice @{ $hHunk->{lines} }, $i + 1, 0,
-				        ( ${PLUS} . ( $hFile{is_sh} ? "${HASH}${SPACE}" : $EMPTY ) . "/// elogind empty mask removed (${$message_p})" );
+				        ( ${PLUS} . ( $hFile{is_sh} ? "${HASH}${SPACE}" : $EMPTY ) . "/// elogind empty mask removed (${ $message_p })" );
 
 				$hHunk->{count} += 1;
 			} ## end if ( $i && ( $i == ( $...)))
@@ -3310,7 +3295,7 @@ sub empty_handle_mask_to_else {
 			substr $hHunk->{lines}[$i],       0, 1, "${DASH}";
 
 			# Add a note that we converted this and add an insert mask
-			splice @{ $hHunk->{lines} }, $i + 1, 0, ( '+/// elogind empty mask else converted', "+#if 1 /// ${$message_p}" );
+			splice @{ $hHunk->{lines} }, $i + 1, 0, ( '+/// elogind empty mask else converted', "+#if 1 /// ${ $message_p }" );
 
 			$hHunk->{count} += 2;
 			${$need_conversion_p} = 1;
