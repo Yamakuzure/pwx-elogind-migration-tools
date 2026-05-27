@@ -4,9 +4,7 @@
 check_*.md
 talk*.md
 # Agents must see test source, test logs and output patches
-!docs/*
-!man/*
+!elogind/*
 !patches/*.patch
-!src/*
 !systemd/*
 !systemd*.log
