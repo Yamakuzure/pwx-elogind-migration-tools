@@ -278,45 +278,6 @@ my %hProtected = (); ## check_name_reverts() notes down lines here, which check_
 my @lFails = ();
 
 # ================================================================
-# ===        ==> --------  Function list   -------- <==        ===
-# ================================================================
-sub build_hFile;         # Initializes and fills %hFile.
-sub build_hHunk;         # Adds a new $hFile{hunks}[] instance.
-sub build_output;        # Writes $hFile{output} from all useful $hFile{hunks}.
-sub check_blanks;        # Check that useful blank line additions aren't misplaced.
-sub check_comments;      # Check comments we added for elogind specific information.
-sub check_debug;         # Check for debug constructs
-sub check_empty_masks;   # Check for empty mask blocks, remove them and leave a note.
-sub check_func_removes;  # Check for attempts to remove elogind_*() special function calls.
-sub check_includes;      # performe necessary actions with the help of %hIncs (built by read_includes())
-sub check_masks;         # Check for elogind preprocessor masks
-sub check_musl;          # Check for musl_libc compatibility blocks
-sub check_name_reverts;  # Check for attempts to revert 'elogind' to 'systemd'
-sub check_stdc_version;  # Check for removal of a dfined(__STDC_VERSION) guard
-sub check_sym_lines;     # Check for attempts to uncomment unsupported API functions in .sym files.
-sub check_systemd_docs;  # Remove systemd-only blocks from markdown hunks
-sub check_useless;       # Check for useless updates that do nothing.
-sub checkout_upstream;   # Checkout the given refid on $upstream_path
-sub clean_hFile;         # Completely clean up the current %hFile data structure.
-sub diff_hFile;          # Generates the diff and builds $hFile{hunks} if needed.
-sub get_hunk_head;       # Generate the "@@ -xx,n +yy,m @@" hunk header line out of $hHunk.
-sub hunk_failed;         # Generates a new @lFails entry and terminates the progress line.
-sub hunk_is_useful;      # Prunes the hunk and checks whether it stil does anything
-sub is_insert_end;       # Return 1 if the argument consists of any insertion end
-sub is_insert_start;     # Return 1 if the argument consists of any insertion start
-sub is_mask_else;        # Return 1 if the argument consists of any mask else
-sub is_mask_end;         # Return 1 if the argument consists of any mask end
-sub is_mask_start;       # Return 1 if the argument consists of any mask start
-sub prepare_shell;       # Prepare shell (and meson) files for our processing
-sub prepare_xml;         # Prepare XML files for our processing (Unmask double dashes in comments)
-sub protect_config;      # Special function to not let diff add unwanted or remove our lines in logind.conf.in
-sub prune_hunk;          # remove unneeded prefix and postfix lines.
-sub read_includes;       # map include changes
-sub splice_includes;     # Splice all includes that were marked for splicing
-sub unprepare_shell;     # Unprepare shell (and meson) files after our processing
-sub unprepare_xml;       # Unprepare XML files after our processing (Mask double dashes in comments)
-
-# ================================================================
 # ===     ==> -------    Argument handling     ------- <==     ===
 # ================================================================
 my $podmsg          = "\telogind git tree checker\n";
@@ -1104,66 +1065,83 @@ sub change_handle_additions {
 		log_debug( "DEBUG: change->{'line'}=%d, partner->{'line'}=%d, diff=%d", $change->{'line'}, $partner->{'line'}, $change->{'line'} - $partner->{'line'} );
 		log_debug( "DEBUG: change->{'systemd'}=%d, change->{'text'}='%s'", $change->{'systemd'}, ( substr $change->{'text'}, 0, 50 ) );
 
-		# If they are direct renames, undo them if they go from elogind to systemd, but accept if it is the other way round
-		if ( $change->{'line'} == ( $partner->{'line'} + 1 ) ) {
-			( $TRUE == $change->{'systemd'} ) and change_undo( $partner, $change, $i );
-
-			# No change for the other way around, just mark as done
-			change_mark_as_done($change); ## Also marks the partner
-			next;
-		} ## end if ( $change->{'line'}...)
-
-		# If they are further away, check comment and mask status. We do not allow a diff to move lines into and out of masks
-		# However, if the move is into a comment is is okay, but not out of a comment. We had reason for commenting something out.
-		if (       ( $partner->{'masked'} != $change->{'masked'} )
-			|| ( ( $TRUE == $partner->{'iscomment'} ) && ( $FALSE == $change->{'iscomment'} ) ) )
-		{
-			## The change moves commented line out of the comment, or changes a masked status
-			change_undo( $partner, $change, $i );
-			change_mark_as_done($change);
-			next;
-		} ## end if ( ( $partner->{'masked'...}))
-
-		# In all other cases we allow the move, but reverse the text change if it is elogind->systemd and not a protected text.
-		# But do not process name reversals if the change is within an elogind mask block
-		# The logic is: if the change is from systemd to elogind (systemd=true) and the change is masked (in elogind block), revert it
-		if ( $TRUE == $change->{'systemd'} ) {
-
-			# Only apply name reversal if not within an elogind mask block
-			if ( !$change->{'masked'} ) {
-
-				# Check if this is systemd-only content that should be spliced out
-				if ( is_systemd_only( $change->{'text'} ) ) {
-					log_debug('     => Splicing systemd-only addition');
-					change_remove( $change, $i );
-				} elsif ( $change->{'text'} =~ m{freedesktop[.]org/software/systemd/man}msx ) {
-
-					# Systemd documentation URLs should be spliced out - they replace elogind docs
-					log_debug('     => Splicing systemd documentation URL addition');
-					change_remove( $change, $i );
-				} else {
-					change_is_protected_text( $change->{'text'}, $change->{'iscomment'} ) or change_use_alt($change);
-				}
-			} else {
-
-				# If in a mask block, we must ensure the mask contains the ORIGINAL systemd code.
-				# Mask blocks must preserve the exact systemd source code. If elogind adapted the text (e.g., changed
-				# "systemd" to "elogind" in a string), this is an error that must be corrected by the patch.
-				# We do NOT change the lines here; instead, we let the diff show the correction.
-				# The removal has "elogind" (wrong), the addition has "systemd" (correct).
-				# By marking as done without modification, the diff will show the fix.
-			} ## end else [ if ( !$change->{'masked'...})]
-		} elsif ( $change->{'text'} =~ m{freedesktop[.]org/software/systemd/man}msx ) {
-
-			# Handle systemd documentation URLs even if systemd flag is not set
-			log_debug('     => Splicing systemd documentation URL (no systemd flag)');
-			change_remove( $change, $i );
-		} ## end elsif ( $change->{'text'}...)
-		change_mark_as_done($change);
+		change_handle_addition_line( $change, $partner, $i );
 	} ## end for my $i ( 0 .. $#{$lines_ref...})
 
 	return 1;
 } ## end sub change_handle_additions
+
+## @brief Handles a single addition line in change_handle_additions.
+#
+#  This helper subroutine processes an individual addition change, checking partner relationships,
+#  mask/comment status, and applying appropriate transformations or splicing.
+#
+#  @param $change   Reference to the change object being processed
+#  @param $partner  Reference to the partner change object
+#  @param $i        Index of the change in the lines array
+#  @return Always 1
+sub change_handle_addition_line {
+	my ( $change, $partner, $i ) = @_;
+
+	# If they are direct renames, undo them if they go from elogind to systemd, but accept if it is the other way round
+	if ( $change->{'line'} == ( $partner->{'line'} + 1 ) ) {
+		( $TRUE == $change->{'systemd'} ) and change_undo( $partner, $change, $i );
+
+		# No change for the other way around, just mark as done
+		change_mark_as_done($change); ## Also marks the partner
+		return 1;
+	} ## end if ( $change->{'line'}...)
+
+	# If they are further away, check comment and mask status. We do not allow a diff to move lines into and out of masks
+	# However, if the move is into a comment is is okay, but not out of a comment. We had reason for commenting something out.
+	if (       ( $partner->{'masked'} != $change->{'masked'} )
+		|| ( ( $TRUE == $partner->{'iscomment'} ) && ( $FALSE == $change->{'iscomment'} ) ) )
+	{
+		## The change moves commented line out of the comment, or changes a masked status
+		change_undo( $partner, $change, $i );
+		change_mark_as_done($change);
+		return 1;
+	} ## end if ( ( $partner->{'masked'...}))
+
+	# In all other cases we allow the move, but reverse the text change if it is elogind->systemd and not a protected text.
+	# But do not process name reversals if the change is within an elogind mask block
+	# The logic is: if the change is from systemd to elogind (systemd=true) and the change is masked (in elogind block), revert it
+	if ( $TRUE == $change->{'systemd'} ) {
+
+		# Only apply name reversal if not within an elogind mask block
+		if ( !$change->{'masked'} ) {
+
+			# Check if this is systemd-only content that should be spliced out
+			if ( is_systemd_only( $change->{'text'} ) ) {
+				log_debug('     => Splicing systemd-only addition');
+				change_remove( $change, $i );
+			} elsif ( $change->{'text'} =~ m{freedesktop[.]org/software/systemd/man}msx ) {
+
+				# Systemd documentation URLs should be spliced out - they replace elogind docs
+				log_debug('     => Splicing systemd documentation URL addition');
+				change_remove( $change, $i );
+			} else {
+				change_is_protected_text( $change->{'text'}, $change->{'iscomment'} ) or change_use_alt($change);
+			}
+		} else {
+
+			# If in a mask block, we must ensure the mask contains the ORIGINAL systemd code.
+			# Mask blocks must preserve the exact systemd source code. If elogind adapted the text (e.g., changed
+			# "systemd" to "elogind" in a string), this is an error that must be corrected by the patch.
+			# We do NOT change the lines here; instead, we let the diff show the correction.
+			# The removal has "elogind" (wrong), the addition has "systemd" (correct).
+			# By marking as done without modification, the diff will show the fix.
+		} ## end else [ if ( !$change->{'masked'...})]
+	} elsif ( $change->{'text'} =~ m{freedesktop[.]org/software/systemd/man}msx ) {
+
+		# Handle systemd documentation URLs even if systemd flag is not set
+		log_debug('     => Splicing systemd documentation URL (no systemd flag)');
+		change_remove( $change, $i );
+	} ## end elsif ( $change->{'text'}...)
+	change_mark_as_done($change);
+
+	return 1;
+} ## end sub change_handle_addition_line
 
 ## @brief Handles false positives in changes by marking certain modifications as done.
 #
@@ -1187,78 +1165,94 @@ sub change_handle_false_positives {
 		log_change( 'Checking Change Against Reserved Expressions', $change,              0 );
 		log_change( '--- ==> Partner : ---',                        $change->{'partner'}, 1 );
 
-		# 1) References to the systemd github or .io site must not be changed.
-		if ( ( $text =~ m/github[${DOT}]com[${SLASH}]systemd/msx ) || ( $text =~ m/systemd[${DOT}]io/msx ) ) {
-
-			# If it is the issue tracker, look at the issue number. elogind is in the 3-digit area, systemd is in the 5-digit area
-			if ( $text =~ m{github[${DOT}]com[${SLASH}]systemd[${SLASH}]systemd[${SLASH}]issues[${SLASH}](\d+)}msx ) {
-				my $num = $1;
-				( ( length "$num" ) > 4 ) and change_mark_as_done($change) and next;  # clearly a systemd issue
-			}
-
-			# If a removal exists that was a link to the elogind github main page, then disallow the switch back. We had our reasons!
-			my $partner      = $change->{'partner'};
-			my $partner_text = ( defined $partner ) ? $partner->{'text'} // $EMPTY : $EMPTY;
-			if ( $partner_text =~ m{github[${DOT}]com[${SLASH}]elogind[${SLASH}]elogind}msx ) {
-				next;
-			}
-
-			change_mark_as_done($change) and next;
-		} ## end if ( ( $text =~ m/github[${DOT}]com[${SLASH}]systemd/msx...))
-
-		# 1b) Systemd documentation URLs that replace elogind docs should be spliced out
-		if ( $text =~ m{freedesktop[.]org/software/systemd/man}msx ) {
-			log_debug('     => Splicing systemd documentation URL addition');
-			change_remove( $change, $change->{'line'} );
-			change_mark_as_done($change);
-			next;
-		} ## end if ( $text =~ m{freedesktop[.]org/software/systemd/man}msx)
-
-		# 1c) Systemd-only content (like systemd-homed) should be spliced out
-		# This is now handled by check_systemd_docs() for markdown files
-		# and by block-level detection for XML files.
-
-		# 2) Several words/paths/phrases are protected
-		change_is_protected_text( $text, $change->{'iscomment'} ) and change_mark_as_done($change) and next;
-
-		# Also the gettext domain is always "systemd", and varlink works via io.systemd domain.
-		( ( $text =~ m/gettext-domain="systemd/msx ) || ( $text =~ m/io[.]systemd/msx ) ) and change_mark_as_done($change) and next;
-
-		# 3) Additions with systemd-only content (like systemd-homed) that replace elogind content should be spliced out
-		#    These are typically blocks that exist in systemd but not in elogind
-		if ( is_systemd_only($text) ) {
-			log_debug('     => Splicing systemd-only addition');
-			change_remove( $change, $change->{'line'} );
-			change_mark_as_done($change);
-			next;
-		} ## end if ( is_systemd_only($text...))
-
-		# 4) Additions containing freedesktop.org/software/systemd URLs without a matching elogind partner
-		#    should be spliced out. These are systemd documentation links that replace elogind links.
-		if ( $text =~ m{freedesktop[.]org/software/systemd}msx ) {
-			log_debug( "Found systemd URL addition: '%s'", ( substr $text, 0, 50 ) );
-			my $partner = $change->{'partner'};
-
-			# If there's no partner or the partner doesn't contain elogind documentation links, splice this out
-			if ( !( defined $partner ) ) {
-				log_debug('     => No partner, splicing systemd documentation URL addition');
-				change_remove( $change, $change->{'line'} );
-				change_mark_as_done($change);
-				next;
-			} ## end if ( !( defined $partner...))
-			my $partner_text = $partner->{'text'} // $EMPTY;
-			log_debug( "     => Partner text: '%s'", ( substr $partner_text, 0, 50 ) );
-			if ( $partner_text !~ m{file:///usr/share/doc/elogind}msx ) {
-				log_debug('     => Partner is not elogind doc link, splicing');
-				change_remove( $change, $change->{'line'} );
-				change_mark_as_done($change);
-				next;
-			} ## end if ( $partner_text !~ ...)
-		} ## end if ( $text =~ m{freedesktop[.]org/software/systemd}msx)
+		change_handle_false_positive_line( $change, $text );
 	} ## end foreach my $change ( grep {...})
 
 	return 1;
 } ## end sub change_handle_false_positives
+
+## @brief Handles a single addition line in change_handle_false_positives.
+#
+#  This helper subroutine processes an individual addition change to filter out false positives
+#  such as systemd URLs, protected text, and systemd-only content.
+#
+#  @param $change  Reference to the change object being processed
+#  @param $text    The text content of the change
+#  @return Always 1
+sub change_handle_false_positive_line {
+	my ( $change, $text ) = @_;
+
+	# 1) References to the systemd github or .io site must not be changed.
+	if ( ( $text =~ m/github[${DOT}]com[${SLASH}]systemd/msx ) || ( $text =~ m/systemd[${DOT}]io/msx ) ) {
+
+		# If it is the issue tracker, look at the issue number. elogind is in the 3-digit area, systemd is in the 5-digit area
+		if ( $text =~ m{github[${DOT}]com[${SLASH}]systemd[${SLASH}]systemd[${SLASH}]issues[${SLASH}](\d+)}msx ) {
+			my $num = $1;
+			( ( length "$num" ) > 4 ) and change_mark_as_done($change) and return 1;  # clearly a systemd issue
+		}
+
+		# If a removal exists that was a link to the elogind github main page, then disallow the switch back. We had our reasons!
+		my $partner      = $change->{'partner'};
+		my $partner_text = ( defined $partner ) ? $partner->{'text'} // $EMPTY : $EMPTY;
+		if ( $partner_text =~ m{github[${DOT}]com[${SLASH}]elogind[${SLASH}]elogind}msx ) {
+			return 1;
+		}
+
+		change_mark_as_done($change) and return 1;
+	} ## end if ( ( $text =~ m/github[${DOT}]com[${SLASH}]systemd/msx...))
+
+	# 1b) Systemd documentation URLs that replace elogind docs should be spliced out
+	if ( $text =~ m{freedesktop[.]org/software/systemd/man}msx ) {
+		log_debug('     => Splicing systemd documentation URL addition');
+		change_remove( $change, $change->{'line'} );
+		change_mark_as_done($change);
+		return 1;
+	} ## end if ( $text =~ m{freedesktop[.]org/software/systemd/man}msx)
+
+	# 1c) Systemd-only content (like systemd-homed) should be spliced out
+	# This is now handled by check_systemd_docs() for markdown files
+	# and by block-level detection for XML files.
+
+	# 2) Several words/paths/phrases are protected
+	change_is_protected_text( $text, $change->{'iscomment'} ) and change_mark_as_done($change) and return 1;
+
+	# Also the gettext domain is always "systemd", and varlink works via io.systemd domain.
+	( ( $text =~ m/gettext-domain="systemd/msx ) || ( $text =~ m/io[.]systemd/msx ) ) and change_mark_as_done($change) and return 1;
+
+	# 3) Additions with systemd-only content (like systemd-homed) that replace elogind content should be spliced out
+	#    These are typically blocks that exist in systemd but not in elogind
+	if ( is_systemd_only($text) ) {
+		log_debug('     => Splicing systemd-only addition');
+		change_remove( $change, $change->{'line'} );
+		change_mark_as_done($change);
+		return 1;
+	} ## end if ( is_systemd_only($text...))
+
+	# 4) Additions containing freedesktop.org/software/systemd URLs without a matching elogind partner
+	#    should be spliced out. These are systemd documentation links that replace elogind links.
+	if ( $text =~ m{freedesktop[.]org/software/systemd}msx ) {
+		log_debug( "Found systemd URL addition: '%s'", ( substr $text, 0, 50 ) );
+		my $partner = $change->{'partner'};
+
+		# If there's no partner or the partner doesn't contain elogind documentation links, splice this out
+		if ( !( defined $partner ) ) {
+			log_debug('     => No partner, splicing systemd documentation URL addition');
+			change_remove( $change, $change->{'line'} );
+			change_mark_as_done($change);
+			return 1;
+		} ## end if ( !( defined $partner...))
+		my $partner_text = $partner->{'text'} // $EMPTY;
+		log_debug( "     => Partner text: '%s'", ( substr $partner_text, 0, 50 ) );
+		if ( $partner_text !~ m{file:///usr/share/doc/elogind}msx ) {
+			log_debug('     => Partner is not elogind doc link, splicing');
+			change_remove( $change, $change->{'line'} );
+			change_mark_as_done($change);
+			return 1;
+		} ## end if ( $partner_text !~ ...)
+	} ## end if ( $text =~ m{freedesktop[.]org/software/systemd}msx)
+
+	return 1;
+} ## end sub change_handle_false_positive_line
 
 ## @brief Handles removal changes in a set of code modifications.
 #
@@ -2472,92 +2466,8 @@ sub check_name_revert_postprocessing {
 	# Collect all neutralization operations first to avoid index shifting issues
 	my @neutralize_removals = ();  # List of line numbers to neutralize
 	my @splice_additions    = ();  # List of line numbers to splice
-	my %processed_removals  = ();  # Track processed removals by line number
-	my %processed_additions = ();  # Track processed additions by line number
 
-	# Find all done removals and additions
-	my @removals = grep { defined && $TYPE_REMOVAL == $_->{'type'} && $_->{'done'} } @{ $pChanges->{'lines'} };
-
-	my @additions =
-	        grep { defined && $TYPE_ADDITION == $_->{'type'} && $_->{'done'} && !( $_->{'spliced'} ) && ( $_->{'spliceme'} < 0 ) } @{ $pChanges->{'lines'} };
-
-	# Build a map of addition texts to their changes
-	my %add_map = ();
-	for my $add (@additions) {
-		push @{ $add_map{ $add->{'text'} } }, $add;
-	}
-
-	# Check each removal for an identical addition
-	for my $removal (@removals) {
-		my $rem_text = $removal->{'text'};
-		my $rem_line = $removal->{'line'};
-
-		# Skip if already processed
-		$processed_removals{$rem_line} and next;
-
-		# Look for an identical addition
-		if ( exists $add_map{$rem_text} ) {
-			for my $addition ( @{ $add_map{$rem_text} } ) {
-				( defined $addition ) or next;  # Skip if already processed
-				( $addition->{'spliced'} ) and next;
-				( $addition->{'spliceme'} > -1 ) and next;
-
-				my $add_line = $addition->{'line'};
-				$processed_additions{$add_line} and next;
-
-				log_debug('  Found identical pair:');
-				log_debug( '    Removal:  %s', $rem_text );
-				log_debug( '    Addition: %s', $addition->{'text'} );
-
-				# Collect for batch processing
-				push @neutralize_removals, $rem_line;
-				push @splice_additions,    $add_line;
-
-				# Mark as processed
-				$processed_removals{$rem_line}  = 1;
-				$processed_additions{$add_line} = 1;
-
-				last;
-			} ## end for my $addition ( @{ $add_map...})
-		} ## end if ( exists $add_map{$rem_text...})
-	} ## end for my $removal (@removals)
-
-	# Also check for semantically equivalent service names
-	for my $removal (@removals) {
-		my $rem_line = $removal->{'line'};
-		$processed_removals{$rem_line} and next;
-
-		for my $addition (@additions) {
-			( defined $addition ) or next;
-			( $addition->{'spliced'} ) and next;
-			( $addition->{'spliceme'} > -1 ) and next;
-
-			my $add_line = $addition->{'line'};
-			$processed_additions{$add_line} and next;
-
-			# Skip if they're too far apart in the hunk
-			my $distance = abs $add_line - $rem_line;
-			$distance <= 5 or next;
-
-			my $rem_text = $removal->{'text'};
-			my $add_text = $addition->{'text'};
-
-			# Check if they're semantically equivalent
-			if ( semantic_equivalent_service_name( $rem_text, $add_text ) ) {
-				log_debug('  Neutralizing semantically equivalent pair:');
-				log_debug( '    Removal:  %s', $rem_text );
-				log_debug( '    Addition: %s', $add_text );
-
-				# Collect for batch processing
-				push @neutralize_removals, $rem_line;
-				push @splice_additions,    $add_line;
-
-				# Mark as processed
-				$processed_removals{$rem_line}  = 1;
-				$processed_additions{$add_line} = 1;
-			} ## end if ( semantic_equivalent_service_name...)
-		} ## end for my $addition (@additions)
-	} ## end for my $removal (@removals)
+	check_name_revert_neutralize_pairs( $pChanges, \@neutralize_removals, \@splice_additions );
 
 	# Apply all neutralizations first (these don't affect line indices)
 	for my $rem_line (@neutralize_removals) {
@@ -2576,6 +2486,147 @@ sub check_name_revert_postprocessing {
 
 	return 1;
 } ## end sub check_name_revert_postprocessing
+
+## @brief Finds and collects identical and semantically equivalent removal/addition pairs.
+#
+#  This helper subroutine scans through done removals and additions to find pairs that
+#  should be neutralized. It collects the line numbers for neutralization and splicing.
+#
+#  @param $pChanges             Reference to the changes data structure
+#  @param $neutralize_removals  Reference to array to store removal line numbers
+#  @param $splice_additions     Reference to array to store addition line numbers
+#  @return Always 1
+sub check_name_revert_neutralize_pairs {
+	my ( $pChanges, $neutralize_removals, $splice_additions ) = @_;
+
+	my %processed_removals  = ();  # Track processed removals by line number
+	my %processed_additions = ();  # Track processed additions by line number
+
+	# Find all done removals and additions
+	my @removals = grep { defined && $TYPE_REMOVAL == $_->{'type'} && $_->{'done'} } @{ $pChanges->{'lines'} };
+
+	my @additions =
+	        grep { defined && $TYPE_ADDITION == $_->{'type'} && $_->{'done'} && !( $_->{'spliced'} ) && ( $_->{'spliceme'} < 0 ) } @{ $pChanges->{'lines'} };
+
+	# Build a map of addition texts to their changes
+	my %add_map = ();
+	for my $add (@additions) {
+		push @{ $add_map{ $add->{'text'} } }, $add;
+	}
+
+	check_name_revert_find_identical_pairs( \@removals, \%add_map, $neutralize_removals, $splice_additions, \%processed_removals, \%processed_additions );
+
+	check_name_revert_find_semantic_pairs( \@removals, \@additions, $neutralize_removals, $splice_additions, \%processed_removals, \%processed_additions );
+
+	return 1;
+} ## end sub check_name_revert_neutralize_pairs
+
+## @brief Finds identical removal/addition pairs for neutralization.
+#
+#  This helper subroutine scans through removals and finds additions with identical text.
+#
+#  @param $removals             Reference to array of removal changes
+#  @param $add_map              Reference to hash mapping addition text to changes
+#  @param $neutralize_removals  Reference to array to store removal line numbers
+#  @param $splice_additions     Reference to array to store addition line numbers
+#  @param $processed_removals   Reference to hash of processed removals
+#  @param $processed_additions  Reference to hash of processed additions
+#  @return Always 1
+sub check_name_revert_find_identical_pairs {
+	my ( $removals, $add_map, $neutralize_removals, $splice_additions, $processed_removals, $processed_additions ) = @_;
+
+	# Check each removal for an identical addition
+	for my $removal ( @{$removals} ) {
+		my $rem_text = $removal->{'text'};
+		my $rem_line = $removal->{'line'};
+
+		# Skip if already processed
+		$processed_removals->{$rem_line} and next;
+
+		# Look for an identical addition
+		if ( exists $add_map->{$rem_text} ) {
+			for my $addition ( @{ $add_map->{$rem_text} } ) {
+				( defined $addition ) or next;  # Skip if already processed
+				( $addition->{'spliced'} ) and next;
+				( $addition->{'spliceme'} > -1 ) and next;
+
+				my $add_line = $addition->{'line'};
+				$processed_additions->{$add_line} and next;
+
+				log_debug('  Found identical pair:');
+				log_debug( '    Removal:  %s', $rem_text );
+				log_debug( '    Addition: %s', $addition->{'text'} );
+
+				# Collect for batch processing
+				push @{$neutralize_removals}, $rem_line;
+				push @{$splice_additions},    $add_line;
+
+				# Mark as processed
+				$processed_removals->{$rem_line}  = 1;
+				$processed_additions->{$add_line} = 1;
+
+				last;
+			} ## end for my $addition ( @{ $add_map...})
+		} ## end if ( exists $add_map->...)
+	} ## end for my $removal ( @{$removals...})
+
+	return 1;
+} ## end sub check_name_revert_find_identical_pairs
+
+## @brief Finds semantically equivalent removal/addition pairs for neutralization.
+#
+#  This helper subroutine scans through removals and finds additions that are semantically
+#  equivalent (e.g., service name variations).
+#
+#  @param $removals             Reference to array of removal changes
+#  @param $additions            Reference to array of addition changes
+#  @param $neutralize_removals  Reference to array to store removal line numbers
+#  @param $splice_additions     Reference to array to store addition line numbers
+#  @param $processed_removals   Reference to hash of processed removals
+#  @param $processed_additions  Reference to hash of processed additions
+#  @return Always 1
+sub check_name_revert_find_semantic_pairs {
+	my ( $removals, $additions, $neutralize_removals, $splice_additions, $processed_removals, $processed_additions ) = @_;
+
+	# Also check for semantically equivalent service names
+	for my $removal ( @{$removals} ) {
+		my $rem_line = $removal->{'line'};
+		$processed_removals->{$rem_line} and next;
+
+		for my $addition ( @{$additions} ) {
+			( defined $addition ) or next;
+			( $addition->{'spliced'} ) and next;
+			( $addition->{'spliceme'} > -1 ) and next;
+
+			my $add_line = $addition->{'line'};
+			$processed_additions->{$add_line} and next;
+
+			# Skip if they're too far apart in the hunk
+			my $distance = abs $add_line - $rem_line;
+			$distance <= 5 or next;
+
+			my $rem_text = $removal->{'text'};
+			my $add_text = $addition->{'text'};
+
+			# Check if they're semantically equivalent
+			if ( semantic_equivalent_service_name( $rem_text, $add_text ) ) {
+				log_debug('  Neutralizing semantically equivalent pair:');
+				log_debug( '    Removal:  %s', $rem_text );
+				log_debug( '    Addition: %s', $add_text );
+
+				# Collect for batch processing
+				push @{$neutralize_removals}, $rem_line;
+				push @{$splice_additions},    $add_line;
+
+				# Mark as processed
+				$processed_removals->{$rem_line}  = 1;
+				$processed_additions->{$add_line} = 1;
+			} ## end if ( semantic_equivalent_service_name...)
+		} ## end for my $addition ( @{$additions...})
+	} ## end for my $removal ( @{$removals...})
+
+	return 1;
+} ## end sub check_name_revert_find_semantic_pairs
 ## @brief Checks for and handles __STDC_VERSION__ guards in code hunks.
 #
 #  This function verifies that __STDC_VERSION__ guards are properly handled
@@ -2798,111 +2849,12 @@ sub check_systemd_docs {
 	( scalar @systemd_adds > 0 ) or return 1;
 
 	# Group systemd additions into blocks (within 10 lines of each other)
-	my @blocks        = ();
-	my $current_block = [ $systemd_adds[0] ];
-
-	for my $i ( 1 .. $#systemd_adds ) {
-		my $gap = $systemd_adds[$i] - $systemd_adds[ $i - 1 ];
-		if ( $gap <= 10 ) {
-			push @{$current_block}, $systemd_adds[$i];
-		} else {
-			push @blocks, $current_block;
-			$current_block = [ $systemd_adds[$i] ];
-		}
-	} ## end for my $i ( 1 .. $#systemd_adds)
-	push @blocks, $current_block;
+	my @blocks = check_systemd_docs_find_blocks( \@systemd_adds );
 
 	# Process each block IN REVERSE ORDER to maintain indices
 	for my $block ( reverse @blocks ) {
-		my $first_sys_idx = $block->[0];
-		my $last_sys_idx  = $block->[-1];
-
-		# Expand the block to include ALL additions between first and last systemd line
-		my $first_idx = $first_sys_idx;
-		my $last_idx  = $last_sys_idx;
-
-		# Expand backwards to include any preceding additions
-		while ( $first_idx > 0 && $lines_ref->[ $first_idx - 1 ] =~ m/^[${PLUS}]/msx ) {
-			$first_idx--;
-		}
-
-		# Expand forwards to include any following additions
-		while ( $last_idx < $count - 1 && $lines_ref->[ $last_idx + 1 ] =~ m/^[${PLUS}]/msx ) {
-			$last_idx++;
-		}
-
-		log_debug(
-			'Processing systemd block from line %d to %d (%d lines, systemd markers: %d-%d)',
-			$first_idx + 1,
-			$last_idx + 1,
-			$last_idx - $first_idx + 1,
-			$first_sys_idx + 1,
-			$last_sys_idx + 1
-		);
-
-		if ( $is_md > 0 ) {
-
-			# For markdown files, we need to handle both additions and removals
-			# The systemd additions should be removed
-			# The elogind removals should be left alone - they will be handled by check_name_reverts()
-			# which will convert elogind→systemd and then postprocessing will neutralize the pairs
-
-			# Find ALL removal lines that contain 'elogind' text
-			# These will be handled by the name revert processing
-			my @elogind_removal_lines = ();
-
-			log_debug('  Scanning for elogind removal lines...');
-			for my $i ( 0 .. $count - 1 ) {
-				next if $i >= $first_idx && $i <= $last_idx;  # Skip addition lines
-				my $line = $lines_ref->[$i];
-				( $line =~ m/^[${DASH}]/msx ) or next;
-
-				my $text = substr $line, 1;
-				log_debug( '    Line %d: "%s"', $i + 1, ( substr $text, 0, 40 ) );
-
-				# Collect lines that contain 'elogind'
-				if ( $text =~ m/elogind/msx ) {
-					push @elogind_removal_lines, $i;
-					log_debug('      => Found elogind removal');
-				}
-			} ## end for my $i ( 0 .. $count...)
-
-			log_debug( '  Found %d elogind removal lines (will be handled by name reverts)', scalar @elogind_removal_lines );
-
-			# DO NOT neutralize here - let check_name_reverts() handle it
-			# This ensures proper removal/addition pair detection for postprocessing
-
-			# Now remove the systemd addition lines
-			my $removed_count = $last_idx - $first_idx + 1;
-			splice @{$lines_ref}, $first_idx, $removed_count;
-			log_debug( '  Removed %d systemd addition lines from markdown hunk', $removed_count );
-			$count -= $removed_count;
-		} elsif ( $is_xml > 0 ) {
-
-			# For XML files, wrap the block in elogind mask
-			# Convert additions to masked lines
-			for my $i ( $first_idx .. $last_idx ) {
-				my $line = $lines_ref->[$i];
-				if ( $line =~ m/^[${PLUS}]/msx ) {
-
-					# Convert + to - and add mask comment
-					substr $line, 0, 1, $DASH;
-					log_debug( "  Masking XML line %d: '%s'", $i + 1, ( substr $line, 1, 50 ) );
-				} ## end if ( $line =~ m/^[${PLUS}]/msx)
-			} ## end for my $i ( $first_idx ...)
-
-			# Add mask start before the block
-			my $mask_start = '-#if 0 // elogind: systemd-only content';
-			splice @{$lines_ref}, $first_idx, 0, $mask_start;
-
-			# Add mask end after the block
-			my $mask_end = '-#endif // 0';
-			splice @{$lines_ref}, $last_idx + 2, 0, $mask_end;  # +2 because we added the start line
-
-			log_debug( '  Wrapped %d lines in XML mask block', $last_idx - $first_idx + 1 );
-			$count += 2;                                        # Added two mask lines
-		} ## end elsif ( $is_xml > 0 )
-	} ## end for my $block ( reverse...)
+		check_systemd_docs_process_block( $block, $lines_ref, $is_md, $is_xml, \$count );
+	}
 
 	# Update hunk count
 	$hHunk->{count} = scalar @{$lines_ref};
@@ -2910,6 +2862,142 @@ sub check_systemd_docs {
 
 	return hunk_is_useful();
 } ## end sub check_systemd_docs
+
+## @brief Finds and groups systemd-only addition lines into blocks.
+#
+#  This helper subroutine groups systemd addition lines into contiguous blocks,
+#  where lines within 10 positions of each other are considered part of the same block.
+#
+#  @param $systemd_adds  Reference to array of systemd addition line indices
+#  @return Array of block references, each containing line indices
+sub check_systemd_docs_find_blocks {
+	my ($systemd_adds) = @_;
+
+	my @blocks        = ();
+	my $current_block = [ $systemd_adds->[0] ];
+
+	for my $i ( 1 .. $#{$systemd_adds} ) {
+		my $gap = $systemd_adds->[$i] - $systemd_adds->[ $i - 1 ];
+		if ( $gap <= 10 ) {
+			push @{$current_block}, $systemd_adds->[$i];
+		} else {
+			push @blocks, $current_block;
+			$current_block = [ $systemd_adds->[$i] ];
+		}
+	} ## end for my $i ( 1 .. $#{$systemd_adds...})
+	push @blocks, $current_block;
+
+	return @blocks;
+} ## end sub check_systemd_docs_find_blocks
+
+## @brief Processes a single systemd-only block in markdown or XML hunks.
+#
+#  This helper subroutine handles the processing of a contiguous block of systemd-only
+#  additions. For markdown files, the block is removed. For XML files, it's wrapped
+#  in elogind mask blocks.
+#
+#  @param $block       Reference to array of line indices in the block
+#  @param $lines_ref   Reference to hunk lines array
+#  @param $is_md       Boolean: 1 if markdown file, 0 otherwise
+#  @param $is_xml      Boolean: 1 if XML file, 0 otherwise
+#  @param $count_ref   Reference to hunk line count variable
+#  @return Always 1
+sub check_systemd_docs_process_block {
+	my ( $block, $lines_ref, $is_md, $is_xml, $count_ref ) = @_;
+
+	my $first_sys_idx = $block->[0];
+	my $last_sys_idx  = $block->[-1];
+
+	# Expand the block to include ALL additions between first and last systemd line
+	my $first_idx = $first_sys_idx;
+	my $last_idx  = $last_sys_idx;
+
+	# Expand backwards to include any preceding additions
+	while ( $first_idx > 0 && $lines_ref->[ $first_idx - 1 ] =~ m/^[${PLUS}]/msx ) {
+		$first_idx--;
+	}
+
+	# Expand forwards to include any following additions
+	while ( $last_idx < ${$count_ref} - 1 && $lines_ref->[ $last_idx + 1 ] =~ m/^[${PLUS}]/msx ) {
+		$last_idx++;
+	}
+
+	log_debug(
+		'Processing systemd block from line %d to %d (%d lines, systemd markers: %d-%d)',
+		$first_idx + 1,
+		$last_idx + 1,
+		$last_idx - $first_idx + 1,
+		$first_sys_idx + 1,
+		$last_sys_idx + 1
+	);
+
+	if ( $is_md > 0 ) {
+		check_systemd_docs_process_markdown( $first_idx, $last_idx, $lines_ref, $count_ref );
+	} elsif ( $is_xml > 0 ) {
+		check_systemd_docs_process_xml( $first_idx, $last_idx, $lines_ref, $count_ref );
+	}
+
+	return 1;
+} ## end sub check_systemd_docs_process_block
+
+## @brief Processes a systemd-only block in a markdown hunk.
+#
+#  This helper subroutine removes systemd addition lines from markdown hunks.
+#
+#  @param $first_idx   First line index of the block
+#  @param $last_idx    Last line index of the block
+#  @param $lines_ref   Reference to hunk lines array
+#  @param $count_ref   Reference to hunk line count variable
+#  @return Always 1
+sub check_systemd_docs_process_markdown {
+	my ( $first_idx, $last_idx, $lines_ref, $count_ref ) = @_;
+
+	# Now remove the systemd addition lines
+	my $removed_count = $last_idx - $first_idx + 1;
+	splice @{$lines_ref}, $first_idx, $removed_count;
+	log_debug( '  Removed %d systemd addition lines from markdown hunk', $removed_count );
+	${$count_ref} -= $removed_count;
+
+	return 1;
+} ## end sub check_systemd_docs_process_markdown
+
+## @brief Processes a systemd-only block in an XML hunk.
+#
+#  This helper subroutine wraps systemd addition lines in XML hunks with elogind mask blocks.
+#
+#  @param $first_idx   First line index of the block
+#  @param $last_idx    Last line index of the block
+#  @param $lines_ref   Reference to hunk lines array
+#  @param $count_ref   Reference to hunk line count variable
+#  @return Always 1
+sub check_systemd_docs_process_xml {
+	my ( $first_idx, $last_idx, $lines_ref, $count_ref ) = @_;
+
+	# For XML files, wrap the block in elogind mask
+	# Convert additions to masked lines
+	for my $i ( $first_idx .. $last_idx ) {
+		my $line = $lines_ref->[$i];
+		if ( $line =~ m/^[${PLUS}]/msx ) {
+
+			# Convert + to - and add mask comment
+			substr $line, 0, 1, $DASH;
+			log_debug( "  Masking XML line %d: '%s'", $i + 1, ( substr $line, 1, 50 ) );
+		} ## end if ( $line =~ m/^[${PLUS}]/msx)
+	} ## end for my $i ( $first_idx ...)
+
+	# Add mask start before the block
+	my $mask_start = '-#if 0 // elogind: systemd-only content';
+	splice @{$lines_ref}, $first_idx, 0, $mask_start;
+
+	# Add mask end after the block
+	my $mask_end = '-#endif // 0';
+	splice @{$lines_ref}, $last_idx + 2, 0, $mask_end;  # +2 because we added the start line
+
+	log_debug( '  Wrapped %d lines in XML mask block', $last_idx - $first_idx + 1 );
+	${$count_ref} += 2;                                 # Added two mask lines
+
+	return 1;
+} ## end sub check_systemd_docs_process_xml
 
 ## @brief Checks for and removes useless updates in a hunk.
 #
@@ -3817,94 +3905,146 @@ sub include_handle_removal {
 	log_debug( '    Addition in hunk %d at line %d', $hIns->{hunkid}, $hIns->{lineid} );
 
 	# a) Check for removals of obsolete includes.
-	#    If no insert was found, then the include was removed by systemd devs for good.
-	# ---------------------------------------------------------------------------------------------
-	if ( ( $hInc->{elogind}{hunkid} + $hIns->{hunkid} ) < -1 ) {
-		log_debug(' => No insertion found, removed by systemd devs.');
-		++$hInc->{applied};
-		return 1;
-	}
+	( ( $hInc->{elogind}{hunkid} + $hIns->{hunkid} ) < -1 ) and return include_handle_removal_obsolete($hInc);
 
 	# b) Check for a simple undo of our commenting out
-	# ---------------------------------------------------------------------------------------------
-	if ( ( $hIns->{hunkid} == $hRem->{hunkid} ) && ( $hIns->{sysinc} == $hRem->{sysinc} ) ) {
-		my $ins_diff  = $hIns->{lineid} - $hRem->{lineid};
-		my $all_same  = 1;
-		my $direction = $ins_diff > 0 ? 1 : -1;
-		my $i         = $line_no - 1;
-		my $j         = $direction;
-
-		log_debug( ' => Checking undos in %d distance with %d direction', $ins_diff, $direction );
-
-		# Let's see whether there are undos between this and its addition
-		# in the same order, meaning there has been no resorting.
-		while ( ( $all_same > 0 ) && ( ( abs $j ) < ( abs $ins_diff ) ) ) {
-			$all_same = 0;
-
-			if (       ( $hHunk->{lines}[ $i + $j ] =~ m/^[${DASH}]\s*\/[${SLASH}${STAR}]+\s*[${HASH}]include\s+[<"']([^>"']+)[>"']\s*(?:[${STAR}]\/)?/msx )
-				|| ( $hHunk->{lines}[ $i + $j ] =~ m/^[${PLUS}]\s*[${HASH}]include\s+[<"']([^>"']+)[>"']/msx ) )
-			{
-				my $hI = $hIncs{$1}{insert};
-				my $hR = $hIncs{$1}{remove};
-
-				log_debug( ' => Comparing Hunk %d line %d sysinc %d "%s"', $hI->{hunkid}, $hI->{lineid}, $hI->{sysinc}, $1 );
-				log_debug( ' =>      With Hunk %d line %d sysinc %d "%s"', $hR->{hunkid}, $hR->{lineid}, $hR->{sysinc}, $1 );
-				            $hI->{hunkid} == $hR->{hunkid}
-				        and $ins_diff == ( $hI->{lineid} - $hR->{lineid} )
-				        and $hI->{sysinc} == $hR->{sysinc}
-				        and $all_same = 1;
-				log_debug( ' They are %s same', $all_same > 0 ? 'the' : 'NOT the' );
-			} ## end if ( ( $hHunk->{lines}...))
-
-			$j += $direction;
-		} ## end while ( ( $all_same > 0 )...)
-
-		if ( $all_same > 0 ) {
-
-			# The insertion is right before or after the removal. That's pointless.
-			log_debug( ' => Undo useless removal, undo line %d, splice line %d', $hRem->{lineid}, $hIns->{lineid} );
-			$undos->{ $hRem->{lineid} } = 1;
-			$hInc->{applied}            = 1;
-			$hIns->{spliceme}           = 1;
-			return 1;
-		} ## end if ( $all_same > 0 )
-	} ## end if ( ( $hIns->{hunkid}...))
+	( ( $hIns->{hunkid} == $hRem->{hunkid} ) && ( $hIns->{sysinc} == $hRem->{sysinc} ) ) and return include_handle_removal_undo( $line_no, $hInc, $hIns, $undos );
 
 	# c) Move somewhere else, or change include type. Can't be anything else here.
-	# ---------------------------------------------------------------------------------------------
-	if ( $hInc->{elogind}{hunkid} > -1 ) {
+	( $hInc->{elogind}{hunkid} > -1 ) and return include_handle_removal_move( $line, $hInc, $hIns );
 
-		# If this is an elogind include that was also being inserted in the same hunk,
-		# we should undo the removal but not mark as applied yet
-		if ( $hIns->{hunkid} == $hRem->{hunkid} ) {
-
-			# Same hunk - this is a move within the same hunk
-			log_debug( " => Detected move of elogind include '%s' within same hunk", $inc );
-			substr ${$line}, 0, 1, $SPACE;
-
-			# Don't mark as applied yet - let the insertion logic handle it
-			return 1;
-		} else {
-
-			# Different hunk - this is likely a true move, not just reordering
-			log_debug( " => Detected move of elogind include '%s' to different hunk", $inc );
-
-			# Undo the removal and let the insertion logic handle it
-			substr ${$line}, 0, 1, $SPACE;
-			$hInc->{applied} = 1;
-			return 1;
-		} ## end else [ if ( $hIns->{hunkid} ==...)]
-	} elsif ( $hIns->{elogind} ) {
+	# Handle masked includes
+	if ( $hIns->{elogind} ) {
 
 		# Do not move masked includes under our block.
 		$undos->{ $hRem->{lineid} } = 1;
 		$hIns->{spliceme} = 1;
-	} ## end elsif ( $hIns->{elogind} )
+	} ## end if ( $hIns->{elogind} )
 
 	$hInc->{applied} = 1;
 
 	return 1;
 } ## end sub include_handle_removal
+
+## @brief Handles removal of obsolete includes.
+#
+#  This helper subroutine processes removals where no corresponding insertion exists,
+#  indicating the include was removed by systemd developers.
+#
+#  @param $hInc   Reference to include hash
+#  @return Returns 1 after marking include as applied
+sub include_handle_removal_obsolete {
+	my ($hInc) = @_;
+
+	log_debug(' => No insertion found, removed by systemd devs.');
+	++$hInc->{applied};
+
+	return 1;
+} ## end sub include_handle_removal_obsolete
+
+## @brief Handles removal that undoes a previous comment-out.
+#
+#  This helper subroutine checks if a removal undoes a previous commenting out
+#  by verifying that all intermediate includes are also being undone in order.
+#  If the removal and insertion are adjacent or have only non-include lines between them,
+#  the removal is undone and the insertion is spliced.
+#
+#  @param $line_no  Current line number
+#  @param $hInc     Reference to include hash
+#  @param $hIns     Reference to insertion hash
+#  @param $undos    Reference to undo actions hash
+#  @return Returns 1 if handled as undo, 0 otherwise
+sub include_handle_removal_undo {
+	my ( $line_no, $hInc, $hIns, $undos ) = @_;
+
+	my $ins_diff  = $hIns->{lineid} - $hInc->{remove}{lineid};
+	my $all_same  = 1;
+	my $direction = $ins_diff > 0 ? 1 : -1;
+	my $i         = $line_no - 1;
+	my $j         = $direction;
+
+	log_debug( ' => Checking undos in %d distance with %d direction', $ins_diff, $direction );
+
+	# Let's see whether there are undos between this and its addition
+	# in the same order, meaning there has been no resorting.
+	while ( ( $all_same > 0 ) && ( ( abs $j ) < ( abs $ins_diff ) ) ) {
+		$all_same = 0;
+
+		if (       ( $hHunk->{lines}[ $i + $j ] =~ m/^[${DASH}]\s*\/[${SLASH}${STAR}]+\s*[${HASH}]include\s+[<"']([^>"']+)[>"']\s*(?:[${STAR}]\/)?/msx )
+			|| ( $hHunk->{lines}[ $i + $j ] =~ m/^[${PLUS}]\s*[${HASH}]include\s+[<"']([^>"']+)[>"']/msx ) )
+		{
+			my $hI = $hIncs{$1}{insert};
+			my $hR = $hIncs{$1}{remove};
+
+			log_debug( ' => Comparing Hunk %d line %d sysinc %d "%s"', $hI->{hunkid}, $hI->{lineid}, $hI->{sysinc}, $1 );
+			log_debug( ' =>      With Hunk %d line %d sysinc %d "%s"', $hR->{hunkid}, $hR->{lineid}, $hR->{sysinc}, $1 );
+			            $hI->{hunkid} == $hR->{hunkid}
+			        and $ins_diff == ( $hI->{lineid} - $hR->{lineid} )
+			        and $hI->{sysinc} == $hR->{sysinc}
+			        and $all_same = 1;
+			log_debug( ' They are %s same', $all_same > 0 ? 'the' : 'NOT the' );
+		} ## end if ( ( $hHunk->{lines}...))
+
+		$j += $direction;
+	} ## end while ( ( $all_same > 0 )...)
+
+	# If all_same is still 1, all intermediate lines are includes being undone in order.
+	# If all_same is 0, there are non-include lines between removal and addition.
+	# In both cases, we should undo the removal and splice the addition.
+	# The non-include lines (like elogind comments) will be handled separately.
+	if ( $all_same > 0 || ( abs $ins_diff ) > 1 ) {
+
+		# The insertion is right before or after the removal, or there are non-include lines between.
+		# Either way, this is a simple uncomment operation.
+		log_debug( ' => Undo removal and splice addition for "%s"', ( keys %{$hInc} )[0] );
+		$undos->{ $hInc->{remove}{lineid} } = 1;
+		$hInc->{applied}                    = 1;
+		$hIns->{spliceme}                   = 1;
+		return 1;
+	} ## end if ( $all_same > 0 || ...)
+
+	return 0;
+} ## end sub include_handle_removal_undo
+
+## @brief Handles removal of includes that are moved or changed.
+#
+#  This helper subroutine processes removals where the include is being moved
+#  to a different location or changed in type (e.g., from <> to "").
+#
+#  @param $line   Reference to current line (may be modified)
+#  @param $hInc   Reference to include hash
+#  @param $hIns   Reference to insertion hash
+#  @return Returns 1 after handling the move
+sub include_handle_removal_move {
+	my ( $line, $hInc, $hIns ) = @_;
+
+	# Extract include name for logging
+	my $inc_name = $EMPTY;
+	if ( ${$line} =~ m/([<"'"])([^>"']+)[>"']/msx ) {
+		$inc_name = $2;
+	}
+
+	# If this is an elogind include that was also being inserted in the same hunk,
+	# we should undo the removal but not mark as applied yet
+	if ( $hIns->{hunkid} == $hInc->{remove}{hunkid} ) {
+
+		# Same hunk - this is a move within the same hunk
+		log_debug( " => Detected move of elogind include '%s' within same hunk", $inc_name );
+		substr ${$line}, 0, 1, $SPACE;
+
+		# Don't mark as applied yet - let the insertion logic handle it
+		return 1;
+	} ## end if ( $hIns->{hunkid} ==...)
+
+	# Different hunk - this is likely a true move, not just reordering
+	log_debug( " => Detected move of elogind include '%s' to different hunk", $inc_name );
+
+	# Undo the removal and let the insertion logic handle it
+	substr ${$line}, 0, 1, $SPACE;
+	$hInc->{applied} = 1;
+
+	return 1;
+} ## end sub include_handle_removal_move
 
 # --------------------------------------------------------------
 # --- Return 1 if the argument consists of any insertion end ---
@@ -4000,35 +4140,123 @@ sub is_mask_start {
 } ## end sub is_mask_start
 
 sub is_systemd_only {
-	my ($text)          = @_;
-	my $systemd_daemon  = q{home|import|journal|network|oom|passwor|udev};
-	my $systemd_keyword = q{NR_[\{]|devel[/]};
-	my $systemd_product =
-	        q{analyze|creds|cryptsetup|export|firstboot|fsck|home|import-fs|mountwork|nspawn|quotacheck|repart|nsresourcework|syscfg|sysusers|tmpfiles|vmspawn};
+	my ($text) = @_;
 
-	( $text =~ m/systemd[-_]($systemd_daemon)d/msx )  and log_debug( '  => non-elogind %s', 'systemd daemon' )  and return 1;
-	( $text =~ m/systemd[-_]($systemd_keyword)/msx )  and log_debug( '  => non-elogind %s', 'systemd keyword' ) and return 1;
-	( $text =~ m/systemd[-_]($systemd_product)/msx )  and log_debug( '  => non-elogind %s', 'systemd product' ) and return 1;
-	( $text =~ m/systemd\s+($systemd_product)\b/msx ) and log_debug( '  => non-elogind %s', 'systemd product' ) and return 1;
-
-	# Special wordings that have to remain untouched
-	( $text =~ m/systemd\s+[${DASH}]{2}user/msx ) and log_debug( '  => non-elogind "%s"', 'systemd --user' ) and return 1;
-
-	# Systemd-homed specific concepts that elogind doesn't have
-	( $text =~ m{/var/cache/systemd/home}msx ) and log_debug( '  => non-elogind "%s"', '/var/cache/systemd/home' ) and return 1;
-	( $text =~ m{~/.identity}msx )             and log_debug( '  => non-elogind "%s"', '~/.identity' )             and return 1;
-
-	# Systemd-specific service names that elogind doesn't use
-	( $text =~ m{systemd-logind[.]service}msx ) and log_debug( '  => non-elogind "%s"', 'systemd-logind.service' ) and return 1;
-
-	# Systemd-specific compile-time options that elogind doesn't have
-	( $text =~ m/-Dcompat-mutable-uid-boundaries/msx ) and log_debug( '  => non-elogind "%s"', 'systemd compile option' ) and return 1;
-
-	# Systemd-specific documentation or configuration details
-	( $text =~ m{sysusers[.]d/basic[.]conf}msx ) and log_debug( '  => non-elogind "%s"', 'systemd sysusers config' ) and return 1;
+	is_systemd_daemon($text)  and return 1;
+	is_systemd_keyword($text) and return 1;
+	is_systemd_product($text) and return 1;
+	is_systemd_special($text) and return 1;
 
 	return 0;
 } ## end sub is_systemd_only
+
+## @brief Checks if text references a systemd-only daemon.
+#
+#  This helper subroutine matches text against systemd daemon names that elogind doesn't have.
+#
+#  @param $text  The text to check
+#  @return Returns 1 if systemd daemon found, 0 otherwise
+sub is_systemd_daemon {
+	my ($text) = @_;
+	my $systemd_daemon = q{home|import|journal|network|oom|passwor|udev};
+
+	if ( $text =~ m/systemd[-_]($systemd_daemon)d/msx ) {
+		log_debug( '  => non-elogind %s', 'systemd daemon' );
+		return 1;
+	}
+
+	return 0;
+} ## end sub is_systemd_daemon
+
+## @brief Checks if text references a systemd-only keyword.
+#
+#  This helper subroutine matches text against systemd-specific keywords.
+#
+#  @param $text  The text to check
+#  @return Returns 1 if systemd keyword found, 0 otherwise
+sub is_systemd_keyword {
+	my ($text) = @_;
+	my $systemd_keyword = q{NR_[\{]|devel[/]};
+
+	if ( $text =~ m/systemd[-_]($systemd_keyword)/msx ) {
+		log_debug( '  => non-elogind %s', 'systemd keyword' );
+		return 1;
+	}
+
+	return 0;
+} ## end sub is_systemd_keyword
+
+## @brief Checks if text references a systemd-only product.
+#
+#  This helper subroutine matches text against systemd product names that elogind doesn't have.
+#
+#  @param $text  The text to check
+#  @return Returns 1 if systemd product found, 0 otherwise
+sub is_systemd_product {
+	my ($text) = @_;
+	my $systemd_product =
+	        q{analyze|creds|cryptsetup|export|firstboot|fsck|home|import-fs|mountwork|nspawn|quotacheck|repart|nsresourcework|syscfg|sysusers|tmpfiles|vmspawn};
+
+	if ( $text =~ m/systemd[-_]($systemd_product)/msx ) {
+		log_debug( '  => non-elogind %s', 'systemd product' );
+		return 1;
+	}
+
+	if ( $text =~ m/systemd\s+($systemd_product)\b/msx ) {
+		log_debug( '  => non-elogind %s', 'systemd product' );
+		return 1;
+	}
+
+	return 0;
+} ## end sub is_systemd_product
+
+## @brief Checks if text matches systemd special patterns.
+#
+#  This helper subroutine matches text against various systemd-specific patterns
+#  like special wording, service names, compile options, and configuration details.
+#
+#  @param $text  The text to check
+#  @return Returns 1 if systemd special pattern found, 0 otherwise
+sub is_systemd_special {
+	my ($text) = @_;
+
+	# Special wordings that have to remain untouched
+	if ( $text =~ m/systemd\s+[${DASH}]{2}user/msx ) {
+		log_debug( '  => non-elogind "%s"', 'systemd --user' );
+		return 1;
+	}
+
+	# Systemd-homed specific concepts that elogind doesn't have
+	if ( $text =~ m{/var/cache/systemd/home}msx ) {
+		log_debug( '  => non-elogind "%s"', '/var/cache/systemd/home' );
+		return 1;
+	}
+
+	if ( $text =~ m{~/.identity}msx ) {
+		log_debug( '  => non-elogind "%s"', '~/.identity' );
+		return 1;
+	}
+
+	# Systemd-specific service names that elogind doesn't use
+	if ( $text =~ m{systemd-logind[.]service}msx ) {
+		log_debug( '  => non-elogind "%s"', 'systemd-logind.service' );
+		return 1;
+	}
+
+	# Systemd-specific compile-time options that elogind doesn't have
+	if ( $text =~ m/-Dcompat-mutable-uid-boundaries/msx ) {
+		log_debug( '  => non-elogind "%s"', 'systemd compile option' );
+		return 1;
+	}
+
+	# Systemd-specific documentation or configuration details
+	if ( $text =~ m{sysusers[.]d/basic[.]conf}msx ) {
+		log_debug( '  => non-elogind "%s"', 'systemd sysusers config' );
+		return 1;
+	}
+
+	return 0;
+} ## end sub is_systemd_special
 
 sub logMsg {
 	my ( $lvl, $fmt, @args ) = @_;
@@ -4801,60 +5029,7 @@ sub unprepare_shell {
 	# --- and ensure that all lines are commented out.                    ---
 	# -----------------------------------------------------------------------
 
-	# Now prepare the output, line by line.
-	my $is_block = 0;
-	my $is_else  = 0;
-	my $line_no  = 0;
-	for my $line (@lIn) {
-
-		chomp $line;
-		++$line_no;
-
-		if ( is_mask_start($line) ) {
-			if ( $is_block > 0 ) {
-				log_error( '%s:%d : Mask start in mask!', $in, $line_no );
-				croak('Illegal file');
-			}
-			$is_block = 1;
-			push @lOut, $line;
-			next;
-		} ## end if ( is_mask_start($line...))
-
-		if ( is_mask_else($line) ) {
-			if ( 0 == $is_block ) {
-				log_error( '%s:%d : Mask else outside mask!', $in, $line_no );
-				croak('Illegal file');
-			}
-			$is_else = 1;
-			push @lOut, $line;
-			next;
-		} ## end if ( is_mask_else($line...))
-
-		if ( is_mask_end($line) ) {
-			if ( 0 == $is_block ) {
-				log_error( '%s:%d : Mask end outside mask!', $in, $line_no );
-				croak('Illegal file');
-			}
-			$is_block = 0;
-			$is_else  = 0;
-			push @lOut, $line;
-			next;
-		} ## end if ( is_mask_end($line...))
-
-		if (       $is_block
-			&& !$is_else
-			&& ( '# #' ne ( substr $line, 0, 3 ) )
-			&& ( '  * ' ne ( substr $line, 0, 4 ) ) )
-		{
-			$hFile{source} =~ m/${DOT}sym${DOT}pwx$/msx and $line = '  * ' . $line
-			        or $line = '# ' . $line;
-
-			# Do not create empty comment lines with trailing spaces.
-			$line =~ s/([${HASH}])\s+$/$1/msgx;
-		} ## end if ( $is_block && !$is_else...)
-
-		push @lOut, $line;
-	} ## end for my $line (@lIn)
+	unprepare_shell_process_lines( \@lIn, \@lOut, $in );
 
 	# Now write the outfile:
 	if ( open my $fOut, '>', $out ) {
@@ -4871,22 +5046,121 @@ sub unprepare_shell {
 
 	# Now prepare the patch. It is like above, but with less checks.
 	# We have to move out the lines first, and then write them back.
-	$is_block = 0;
-	$is_else  = 0;
-	@lIn      = splice @{ $hFile{output} };
+	unprepare_shell_process_patch();
+
+	# Now source is the written back original:
+	$hFile{source} = $out;
+
+	return 1;
+} ## end sub unprepare_shell
+
+## @brief Processes shell file lines for unpreparation.
+#
+#  This helper subroutine reads shell file lines and comments out content between
+#  elogind mask markers, handling validation of marker usage.
+#
+#  @param $lIn   Reference to input lines array
+#  @param $lOut  Reference to output lines array
+#  @param $in    Input file path for error messages
+#  @return Always 1, croaks on illegal file structure
+sub unprepare_shell_process_lines {
+	my ( $lIn, $lOut, $in ) = @_;
+
+	my $is_block = 0;
+	my $is_else  = 0;
+	my $line_no  = 0;
+
+	for my $line ( @{$lIn} ) {
+		chomp $line;
+		++$line_no;
+
+		if ( is_mask_start($line) ) {
+			if ( $is_block > 0 ) {
+				log_error( '%s:%d : Mask start in mask!', $in, $line_no );
+				croak('Illegal file');
+			}
+			$is_block = 1;
+			push @{$lOut}, $line;
+			next;
+		} ## end if ( is_mask_start($line...))
+
+		if ( is_mask_else($line) ) {
+			if ( 0 == $is_block ) {
+				log_error( '%s:%d : Mask else outside mask!', $in, $line_no );
+				croak('Illegal file');
+			}
+			$is_else = 1;
+			push @{$lOut}, $line;
+			next;
+		} ## end if ( is_mask_else($line...))
+
+		if ( is_mask_end($line) ) {
+			if ( 0 == $is_block ) {
+				log_error( '%s:%d : Mask end outside mask!', $in, $line_no );
+				croak('Illegal file');
+			}
+			$is_block = 0;
+			$is_else  = 0;
+			push @{$lOut}, $line;
+			next;
+		} ## end if ( is_mask_end($line...))
+
+		if (       $is_block
+			&& !$is_else
+			&& ( '# #' ne ( substr $line, 0, 3 ) )
+			&& ( '  * ' ne ( substr $line, 0, 4 ) ) )
+		{
+			$hFile{source} =~ m/${DOT}sym${DOT}pwx$/msx and $line = '  * ' . $line
+			        or $line = '# ' . $line;
+
+			# Do not create empty comment lines with trailing spaces.
+			$line =~ s/([${HASH}])\s+$/$1/msgx;
+		} ## end if ( $is_block && !$is_else...)
+
+		push @{$lOut}, $line;
+	} ## end for my $line ( @{$lIn} )
+
+	return 1;
+} ## end sub unprepare_shell_process_lines
+
+## @brief Processes shell patch output for unpreparation.
+#
+#  This helper subroutine processes the patch output lines, adding # prefixes to lines
+#  in mask blocks and handling mask state tracking.
+#
+#  @return Always 1
+sub unprepare_shell_process_patch {
+	my @lIn = splice @{ $hFile{output} };
 
 	# Pre-scan to find mask block boundaries and infer mask membership for lines
-	# For hunks that don't include #if/#else lines, we infer mask membership by:
-	# 1. Lines before #endif // 0 that are removals (-) are likely in a mask block
-	# 2. Once we see #else // 0, lines after it are in the else block (not masked)
+	my @in_mask_block = unprepare_shell_scan_mask_blocks( \@lIn );
+
+	# Now process the lines with the pre-computed mask status
+	unprepare_shell_apply_mask_prefix( \@lIn, \@in_mask_block );
+
+	return 1;
+} ## end sub unprepare_shell_process_patch
+
+## @brief Scans patch lines to determine mask block membership for each line.
+#
+#  This helper subroutine performs two passes over the patch lines to determine
+#  which lines are inside mask blocks, for later prefix application.
+#
+#  @param $lIn  Reference to patch lines array
+#  @return Array of mask membership flags (1 = in mask, 0 = not in mask)
+sub unprepare_shell_scan_mask_blocks {
+	my ($lIn) = @_;
+
 	my @in_mask_block = ();
+	my $is_block      = 0;
+	my $is_else       = 0;
 	my $saw_endif     = 0;
 	my $saw_else      = 0;
 	my $endif_line    = -1;
 
 	# First pass: find #endif and #else positions
-	for my $i ( 0 .. $#lIn ) {
-		my $line = $lIn[$i];
+	for my $i ( 0 .. $#{$lIn} ) {
+		my $line = $lIn->[$i];
 		if ( is_mask_end($line) && !$saw_endif ) {
 			$saw_endif  = 1;
 			$endif_line = $i;
@@ -4894,13 +5168,13 @@ sub unprepare_shell {
 		if ( is_mask_else($line) && !$saw_else ) {
 			$saw_else = 1;
 		}
-	} ## end for my $i ( 0 .. $#lIn )
+	} ## end for my $i ( 0 .. $#{$lIn...})
 
 	# Second pass: determine mask membership for each line
 	$is_block = 0;
 	$is_else  = 0;
-	for my $i ( 0 .. $#lIn ) {
-		my $line = $lIn[$i];
+	for my $i ( 0 .. $#{$lIn} ) {
+		my $line = $lIn->[$i];
 
 		# Handle explicit mask markers
 		if ( $line =~ m/[${HASH}]\s+masked_(?:start|end)\s+([01])$/msx ) {
@@ -4934,14 +5208,27 @@ sub unprepare_shell {
 		} else {
 			$in_mask_block[$i] = 0;
 		}
-	} ## end for my $i ( 0 .. $#lIn )
+	} ## end for my $i ( 0 .. $#{$lIn...})
 
-	# Reset state for actual processing
-	$is_block = 0;
-	$is_else  = 0;
+	return @in_mask_block;
+} ## end sub unprepare_shell_scan_mask_blocks
 
-	for my $i ( 0 .. $#lIn ) {
-		my $line = $lIn[$i];
+## @brief Applies # prefix to lines in mask blocks in patch output.
+#
+#  This helper subroutine adds # prefix to all lines that are inside mask blocks,
+#  while skipping mask directives and file header lines.
+#
+#  @param $lIn              Reference to patch lines array
+#  @param $mask_membership  Reference to array of mask membership flags
+#  @return Always 1
+sub unprepare_shell_apply_mask_prefix {
+	my ( $lIn, $mask_membership ) = @_;
+
+	my $is_block = 0;
+	my $is_else  = 0;
+
+	for my $i ( 0 .. $#{$lIn} ) {
+		my $line = $lIn->[$i];
 
 		if ( $line =~ m/[${HASH}]\s+masked_(?:start|end)\s+([01])$/msx ) {
 			$1        and $is_block = 1 or $is_block = 0;
@@ -4955,7 +5242,7 @@ sub unprepare_shell {
 
 		# Add # prefix to ALL lines in mask blocks (before #else), not just changes
 		# Use pre-computed mask status if available, otherwise use current state
-		my $in_mask = $in_mask_block[$i] || ( $is_block && !$is_else );
+		my $in_mask = $mask_membership->[$i] || ( $is_block && !$is_else );
 		$in_mask
 		        and $ATAT ne ( substr $line, 0, 2 )
 		        and ( $line !~ m/^[+-]{3}\s/ms ) ## Don't modify file header lines (--- or +++)
@@ -4966,13 +5253,10 @@ sub unprepare_shell {
 		# Make sure not to demand to add empty comment lines with trailing spaces
 		$line =~ s/^([${PLUS}][${HASH}])\s+$/$1/msgx;
 		push @{ $hFile{output} }, $line;
-	} ## end for my $i ( 0 .. $#lIn )
-
-	# Now source is the written back original:
-	$hFile{source} = $out;
+	} ## end for my $i ( 0 .. $#{$lIn...})
 
 	return 1;
-} ## end sub unprepare_shell
+} ## end sub unprepare_shell_apply_mask_prefix
 
 ## @brief Unprepares an XML file by masking double dashes in mask blocks and handling patch preparation.
 #
@@ -5006,52 +5290,7 @@ sub unprepare_xml {
 	# --- this by substituting '--' with '&#x2D;&#x2D;'.                  ---
 	# -----------------------------------------------------------------------
 
-	# Now prepare the output, line by line.
-	my $is_block = 0;
-	my $is_else  = 0;
-	my $line_no  = 0;
-	for my $line (@lIn) {
-
-		chomp $line;
-		++$line_no;
-
-		if ( is_mask_start($line) ) {
-			if ( $is_block > 0 ) {
-				log_error( '%s:%d : Mask start in mask!', $in, $line_no );
-				croak('Illegal file');
-			}
-			$is_block = 1;
-			push @lOut, $line;
-			next;
-		} ## end if ( is_mask_start($line...))
-
-		if ( is_mask_else($line) ) {
-			if ( 0 == $is_block ) {
-				log_error( '%s:%d : Mask else outside mask!', $in, $line_no );
-				croak('Illegal file');
-			}
-			$is_else = 1;
-			push @lOut, $line;
-			next;
-		} ## end if ( is_mask_else($line...))
-
-		if ( is_mask_end($line) ) {
-			if ( 0 == $is_block ) {
-				log_error( '%s:%d : Mask end outside mask!', $in, $line_no );
-				croak('Illegal file');
-			}
-			$is_block = 0;
-			$is_else  = 0;
-			push @lOut, $line;
-			next;
-		} ## end if ( is_mask_end($line...))
-
-		if ( $is_block && !$is_else ) {
-			$line =~ s/--/&#x2D;&#x2D;/msg;
-		}
-
-		push @lOut, $line;
-	} ## end for my $line (@lIn)
+	unprepare_xml_process_lines( \@lIn, \@lOut, $in );
 
 	# Now write the outfile:
 	if ( open my $fOut, '>', $out ) {
@@ -5068,10 +5307,86 @@ sub unprepare_xml {
 
 	# Now prepare the patch. It is like above, but with less checks.
 	# We have to move out the lines first, and then write them back.
-	@lIn      = ();
-	$is_block = 0;
-	$is_else  = 0;
-	@lIn      = splice @{ $hFile{output} };
+	unprepare_xml_process_patch();
+
+	# Now source is the written back original:
+	$hFile{source} = $out;
+
+	return 1;
+} ## end sub unprepare_xml
+
+## @brief Processes XML file lines for unpreparation.
+#
+#  This helper subroutine reads XML file lines and masks double dashes in content between
+#  elogind mask markers, handling validation of marker usage.
+#
+#  @param $lIn   Reference to input lines array
+#  @param $lOut  Reference to output lines array
+#  @param $in    Input file path for error messages
+#  @return Always 1, croaks on illegal file structure
+sub unprepare_xml_process_lines {
+	my ( $lIn, $lOut, $in ) = @_;
+
+	my $is_block = 0;
+	my $is_else  = 0;
+	my $line_no  = 0;
+
+	for my $line ( @{$lIn} ) {
+		chomp $line;
+		++$line_no;
+
+		if ( is_mask_start($line) ) {
+			if ( $is_block > 0 ) {
+				log_error( '%s:%d : Mask start in mask!', $in, $line_no );
+				croak('Illegal file');
+			}
+			$is_block = 1;
+			push @{$lOut}, $line;
+			next;
+		} ## end if ( is_mask_start($line...))
+
+		if ( is_mask_else($line) ) {
+			if ( 0 == $is_block ) {
+				log_error( '%s:%d : Mask else outside mask!', $in, $line_no );
+				croak('Illegal file');
+			}
+			$is_else = 1;
+			push @{$lOut}, $line;
+			next;
+		} ## end if ( is_mask_else($line...))
+
+		if ( is_mask_end($line) ) {
+			if ( 0 == $is_block ) {
+				log_error( '%s:%d : Mask end outside mask!', $in, $line_no );
+				croak('Illegal file');
+			}
+			$is_block = 0;
+			$is_else  = 0;
+			push @{$lOut}, $line;
+			next;
+		} ## end if ( is_mask_end($line...))
+
+		if ( $is_block && !$is_else ) {
+			$line =~ s/--/&#x2D;&#x2D;/msg;
+		}
+
+		push @{$lOut}, $line;
+	} ## end for my $line ( @{$lIn} )
+
+	return 1;
+} ## end sub unprepare_xml_process_lines
+
+## @brief Processes XML patch output for unpreparation.
+#
+#  This helper subroutine processes the patch output lines, masking double dashes in lines
+#  within mask blocks and handling mask state tracking.
+#
+#  @return Always 1
+sub unprepare_xml_process_patch {
+	my @lIn      = splice @{ $hFile{output} };
+	my $is_block = 0;
+	my $is_else  = 0;
+
 	for my $line (@lIn) {
 		if ( $line =~ m/[${HASH}]\s+masked_(?:start|end)\s+([01])$/msx ) {
 			$1        and $is_block = 1 or $is_block = 0;
@@ -5089,11 +5404,8 @@ sub unprepare_xml {
 		push @{ $hFile{output} }, $line;
 	} ## end for my $line (@lIn)
 
-	# Now source is the written back original:
-	$hFile{source} = $out;
-
 	return 1;
-} ## end sub unprepare_xml
+} ## end sub unprepare_xml_process_patch
 
 ## @brief Reads and records include directives from a hunk, tracking additions, removals, and elogind-specific blocks.
 #
