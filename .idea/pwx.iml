@@ -7,6 +7,7 @@
       <excludeFolder url="file://$MODULE_DIR$/src" />
       <excludeFolder url="file://$MODULE_DIR$/systemd" />
       <excludeFolder url="file://$MODULE_DIR$/man" />
+      <excludeFolder url="file://$MODULE_DIR$/elogind" />
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />

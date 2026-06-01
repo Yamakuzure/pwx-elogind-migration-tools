@@ -8,12 +8,10 @@ _Deparsed_XSubs.pm
 check_*.md
 talk*.md
 
-# OpenCode dynamic content
-.opencode/*.md
-.opencode/memory-working
-!.opencode/memory-working/.keep_dir
-.opencode/node_modules
-!.opencode/node_modules/.keep_dir
+# Keep AI test files lokal
+.aiignore
+AGENTS.md
+.opencode/
 
 # Test directories for agents to play with. Fill manually
 elogind/

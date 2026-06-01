@@ -60,11 +60,11 @@ AlwaysBreakBeforeMultilineStrings: false    # Do not break before multiline stri
 BinPackArguments: false                   # Do not pack arguments into one line
 BinPackParameters: OnePerLine             # Pack parameters one per line
 
-BitFieldColonSpacing: After               # Place colon after bit field name
+BitFieldColonSpacing: After               # Place a colon after the bit field name
 
 BreakAfterReturnType: Automatic           # Break after return type automatically
 BreakBeforeBraces: Custom                 # Use custom brace breaking rules
-BreakTemplateDeclarations: MultiLine      # Break template declarations at multilines (needs clang-format 19)
+BreakTemplateDeclarations: Yes            # Always break after a template declaration. (needs clang-format 19)
 BraceWrapping:                            # Control brace wrapping
   AfterCaseLabel: false                   # Do not wrap braces after case labels
   AfterClass: false                       # Do not wrap braces after class definitions
@@ -218,3 +218,10 @@ SpacesInParensOptions:                    # Custom options for space in parens
   InEmptyParentheses: false               # Do not add space in empty parentheses
   Other: true                             # Add space in other parentheses
 
+ForEachMacros: [ 'RANGES_FOR', 'FOREACH' ] # Macros to treat as for-each loops
+IfMacros: [ 'PDF_TRY','PDF_CATCH' ]        # Macros to treat as if statements
+MacroBlockBegin: '^\s*PDF_TRY'             # Macro block begin pattern
+MacroBlockEnd: '^\s*PDF_CATCH'             # Macro block end pattern
+StatementAttributeLikeMacros: [ 'emit','_alloc_','_hidden_','_malloc_','_public_','_unlikely_' ]  # Attribute-like macros
+StatementMacros: [ 'Q_UNUSED','DECLARATIONS_BEGIN','DECLARATIONS_END','PDF_CATCH_AND_FINISH','PDF_CATCH_AND_LOG','PDF_CATCH_AND_RETURN','PDF_CATCH_AND_FAIL' ]  # Statement macros
+TypenameMacros: [ 'STACK_OF', 'LIST' ]     # Typename macros
