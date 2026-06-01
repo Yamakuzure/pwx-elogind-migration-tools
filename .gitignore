@@ -8,6 +8,12 @@ _Deparsed_XSubs.pm
 check_*.md
 talk*.md
 
+# build directories
+cmake-*/
+
+# Libraries for development purposes only
+libgit*/
+
 # Keep AI test files lokal
 .aiignore
 AGENTS.md
