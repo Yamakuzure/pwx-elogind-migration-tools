@@ -4,9 +4,18 @@ _Deparsed_XSubs.pm
 *~
 *.old
 *.bak
+*_DESC.md
+.*.kate-swp
 .idea/perl5local.xml
+.clangd
 check_*.md
 talk*.md
+
+# build directories
+cmake-*/
+
+# Libraries for development purposes only
+libgit*/
 
 # Keep AI test files lokal
 .aiignore

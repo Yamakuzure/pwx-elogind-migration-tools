@@ -8,6 +8,10 @@
       <excludeFolder url="file://$MODULE_DIR$/systemd" />
       <excludeFolder url="file://$MODULE_DIR$/man" />
       <excludeFolder url="file://$MODULE_DIR$/elogind" />
+      <excludeFolder url="file://$MODULE_DIR$/.opencode" />
+      <excludeFolder url="file://$MODULE_DIR$/cmake-build-debug" />
+      <excludeFolder url="file://$MODULE_DIR$/cmake-build-release" />
+      <excludeFolder url="file://$MODULE_DIR$/libgit2-1.9.4" />
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />

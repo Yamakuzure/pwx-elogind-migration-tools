@@ -45,10 +45,6 @@
       <option name="TAG_PREFIX_OF_LINE_COMMENT" value="AT" />
       <option name="TYPE_QUALIFIERS_PLACEMENT" value="AFTER" />
     </Objective-C-extensions>
-    <Objective-C-extensions>
-      <option name="TAG_PREFIX_OF_LINE_COMMENT" value="AT" />
-      <option name="TYPE_QUALIFIERS_PLACEMENT" value="AFTER" />
-    </Objective-C-extensions>
     <Perl5CodeStyleSettings>
       <option name="SPACE_AFTER_HEREDOC_OPERATOR" value="true" />
       <option name="SPACE_WITHIN_QW_QUOTES" value="true" />
