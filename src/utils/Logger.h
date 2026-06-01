@@ -20,7 +20,7 @@ namespace elomig {
  * @brief Log severity levels
  */
 enum class LogLevel {
-	DEBUG   = 1, ///< Detailed debugging information
+	DEBUG_LEVEL   = 1, ///< Detailed debugging information
 	INFO    = 2, ///< General information
 	STATUS  = 3, ///< Progress/status messages
 	WARNING = 4, ///< Warning conditions

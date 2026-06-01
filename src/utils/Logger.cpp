@@ -66,13 +66,13 @@ void Logger::setDebugMode( bool enabled ) {
 }
 
 void Logger::debug( char const* format, ... ) {
-	if ( m_minLevel > LogLevel::DEBUG || !m_debugMode ) {
+	if ( m_minLevel > LogLevel::DEBUG_LEVEL || !m_debugMode ) {
 		return;
 	}
 
 	va_list args;
 	va_start( args, format );
-	log( LogLevel::DEBUG, format, args );
+	log( LogLevel::DEBUG_LEVEL, format, args );
 	va_end( args );
 }
 

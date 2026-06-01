@@ -10,6 +10,7 @@
 #define ELOMIG_PATCH_APPLIER_H
 
 #include "data/Patch.h"
+#include <set>
 
 #include <memory>
 #include <string>

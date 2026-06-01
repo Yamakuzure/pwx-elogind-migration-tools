@@ -106,7 +106,7 @@ namespace migrate {
 		return true;
 	}
 
-	MigrationCommitInfo CommitDiscovery::getCommitInfo( std::string const& commitHash ) const {
+	MigrationCommitInfo CommitDiscovery::getCommitInfo( std::string const& commitHash ) {
 		auto it = m_commitInfo.find( commitHash );
 		if ( it != m_commitInfo.end() ) {
 			return it->second;
@@ -118,12 +118,50 @@ namespace migrate {
 			return MigrationCommitInfo();
 		}
 
-		MigrationCommitInfo info = git.getCommitInfo( commitHash );
+		CommitInfo info = git.getCommitInfo( commitHash );
 		if ( !info.hash.empty() ) {
-			m_commitInfo[commitHash] = info;
+			// Convert CommitInfo to MigrationCommitInfo
+			MigrationCommitInfo migrationInfo;
+			migrationInfo.hash = info.hash;
+			migrationInfo.shortHash = info.shortHash;
+			migrationInfo.message = info.message;
+			migrationInfo.author = info.author;
+			migrationInfo.fileCount = 0;  // Not available from Git
+			migrationInfo.isMerge = false;  // Not available from Git
+			migrationInfo.isRelevant = false;  // Not available from Git
+			migrationInfo.timestamp = info.time;
+			migrationInfo.files = {};  // Not available from Git
+			
+			m_commitInfo[commitHash] = migrationInfo;
+			return migrationInfo;
 		}
 
-		return info;
+		return MigrationCommitInfo();
+	}
+
+		// Try to get from Git directly
+		GitWrapper git( m_upstreamPath );
+		if ( !git.isValid() ) {
+			return MigrationCommitInfo();
+		}
+
+		CommitInfo info = git.getCommitInfo( commitHash );
+		if ( !info.hash.empty() ) {
+			// Convert CommitInfo to MigrationCommitInfo
+			MigrationCommitInfo migrationInfo;
+			migrationInfo.hash = info.hash;
+			migrationInfo.shortHash = info.shortHash;
+			migrationInfo.message = info.message;
+			migrationInfo.author = info.author;
+			migrationInfo.fileCount = 0;  // Not available from Git
+			migrationInfo.isMerge = false;  // Not available from Git
+			migrationInfo.isRelevant = false;  // Not available from Git
+			migrationInfo.timestamp = info.time;
+			migrationInfo.files = {};  // Not available from Git
+			
+			m_commitInfo[commitHash] = migrationInfo;
+			return migrationInfo;
+		}
 	}
 
 	bool CommitDiscovery::commitAffectsSources( std::string const& commitHash ) const {

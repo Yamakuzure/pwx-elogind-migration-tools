@@ -109,7 +109,7 @@ namespace migrate {
 		 * @param commitHash Commit hash
 		 * @return Commit info or empty structure if not found
 		 */
-		MigrationCommitInfo getCommitInfo( std::string const& commitHash ) const;
+		MigrationCommitInfo getCommitInfo( std::string const& commitHash );
 
 		/**
 		 * @brief Check if file affects a commit
